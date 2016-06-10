@@ -1,12 +1,29 @@
-﻿<Window x:Class="client.MainWindow"
+﻿<Window x:Class="WpfApplication1.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:client"
+        xmlns:local="clr-namespace:WpfApplication1"
         mc:Ignorable="d"
-        Title="MainWindow" Height="350" Width="525">
-    <Grid>
-        
+        Title="MainWindow" Height="600" Width="800">
+    <Grid Background="#525252" Margin="0,0,0,0">
+        <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="50,60,0,0" VerticalAlignment="Top" Width="75" Click="buttonConnetti_Click"/>
+        <TextBox x:Name="textIpAddress" HorizontalAlignment="Left" Height="23" Margin="125,25,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="120"/>
+        <Label x:Name="labelIP" Content="Indirizzo IP" HorizontalAlignment="Left" Margin="50,25,0,0" VerticalAlignment="Top" Width="70" Height="23"/>
+        <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="170,60,0,0" VerticalAlignment="Top" Width="75" Click="buttonDisconentti_Click"/>
+        <Label x:Name="labelApplciazioni" Content="Applicazioni" HorizontalAlignment="Left" Margin="50,95,0,0" VerticalAlignment="Top"/>
+        <ListView x:Name="listView" HorizontalAlignment="Left" Height="300" Width="700" Margin="50,125,0,0" VerticalAlignment="Top">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Nome" Width="400"/>
+                    <GridViewColumn Header="Stato Finestra" Width="150"/>
+                    <GridViewColumn Header="Tempo in focus (%)" Width="150"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
+        <Label x:Name="labelComando" Content="Invia Comando" HorizontalAlignment="Left" Margin="50,454,0,0" VerticalAlignment="Top"/>
+        <TextBox x:Name="textBoxComando" HorizontalAlignment="Left" Height="23" Margin="50,485,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="120"/>
+        <Button x:Name="buttonComando" Content="Invia" HorizontalAlignment="Left" Margin="185,488,0,0" VerticalAlignment="Top" Width="75"/>
+
     </Grid>
 </Window>
