@@ -148,6 +148,10 @@ namespace WpfApplication1
             }
         }
 
-        
+        private void textBoxIpAddress_TextChanged(object sender, TextChangedEventArgs e)
+        {
+
+        }
+
     }
 }
