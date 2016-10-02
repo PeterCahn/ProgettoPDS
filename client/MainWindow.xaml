@@ -8,7 +8,6 @@
         Title="Client" Height="600" Width="800">
     <Grid Background="#525252" Margin="0,0,0,0">
         <Label x:Name="labelIP" Content="Indirizzo IP" HorizontalAlignment="Left" Margin="50,25,0,0" VerticalAlignment="Top" Width="80" Height="23" FontWeight="Bold" Foreground="Black"/>
-        <TextBox x:Name="textBoxIpAddress" TextAlignment="Center" HorizontalAlignment="Left" Height="28" Margin="130,25,0,516" TextWrapping="Wrap" Text="" Width="230" TextChanged="textBoxIpAddress_TextChanged" VerticalAlignment="Center" MaxLines="1"/>
         <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="205,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click"/>
         <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="285,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click"/>
         <TextBox x:Name="textBoxStato"  IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="445,25,0,0" TextWrapping="Wrap" Text="STATO: Disconnesso." VerticalAlignment="Top" Width="305"/>
@@ -26,6 +25,7 @@
         <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="50,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click"/>
         <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="165,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270"/>
         <Button x:Name="buttonInvia" Content="Invia" HorizontalAlignment="Left" Margin="440,502,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonInvia_Click"/>
+        <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="28" Margin="131,24,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" TextWrapping="Wrap"/>
 
 
     </Grid>

@@ -13,7 +13,7 @@
 // #pragma comment (lib, "Mswsock.lib")
 
 #define DEFAULT_BUFLEN 512
-#define DEFAULT_PORT "27015"
+#define DEFAULT_PORT  "27015"
 
 using namespace std;
 
@@ -23,6 +23,9 @@ void getForeground();
 
 int main(int argc, char* argv[])
 {
+
+	socket();
+
 	/* Stampa finestra col focus */
 	getForeground();
 
