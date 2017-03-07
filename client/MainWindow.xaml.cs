@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Data;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -17,6 +18,15 @@ using System.Windows.Shapes;
 
 namespace WpfApplication1
 {
+
+    class ListViewRow
+    {
+        public string Icona { get; set; }
+        public string Nome { get; set; }
+        public string Stato { get; set; }
+        public float TempoFocus { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
 
@@ -71,11 +81,22 @@ namespace WpfApplication1
                 buttonConnetti.Visibility = Visibility.Hidden;
                 buttonCattura.IsEnabled = true;
                 textBoxIpAddress.IsEnabled = false;
+
+                // Ricevi nomi applicazioni
+                byte[] buf = new byte[100];
+                int dim = sock.Receive(buf);
+                string received = Encoding.ASCII.GetString(buf, 0, dim);
+                addItemToListview(received);
             }
             catch (Exception exc) {
                 textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
                 textBoxStato.ScrollToEnd();
             }
+        }
+
+        private void addItemToListview(string received)
+        {
+            listView.Items.Add(new ListViewRow() { Icona = "", Nome = received, Stato = "Focus", TempoFocus = 100 });
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
@@ -153,5 +174,9 @@ namespace WpfApplication1
 
         }
 
+        private void listView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+
+        }
     }
 }

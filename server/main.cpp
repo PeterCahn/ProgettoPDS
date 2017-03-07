@@ -21,33 +21,35 @@
 using namespace std;
 
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
-int socket();
-void getForeground();
+SOCKET acceptConnection();
+void getForeground(SOCKET *clientSocket);
+void sendApplicationToClient(SOCKET* clientSocket, char* title);
 
 int main(int argc, char* argv[])
 {
-	cout << "In attesa di connessione di un client..." << endl;
-	socket();
+	SOCKET clientSocket;
+	
+	cout << "In attesa della connessione di un client..." << endl;
+	clientSocket = acceptConnection();
 
 	/* Stampa finestra col focus */
-	getForeground();
+	getForeground(&clientSocket);
 
 	/* Stampa tutte le finestre */
 	cout << "Applicazioni attive:" << endl;
 	EnumWindows(EnumWindowsProc, NULL);
 
-
-
 	Sleep(5000000);
 }
 
-void getForeground() {
+void getForeground(SOCKET *clientSocket) {
 	char title[MAX_PATH];
 
 	HWND handle = GetForegroundWindow();
 	GetWindowText(handle, title, sizeof(title));
 
 	cout << "Applicazione col focus:" << endl << "- " << title << endl;
+	sendApplicationToClient(clientSocket, title);
 
 }
 
@@ -59,11 +61,18 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 
 	if (IsWindowVisible(hwnd)) {
 		GetWindowText(hwnd, title, sizeof(title));
-		if (strlen(title) != 0)
+		if (strlen(title) != 0) {
 			cout << "- " << title << endl;
+
+		}
 	}
 
 	return TRUE;
+}
+
+/* TODO: inviare anche l'icona */
+void sendApplicationToClient(SOCKET* clientSocket, char* title) {
+	send(*clientSocket, title, strlen(title), 0);
 }
 
 HICON getHICONfromHWND(HWND hwnd) {
@@ -89,16 +98,15 @@ HBITMAP convertHICONtoHBITMAP(HICON hIcon) {
 	ReleaseDC(NULL, hDC);
 	DestroyIcon(hIcon);
 	return hResultBmp;
-
 }
 
-int socket(void)
+SOCKET acceptConnection(void)
 {
 	WSADATA wsaData;
 	int iResult;
 
-	SOCKET ListenSocket = INVALID_SOCKET;
-	SOCKET ClientSocket = INVALID_SOCKET;
+	SOCKET listenSocket = INVALID_SOCKET;
+	SOCKET clientSocket = INVALID_SOCKET;
 
 	struct addrinfo *result = NULL;
 	struct addrinfo addr;
@@ -129,8 +137,8 @@ int socket(void)
 	}
 
 	// Create a SOCKET for connecting to server
-	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-	if (ListenSocket == INVALID_SOCKET) {
+	listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	if (listenSocket == INVALID_SOCKET) {
 		printf("socket failed with error: %ld\n", WSAGetLastError());
 		freeaddrinfo(result);
 		WSACleanup();
@@ -138,37 +146,37 @@ int socket(void)
 	}
 
 	// Setup the TCP listening socket
-	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+	iResult = bind(listenSocket, result->ai_addr, (int)result->ai_addrlen);
 	if (iResult == SOCKET_ERROR) {
 		printf("bind failed with error: %d\n", WSAGetLastError());
 		freeaddrinfo(result);
-		closesocket(ListenSocket);
+		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
 	}
 
 	freeaddrinfo(result);
 
-	iResult = listen(ListenSocket, SOMAXCONN);
+	iResult = listen(listenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
 		printf("listen failed with error: %d\n", WSAGetLastError());
-		closesocket(ListenSocket);
+		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
 	}
 
 	// Accept a client socket
-	ClientSocket = accept(ListenSocket, NULL, NULL);
-	if (ClientSocket == INVALID_SOCKET) {
+	clientSocket = accept(listenSocket, NULL, NULL);
+	if (clientSocket == INVALID_SOCKET) {
 		printf("accept failed with error: %d\n", WSAGetLastError());
-		closesocket(ListenSocket);
+		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
 	}
 
 	struct sockaddr clientSockAddr;
 	int nameLength;
-	getpeername(ClientSocket, &clientSockAddr, &nameLength);
+	getpeername(clientSocket, &clientSockAddr, &nameLength);
 	struct sockaddr_in *s = (struct sockaddr_in *)&clientSockAddr;
 	int port = ntohs(s->sin_port);
 	char ipstr[INET_ADDRSTRLEN];
@@ -177,47 +185,54 @@ int socket(void)
 	cout << "Connessione stabilita con " << ipstr << ":" << port;
 
 	// No longer need server socket
-	closesocket(ListenSocket);
+	closesocket(listenSocket);
 
-	// Receive until the peer shuts down the connection
-	do {
-		iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-		if (iResult > 0) {
-			printf("Bytes received: %d\n", iResult);
+	return clientSocket;
+}
 
-			// Echo the buffer back to the sender
-			iSendResult = send(ClientSocket, recvbuf, iResult, 0);
-			if (iSendResult == SOCKET_ERROR) {
-				printf("send failed with error: %d\n", WSAGetLastError());
-				closesocket(ClientSocket);
-				WSACleanup();
-				return 1;
-			}
-			printf("Bytes sent: %d\n", iSendResult);
-		}
-		else if (iResult == 0)
-			printf("Connection closing...\n");
-		else {
-			printf("recv failed with error: %d\n", WSAGetLastError());
+/* 
+CODICE PRECEDENTEMENTe IN SOCKET() DA RIPOSIZIONARE
+
+
+// Receive until the peer shuts down the connection
+do {
+	iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
+	if (iResult > 0) {
+		printf("Bytes received: %d\n", iResult);
+
+		// Echo the buffer back to the sender
+		iSendResult = send(ClientSocket, recvbuf, iResult, 0);
+		if (iSendResult == SOCKET_ERROR) {
+			printf("send failed with error: %d\n", WSAGetLastError());
 			closesocket(ClientSocket);
 			WSACleanup();
 			return 1;
 		}
-
-	} while (iResult > 0);
-
-	// shutdown the connection since we're done
-	iResult = shutdown(ClientSocket, SD_SEND);
-	if (iResult == SOCKET_ERROR) {
-		printf("shutdown failed with error: %d\n", WSAGetLastError());
+		printf("Bytes sent: %d\n", iSendResult);
+	}
+	else if (iResult == 0)
+		printf("Connection closing...\n");
+	else {
+		printf("recv failed with error: %d\n", WSAGetLastError());
 		closesocket(ClientSocket);
 		WSACleanup();
 		return 1;
 	}
 
-	// cleanup
+} while (iResult > 0);
+
+// shutdown the connection since we're done
+iResult = shutdown(ClientSocket, SD_SEND);
+if (iResult == SOCKET_ERROR) {
+	printf("shutdown failed with error: %d\n", WSAGetLastError());
 	closesocket(ClientSocket);
 	WSACleanup();
-
-	return 0;
+	return 1;
 }
+
+// cleanup
+closesocket(ClientSocket);
+WSACleanup();
+
+return 0;
+*/
