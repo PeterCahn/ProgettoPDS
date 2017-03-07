@@ -1,13 +1,15 @@
+/* TODO:
+	- Socket non bloccante ?
+*/
+
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
-#include <winsock2.h>
+#include <Winsock2.h>
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
-#include <windows.h>
-#include <netevent.h>
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -24,7 +26,7 @@ void getForeground();
 
 int main(int argc, char* argv[])
 {
-
+	cout << "In attesa di connessione di un client..." << endl;
 	socket();
 
 	/* Stampa finestra col focus */
@@ -73,7 +75,7 @@ int socket(void)
 	SOCKET ClientSocket = INVALID_SOCKET;
 
 	struct addrinfo *result = NULL;
-	struct addrinfo hints;
+	struct addrinfo addr;
 
 	int iSendResult;
 	char recvbuf[DEFAULT_BUFLEN];
@@ -86,14 +88,14 @@ int socket(void)
 		return 1;
 	}
 
-	ZeroMemory(&hints, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
-	hints.ai_flags = AI_PASSIVE;
+	ZeroMemory(&addr, sizeof(addr));
+	addr.ai_family = AF_INET;
+	addr.ai_socktype = SOCK_STREAM;
+	addr.ai_protocol = IPPROTO_TCP;
+	addr.ai_flags = AI_PASSIVE;
 
 	// Resolve the server address and port
-	iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
+	iResult = getaddrinfo(NULL, DEFAULT_PORT, &addr, &result);
 	if (iResult != 0) {
 		printf("getaddrinfo failed with error: %d\n", iResult);
 		WSACleanup();
@@ -108,9 +110,6 @@ int socket(void)
 		WSACleanup();
 		return 1;
 	}
-
-	// Make the socket non-blocking
-	evutil_make_socket_nonblocking(ListenSocket);
 
 	// Setup the TCP listening socket
 	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
@@ -141,12 +140,21 @@ int socket(void)
 		return 1;
 	}
 
+	struct sockaddr clientSockAddr;
+	int nameLength;
+	getpeername(ClientSocket, &clientSockAddr, &nameLength);
+	struct sockaddr_in *s = (struct sockaddr_in *)&clientSockAddr;
+	int port = ntohs(s->sin_port);
+	char ipstr[INET_ADDRSTRLEN];
+	/* TODO: Fix stampa indirizzo */
+	inet_ntop(AF_INET, &(s->sin_addr), ipstr, INET_ADDRSTRLEN);
+	cout << "Connessione stabilita con " << ipstr << ":" << port;
+
 	// No longer need server socket
 	closesocket(ListenSocket);
 
 	// Receive until the peer shuts down the connection
 	do {
-
 		iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0) {
 			printf("Bytes received: %d\n", iResult);
