@@ -71,14 +71,15 @@ HICON getHICONfromHWND(HWND hwnd) {
 }
 
 HBITMAP convertHICONtoHBITMAP(HICON hIcon) {
-
+	int bitmapXdimension = 256;
+	int bitmapYdimension = 256;
 	HDC hDC = GetDC(NULL);
 	HDC hMemDC = CreateCompatibleDC(hDC);
-	HBITMAP hMemBmp = CreateCompatibleBitmap(hDC, x, y);
+	HBITMAP hMemBmp = CreateCompatibleBitmap(hDC, bitmapXdimension, bitmapYdimension);
 	HBITMAP hResultBmp = NULL;
 	HGDIOBJ hOrgBMP = SelectObject(hMemDC, hMemBmp);
 
-	DrawIconEx(hMemDC, 0, 0, hIcon, x, y, 0, NULL, DI_NORMAL);
+	DrawIconEx(hMemDC, 0, 0, hIcon, bitmapYdimension, bitmapYdimension, 0, NULL, DI_NORMAL);
 
 	hResultBmp = hMemBmp;
 	hMemBmp = NULL;
