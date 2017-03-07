@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <windows.h>
+#include <netevent.h>
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -107,6 +108,9 @@ int socket(void)
 		WSACleanup();
 		return 1;
 	}
+
+	// Make the socket non-blocking
+	evutil_make_socket_nonblocking(ListenSocket);
 
 	// Setup the TCP listening socket
 	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);

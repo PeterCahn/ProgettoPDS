@@ -28,7 +28,7 @@ namespace WpfApplication1
             InitializeComponent();
 
             // Inizialmente imposta bottoni come inutilizzabili senza connessione
-            buttonDisconnetti.IsEnabled = false;
+            buttonDisconnetti.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
         }
@@ -54,7 +54,7 @@ namespace WpfApplication1
 
 
                 // Crea endpoint a cui connettersi
-                IPEndPoint ipEndPoint = new IPEndPoint(ipAddr, 4510);
+                IPEndPoint ipEndPoint = new IPEndPoint(ipAddr, 27015);
 
                 // Crea socket
                 sock = new Socket(ipAddr.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -67,9 +67,9 @@ namespace WpfApplication1
                 textBoxStato.ScrollToEnd();
 
                 // Aggiorna bottoni
-                buttonDisconnetti.IsEnabled = true;
+                buttonDisconnetti.Visibility = Visibility.Visible;
+                buttonConnetti.Visibility = Visibility.Hidden;
                 buttonCattura.IsEnabled = true;
-                buttonConnetti.IsEnabled = false;
                 textBoxIpAddress.IsEnabled = false;
             }
             catch (Exception exc) {
@@ -87,10 +87,10 @@ namespace WpfApplication1
                 sock.Close();
 
                 // Aggiorna bottoni
-                buttonDisconnetti.IsEnabled = false;
+                buttonDisconnetti.Visibility = Visibility.Hidden;
+                buttonConnetti.Visibility = Visibility.Visible;
                 buttonInvia.IsEnabled = false;
                 textBoxIpAddress.IsEnabled = true;
-                buttonConnetti.IsEnabled = true;
 
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Disconnesso.");
