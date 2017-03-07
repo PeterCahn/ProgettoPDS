@@ -83,10 +83,15 @@ namespace WpfApplication1
                 textBoxIpAddress.IsEnabled = false;
 
                 // Ricevi nomi applicazioni
-                byte[] buf = new byte[100];
+                byte[] buf = new byte[1024];
                 int dim = sock.Receive(buf);
-                string received = Encoding.ASCII.GetString(buf, 0, dim);
-                addItemToListview(received);
+                string nomeProgramma = Encoding.ASCII.GetString(buf, 0, dim);
+                while (!nomeProgramma.Equals("--END_APPS"))
+                {                   
+                    addItemToListview(nomeProgramma);
+                    dim = sock.Receive(buf);
+                    nomeProgramma = Encoding.ASCII.GetString(buf, 0, dim);
+                }
             }
             catch (Exception exc) {
                 textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
@@ -94,9 +99,11 @@ namespace WpfApplication1
             }
         }
 
-        private void addItemToListview(string received)
-        {
-            listView.Items.Add(new ListViewRow() { Icona = "", Nome = received, Stato = "Focus", TempoFocus = 100 });
+        /* TODO: Percentuale "Live" */
+        private void addItemToListview(string appName)
+        {            
+            // TODO: Tutto momentaneamente farlocco tranne nome
+            listView.Items.Add(new ListViewRow() { Icona = "", Nome = appName, Stato = "Background", TempoFocus = 100 });
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)

@@ -1,5 +1,6 @@
 /* TODO:
 	- Socket non bloccante ?
+	- Questione app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -37,8 +38,8 @@ int main(int argc, char* argv[])
 
 	/* Stampa tutte le finestre */
 	cout << "Applicazioni attive:" << endl;
-	EnumWindows(EnumWindowsProc, NULL);
-
+	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&clientSocket));		// Passa puntatore a socket come paramentro LPARAM opzionale
+	send(clientSocket, "--END_APPS", strlen("--END_APPS"), 0);
 	Sleep(5000000);
 }
 
@@ -59,11 +60,14 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	char title[MAX_PATH];
 	WINDOWINFO info;
 
+	/* Reinterpreta LPARAM come puntatore a SOCKET */
+	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lParam);
+
 	if (IsWindowVisible(hwnd)) {
 		GetWindowText(hwnd, title, sizeof(title));
 		if (strlen(title) != 0) {
 			cout << "- " << title << endl;
-
+			sendApplicationToClient(clientSocket, title);
 		}
 	}
 
