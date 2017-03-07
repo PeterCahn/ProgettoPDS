@@ -66,6 +66,31 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	return TRUE;
 }
 
+HICON getHICONfromHWND(HWND hwnd) {
+	return (HICON)GetClassLong(hwnd, GCL_HICON);
+}
+
+HBITMAP convertHICONtoHBITMAP(HICON hIcon) {
+
+	HDC hDC = GetDC(NULL);
+	HDC hMemDC = CreateCompatibleDC(hDC);
+	HBITMAP hMemBmp = CreateCompatibleBitmap(hDC, x, y);
+	HBITMAP hResultBmp = NULL;
+	HGDIOBJ hOrgBMP = SelectObject(hMemDC, hMemBmp);
+
+	DrawIconEx(hMemDC, 0, 0, hIcon, x, y, 0, NULL, DI_NORMAL);
+
+	hResultBmp = hMemBmp;
+	hMemBmp = NULL;
+
+	SelectObject(hMemDC, hOrgBMP);
+	DeleteDC(hMemDC);
+	ReleaseDC(NULL, hDC);
+	DestroyIcon(hIcon);
+	return hResultBmp;
+
+}
+
 int socket(void)
 {
 	WSADATA wsaData;
