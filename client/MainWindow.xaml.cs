@@ -85,12 +85,23 @@ namespace WpfApplication1
                 // Ricevi nomi applicazioni
                 byte[] buf = new byte[1024];
                 int dim = sock.Receive(buf);
-                string nomeProgramma = Encoding.ASCII.GetString(buf, 0, dim);
-                while (!nomeProgramma.Equals("--END_APPS"))
+                string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
+                while (!stringRicevuta.Equals("--END"))
                 {                   
-                    addItemToListview(nomeProgramma);
+                    addItemToListview(stringRicevuta);
                     dim = sock.Receive(buf);
-                    nomeProgramma = Encoding.ASCII.GetString(buf, 0, dim);
+                    stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
+                }
+
+                // Ricevi app che ha il focus
+                dim = sock.Receive(buf);
+                stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
+                for (int i = 0; i < listView.Items.Count; i++)
+                {
+                    if (((ListViewRow)listView.Items[i]).Nome == stringRicevuta)
+                    {
+                        ((ListViewRow)listView.Items[i]).Stato = "Focus";
+                    }
                 }
             }
             catch (Exception exc) {

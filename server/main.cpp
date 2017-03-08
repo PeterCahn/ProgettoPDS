@@ -33,13 +33,14 @@ int main(int argc, char* argv[])
 	cout << "In attesa della connessione di un client..." << endl;
 	clientSocket = acceptConnection();
 
-	/* Stampa finestra col focus */
-	getForeground(&clientSocket);
-
-	/* Stampa tutte le finestre */
+	/* Stampa ed invia tutte le finestre */
 	cout << "Applicazioni attive:" << endl;
 	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&clientSocket));		// Passa puntatore a socket come paramentro LPARAM opzionale
-	send(clientSocket, "--END_APPS", strlen("--END_APPS"), 0);
+	send(clientSocket, "--END", strlen("--END"), 0);
+
+	/* Stampa ed invia finestra col focus */
+	getForeground(&clientSocket);
+
 	Sleep(5000000);
 }
 
@@ -50,7 +51,7 @@ void getForeground(SOCKET *clientSocket) {
 	GetWindowText(handle, title, sizeof(title));
 
 	cout << "Applicazione col focus:" << endl << "- " << title << endl;
-	sendApplicationToClient(clientSocket, title);
+	send(*clientSocket, title, strlen(title), 0);
 
 }
 
