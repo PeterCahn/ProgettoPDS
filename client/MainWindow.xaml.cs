@@ -15,23 +15,26 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Threading;
 
 namespace WpfApplication1
 {
-
     class ListViewRow
     {
         public string Icona { get; set; }
         public string Nome { get; set; }
         public string Stato { get; set; }
+        public float PercentualeFocus { get; set; }
         public float TempoFocus { get; set; }
     }
 
+
     public partial class MainWindow : Window
     {
-
-        byte[] buffer = new byte[1024];
-        Socket sock;
+        private byte[] buffer = new byte[1024];
+        private Socket sock;
+        private DateTime connectionTime;
+        private Thread statisticsThread;
 
         public MainWindow()
         {
@@ -60,7 +63,7 @@ namespace WpfApplication1
                 IPHostEntry ipHost = Dns.GetHostEntry(textIpAddress.Text); */
 
                 // Ricava IPAddress da risultati interrogazione DNS
-                IPAddress ipAddr = IPAddress.Parse(textBoxIpAddress.Text);  
+                IPAddress ipAddr = IPAddress.Parse(textBoxIpAddress.Text);
 
 
                 // Crea endpoint a cui connettersi
@@ -72,6 +75,9 @@ namespace WpfApplication1
                 // Connettiti
                 sock.Connect(ipEndPoint);
 
+                // Imposta tempo connessione
+                connectionTime = DateTime.Now;
+
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
                 textBoxStato.ScrollToEnd();
@@ -82,39 +88,76 @@ namespace WpfApplication1
                 buttonCattura.IsEnabled = true;
                 textBoxIpAddress.IsEnabled = false;
 
-                // Ricevi nomi applicazioni
+                // Ricevi nomi applicazioni ed aggiungile alla lista
                 byte[] buf = new byte[1024];
                 int dim = sock.Receive(buf);
                 string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
                 while (!stringRicevuta.Equals("--END"))
-                {                   
-                    addItemToListview(stringRicevuta);
+                {
+                    listView.Items.Add(new ListViewRow() { Icona = "", Nome = stringRicevuta, Stato = "Background", PercentualeFocus = 0, TempoFocus = 0 });
                     dim = sock.Receive(buf);
                     stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
                 }
 
                 // Ricevi app che ha il focus
-                dim = sock.Receive(buf);
-                stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-                for (int i = 0; i < listView.Items.Count; i++)
-                {
-                    if (((ListViewRow)listView.Items[i]).Nome == stringRicevuta)
-                    {
-                        ((ListViewRow)listView.Items[i]).Stato = "Focus";
-                    }
-                }
+                getFocus(sock);
+
+                // Avvia thread per statistiche live
+                statisticsThread = new Thread(new ThreadStart(this.manageStatistics));
+                statisticsThread.IsBackground = true;
+                statisticsThread.Start();
             }
-            catch (Exception exc) {
+            catch (Exception exc)
+            {
                 textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
                 textBoxStato.ScrollToEnd();
             }
         }
 
-        /* TODO: Percentuale "Live" */
-        private void addItemToListview(string appName)
-        {            
-            // TODO: Tutto momentaneamente farlocco tranne nome
-            listView.Items.Add(new ListViewRow() { Icona = "", Nome = appName, Stato = "Background", TempoFocus = 100 });
+        /* Riceve ed imposta applicazione col focus */
+        private void getFocus(Socket sock)
+        {
+            byte[] buf = new byte[1024];
+            int dim = sock.Receive(buf);
+            string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
+            for (int i = 0; i < listView.Items.Count; i++)
+            {
+                if (((ListViewRow)listView.Items[i]).Nome == stringRicevuta)
+                {
+                    ((ListViewRow)listView.Items[i]).Stato = "Focus";
+                }
+            }
+        }
+
+        /* Viene eseguito in un thread a parte.
+         * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
+         * In questo modo abbiamo statistiche "live"
+         */
+        private void manageStatistics()
+        {
+            DateTime lastUpdate = DateTime.Now;
+            while (true)
+            {
+                // Delegato forse necessario per poter aggiornare la listView, dato che operazioni come UpdateLayout() possono essere chiamate
+                // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
+                listView.Dispatcher.Invoke(delegate
+                {
+                    foreach (ListViewRow item in listView.Items)
+                    {
+                        if (item.Stato.Equals("Focus"))
+                        {
+                            item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
+                            lastUpdate = DateTime.Now;
+                        }
+
+                        // Calcola la percentuale
+                        item.PercentualeFocus = item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100;
+                        listView.UpdateLayout();
+                    }
+                });
+                // Aggiorna le statistiche ogni mezzo secondo
+                Thread.Sleep(500);
+            }
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
@@ -159,7 +202,8 @@ namespace WpfApplication1
                 this.KeyDown -= new KeyEventHandler(OnButtonKeyDown);
 
             }
-            catch (Exception exc) {
+            catch (Exception exc)
+            {
                 textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
                 textBoxStato.ScrollToEnd();
             }
@@ -177,11 +221,13 @@ namespace WpfApplication1
 
         private void OnButtonKeyDown(object sender, KeyEventArgs e)
         {
-            if (textBoxComando.Text.Length == 0) {
+            if (textBoxComando.Text.Length == 0)
+            {
                 textBoxComando.Text = e.Key.ToString();
                 buttonInvia.IsEnabled = true;
             }
-            else {
+            else
+            {
                 if (!textBoxComando.Text.Contains(e.Key.ToString()))
                     textBoxComando.AppendText("+" + e.Key.ToString());
             }

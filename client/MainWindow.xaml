@@ -8,30 +8,31 @@
         Title="Client" Height="600" Width="800" ResizeMode="NoResize" Background="White">
     <Grid Background="#FF2E2E2E" Margin="0,0,0,0">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="286*"/>
+            <ColumnDefinition Width="23*"/>
+            <ColumnDefinition Width="263*"/>
             <ColumnDefinition Width="19*"/>
             <ColumnDefinition Width="92*"/>
         </Grid.ColumnDefinitions>
-        <Label x:Name="labelIP" Content="Indirizzo IP" HorizontalAlignment="Left" Margin="45,23,0,0" VerticalAlignment="Top" Width="80" Height="23" Foreground="White"/>
-        <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="280,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click"/>
-        <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="280,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click"/>
-        <TextBox x:Name="textBoxStato"  IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="440,25,0,0" TextWrapping="Wrap" Text="STATO: Disconnesso." VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White"/>
-        <Label x:Name="labelApplciazioni" Content="Applicazioni" HorizontalAlignment="Left"  Margin="45,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White"/>
-        <ListView x:Name="listView" HorizontalAlignment="Left" Height="300" Width="700" Margin="45,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="3" SelectionChanged="listView_SelectionChanged">
+        <Label x:Name="labelIP" Content="Indirizzo IP" HorizontalAlignment="Left" Margin="45,23,0,0" VerticalAlignment="Top" Width="80" Height="23" Foreground="White" Grid.ColumnSpan="2"/>
+        <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="234,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click" Grid.Column="1"/>
+        <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="234,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click" Grid.Column="1"/>
+        <TextBox x:Name="textBoxStato"  IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="394,25,0,0" TextWrapping="Wrap" Text="STATO: Disconnesso." VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
+        <Label x:Name="labelApplciazioni" Content="Applicazioni" HorizontalAlignment="Left"  Margin="45,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.ColumnSpan="2"/>
+        <ListView x:Name="listView" HorizontalAlignment="Left" Height="300" Width="700" Margin="45,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" SelectionChanged="listView_SelectionChanged" Foreground="Black">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Header="Icona" DisplayMemberBinding="{Binding Path=Icona}" Width="40"/>
                     <GridViewColumn Header="Nome" DisplayMemberBinding="{Binding Path=Nome}" Width="350"/>
                     <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path=Stato}" Width="150"/>
-                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path=TempoFocus}" Width="150"/>
+                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path=PercentualeFocus}" Width="150"/>
                 </GridView>
             </ListView.View>
         </ListView>
-        <Label x:Name="labelComando" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="45,476,0,0" VerticalAlignment="Top" Foreground="White"/>
-        <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="45,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click"/>
-        <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="160,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270"/>
-        <Button x:Name="buttonInvia" Content="Invia" HorizontalAlignment="Left" Margin="435,502,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonInvia_Click"/>
-        <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="23" Margin="126,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1"/>
+        <Label x:Name="labelComando" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="45,476,0,0" VerticalAlignment="Top" Foreground="White" Grid.ColumnSpan="2"/>
+        <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="45,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click" Grid.ColumnSpan="2"/>
+        <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="114,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270" Grid.Column="1"/>
+        <Button x:Name="buttonInvia" Content="Invia" HorizontalAlignment="Left" Margin="389,502,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonInvia_Click" Grid.Column="1"/>
+        <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="23" Margin="80,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" Grid.Column="1"/>
 
 
     </Grid>
