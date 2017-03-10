@@ -95,7 +95,7 @@ namespace WpfApplication1
                 string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
                 while (!stringRicevuta.Equals("--END"))
                 {
-                    listView.Items.Add(new ListViewRow() { Icona = "", Nome = stringRicevuta, Stato = "Background", PercentualeFocus = 0, TempoFocus = 0 });
+                    addItemToListView(stringRicevuta);
                     dim = sock.Receive(buf);
                     stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
                 }
@@ -120,6 +120,12 @@ namespace WpfApplication1
             }
         }
 
+        /* TODO: aggiungi anche icona */
+        void addItemToListView(string nomeProgramma)
+        {
+            listView.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = 0, TempoFocus = 0 });
+        }
+
         /* Riceve ed imposta applicazione col focus */
         private void getFocus(Socket sock)
         {
@@ -142,29 +148,38 @@ namespace WpfApplication1
          */
         private void manageStatistics()
         {
-            DateTime lastUpdate = DateTime.Now;
-            while (true)
+            try
             {
-                // Delegato forse necessario per poter aggiornare la listView, dato che operazioni come UpdateLayout() possono essere chiamate
-                // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-
-                foreach (ListViewRow item in listView.Items)
+                DateTime lastUpdate = DateTime.Now;
+                while (true)
                 {
-                    if (item.Stato.Equals("Focus"))
-                    {
-                        item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
-                        lastUpdate = DateTime.Now;
-                    }
+                    // Delegato forse necessario per poter aggiornare la listView, dato che operazioni come UpdateLayout() possono essere chiamate
+                    // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
 
-                    // Calcola la percentuale
-                    item.PercentualeFocus = item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100;
-                    listView.Dispatcher.Invoke(delegate
+                    foreach (ListViewRow item in listView.Items)
                     {
-                        listView.Items.Refresh();
-                    });
+                        if (item.Stato.Equals("Focus"))
+                        {
+                            item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
+                            lastUpdate = DateTime.Now;
+                        }
+
+                        // Calcola la percentuale
+                        item.PercentualeFocus = item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100;
+                        listView.Dispatcher.Invoke(delegate
+                        {
+                            listView.Items.Refresh();
+                        });
+                    }
+                    // Aggiorna le statistiche ogni mezzo secondo
+                    Thread.Sleep(500);
                 }
-                // Aggiorna le statistiche ogni mezzo secondo
-                Thread.Sleep(500);
+            }
+            catch (ThreadInterruptedException exception)
+            {
+                // TODO: c'è qualcosa da fare?
+                // TODO: check che il thread muore davvero
+                return;
             }
         }
 
@@ -173,7 +188,73 @@ namespace WpfApplication1
          */
         private void manageNotifications(Socket sock)
         {
+            try
+            {
+                int dim = -1;
+                string stringRicevuta;
+                byte[] buf = new byte[1024];
 
+                // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
+                // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
+                // Available() ritorna il numero di dati da leggere
+                // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
+
+                // Connected() ritorna false se il socket non è inizializzato
+                while (sock.Connected)
+                {
+                    try
+                    {
+                        dim = sock.Receive(buf);
+                    }
+                    catch (SocketException se)
+                    {
+                        // TODO: fai qualcosa
+                    }
+                    if (dim != -1)
+                    {
+                        stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
+                        // Possibili valori ricevuti:
+                        // --FOCUS, <nome_nuova_app_focus>
+                        // --CLOSE, <nome_app_chiusa>
+                        // --OPEN, <nome_nuova_app_aperta>
+                        String[] strList = stringRicevuta.Split(new Char[] { ',', ' ' });
+                        switch (strList[0])
+                        {
+                            case "--FOCUS":
+                                // Cambia programma col focus
+                                for (int i = 0; i < listView.Items.Count; i++)
+                                {
+                                    if (((ListViewRow)listView.Items[i]).Nome == strList[1])
+                                    {
+                                        ((ListViewRow)listView.Items[i]).Stato = "Focus";
+                                        break;
+                                    }
+                                }
+                                break;
+                            case "--CLOSE":
+                                // Rimuovi programma dalla listView
+                                for (int i = 0; i < listView.Items.Count; i++)
+                                {
+                                    if (((ListViewRow)listView.Items[i]).Nome == strList[1])
+                                    {
+                                        listView.Items.Remove(listView.Items[i]); // TODO: non sono sicuro che funzioni, check!
+                                        break;
+                                    }
+                                }
+                                break;
+                            case "--OPEN":
+                                addItemToListView(strList[1]);
+                                break;
+                        }
+                    }
+                }
+            }
+            catch (ThreadInterruptedException exception)
+            {
+                // TODO: c'è qualcosa da fare?
+                // TODO: check che il thread muore davvero
+                return;
+            }
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
@@ -194,8 +275,13 @@ namespace WpfApplication1
                 textBoxStato.AppendText("\nSTATO: Disconnesso.");
                 textBoxStato.ScrollToEnd();
 
+                // Uccidi thread per statistiche e notifiche
+                // Sconsigliato uso di Abort(), meglio Interrupt e gestione relativa eccezione nel thread
+                statisticsThread.Interrupt();
+                notificationsThread.Interrupt();
+
                 // Svuota listView
-                listView.Items.Clear();
+                listView.Items.Clear();                
             }
             catch (Exception exc) { MessageBox.Show(exc.ToString()); }
         }
