@@ -16,7 +16,7 @@
 #pragma comment (lib, "Ws2_32.lib")
 // #pragma comment (lib, "Mswsock.lib")
 
-#define DEFAULT_BUFLEN 512
+#define DEFAULT_BUFLEN 1024
 #define DEFAULT_PORT  "27015"
 
 using namespace std;
@@ -24,24 +24,29 @@ using namespace std;
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 SOCKET acceptConnection();
 void getForeground(SOCKET *clientSocket);
+void receiveCommands(SOCKET* clientSocket);
 void sendApplicationToClient(SOCKET* clientSocket, char* title);
 
 int main(int argc, char* argv[])
 {
 	SOCKET clientSocket;
 	
-	cout << "In attesa della connessione di un client..." << endl;
-	clientSocket = acceptConnection();
+	while (true) {
+		cout << "In attesa della connessione di un client..." << endl;
+		clientSocket = acceptConnection();
 
-	/* Stampa ed invia tutte le finestre */
-	cout << "Applicazioni attive:" << endl;
-	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&clientSocket));		// Passa puntatore a socket come paramentro LPARAM opzionale
-	send(clientSocket, "--END", strlen("--END"), 0);
+		/* Stampa ed invia tutte le finestre */
+		cout << "Applicazioni attive:" << endl;
+		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&clientSocket));		// Passa puntatore a socket come paramentro LPARAM opzionale
+		send(clientSocket, "--END", strlen("--END"), 0);
 
-	/* Stampa ed invia finestra col focus */
-	getForeground(&clientSocket);
+		/* Stampa ed invia finestra col focus */
+		getForeground(&clientSocket);
 
-	Sleep(5000000);
+		/* Attendi eventuali comandi*/
+		receiveCommands(&clientSocket);
+	}
+	return 0;
 }
 
 void getForeground(SOCKET *clientSocket) {
@@ -187,7 +192,7 @@ SOCKET acceptConnection(void)
 	char ipstr[INET_ADDRSTRLEN];
 	/* TODO: Fix stampa indirizzo */
 	inet_ntop(AF_INET, &(s->sin_addr), ipstr, INET_ADDRSTRLEN);
-	cout << "Connessione stabilita con " << ipstr << ":" << port;
+	cout << "Connessione stabilita con " << ipstr << ":" << port << endl;
 
 	// No longer need server socket
 	closesocket(listenSocket);
@@ -195,49 +200,52 @@ SOCKET acceptConnection(void)
 	return clientSocket;
 }
 
-/* 
-CODICE PRECEDENTEMENTe IN SOCKET() DA RIPOSIZIONARE
+void receiveCommands(SOCKET* clientSocket) {
+	// Receive until the peer shuts down the connection
+	char* recvbuf =(char*)malloc(sizeof(char)*DEFAULT_BUFLEN);
+	int iResult;
+	do {
+		iResult = recv(*clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
+		if (iResult > 0) {
+			/*
+			TODO: a che serve quello che segue?
 
+			printf("Bytes received: %d\n", iResult);
 
-// Receive until the peer shuts down the connection
-do {
-	iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-	if (iResult > 0) {
-		printf("Bytes received: %d\n", iResult);
-
-		// Echo the buffer back to the sender
-		iSendResult = send(ClientSocket, recvbuf, iResult, 0);
-		if (iSendResult == SOCKET_ERROR) {
-			printf("send failed with error: %d\n", WSAGetLastError());
-			closesocket(ClientSocket);
-			WSACleanup();
-			return 1;
+			// Echo the buffer back to the sender
+			iSendResult = send(*clientSocket, recvbuf, iResult, 0);
+			if (iSendResult == SOCKET_ERROR) {
+				printf("send failed with error: %d\n", WSAGetLastError());
+				closesocket(*clientSocket);
+				WSACleanup();
+				return;
+			}
+			printf("Bytes sent: %d\n", iSendResult);
+			*/
 		}
-		printf("Bytes sent: %d\n", iSendResult);
-	}
-	else if (iResult == 0)
-		printf("Connection closing...\n");
-	else {
-		printf("recv failed with error: %d\n", WSAGetLastError());
-		closesocket(ClientSocket);
+		else if (iResult == 0)
+			printf("Connection closing...\n");
+		else {
+			printf("recv failed with error: %d\n", WSAGetLastError());
+			closesocket(*clientSocket);
+			WSACleanup();
+			return;
+		}
+
+	} while (iResult > 0);
+
+	// shutdown the connection since we're done
+	iResult = shutdown(*clientSocket, SD_SEND);
+	if (iResult == SOCKET_ERROR) {
+		printf("shutdown failed with error: %d\n", WSAGetLastError());
+		closesocket(*clientSocket);
 		WSACleanup();
-		return 1;
+		return;
 	}
 
-} while (iResult > 0);
-
-// shutdown the connection since we're done
-iResult = shutdown(ClientSocket, SD_SEND);
-if (iResult == SOCKET_ERROR) {
-	printf("shutdown failed with error: %d\n", WSAGetLastError());
-	closesocket(ClientSocket);
+	// cleanup
+	closesocket(*clientSocket);
 	WSACleanup();
-	return 1;
+
+	return;
 }
-
-// cleanup
-closesocket(ClientSocket);
-WSACleanup();
-
-return 0;
-*/
