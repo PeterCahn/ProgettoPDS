@@ -35,6 +35,7 @@ namespace WpfApplication1
         private Socket sock;
         private DateTime connectionTime;
         private Thread statisticsThread;
+        private Thread notificationsThread;
 
         public MainWindow()
         {
@@ -106,6 +107,11 @@ namespace WpfApplication1
                 statisticsThread = new Thread(new ThreadStart(this.manageStatistics));
                 statisticsThread.IsBackground = true;
                 statisticsThread.Start();
+
+                // Avvia thread per eventuali notifiche
+                notificationsThread = new Thread(() => manageNotifications(sock));
+                notificationsThread.IsBackground = true;
+                notificationsThread.Start();
             }
             catch (Exception exc)
             {
@@ -125,6 +131,7 @@ namespace WpfApplication1
                 if (((ListViewRow)listView.Items[i]).Nome == stringRicevuta)
                 {
                     ((ListViewRow)listView.Items[i]).Stato = "Focus";
+                    break;
                 }
             }
         }
@@ -140,24 +147,33 @@ namespace WpfApplication1
             {
                 // Delegato forse necessario per poter aggiornare la listView, dato che operazioni come UpdateLayout() possono essere chiamate
                 // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-                listView.Dispatcher.Invoke(delegate
-                {
-                    foreach (ListViewRow item in listView.Items)
-                    {
-                        if (item.Stato.Equals("Focus"))
-                        {
-                            item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
-                            lastUpdate = DateTime.Now;
-                        }
 
-                        // Calcola la percentuale
-                        item.PercentualeFocus = item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100;
-                        listView.UpdateLayout();
+                foreach (ListViewRow item in listView.Items)
+                {
+                    if (item.Stato.Equals("Focus"))
+                    {
+                        item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
+                        lastUpdate = DateTime.Now;
                     }
-                });
+
+                    // Calcola la percentuale
+                    item.PercentualeFocus = item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100;
+                    listView.Dispatcher.Invoke(delegate
+                    {
+                        listView.Items.Refresh();
+                    });
+                }
                 // Aggiorna le statistiche ogni mezzo secondo
                 Thread.Sleep(500);
             }
+        }
+
+        /* Viene eseguito in un thread a parte.
+         * Si occupa della ricezione e gestione delle notifiche.
+         */
+        private void manageNotifications(Socket sock)
+        {
+
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
