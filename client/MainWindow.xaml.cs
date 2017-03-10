@@ -177,6 +177,9 @@ namespace WpfApplication1
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Disconnesso.");
                 textBoxStato.ScrollToEnd();
+
+                // Svuota listView
+                listView.Items.Clear();
             }
             catch (Exception exc) { MessageBox.Show(exc.ToString()); }
         }
