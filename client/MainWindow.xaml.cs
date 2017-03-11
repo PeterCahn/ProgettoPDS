@@ -24,7 +24,7 @@ namespace WpfApplication1
         public string Icona { get; set; }
         public string Nome { get; set; }
         public string Stato { get; set; }
-        public float PercentualeFocus { get; set; }
+        public string PercentualeFocus { get; set; }
         public float TempoFocus { get; set; }
     }
 
@@ -123,7 +123,7 @@ namespace WpfApplication1
         /* TODO: aggiungi anche icona */
         void addItemToListView(string nomeProgramma)
         {
-            listView.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = 0, TempoFocus = 0 });
+            listView.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });
         }
 
         /* Riceve ed imposta applicazione col focus */
@@ -153,9 +153,6 @@ namespace WpfApplication1
                 DateTime lastUpdate = DateTime.Now;
                 while (true)
                 {
-                    // Delegato forse necessario per poter aggiornare la listView, dato che operazioni come UpdateLayout() possono essere chiamate
-                    // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-
                     foreach (ListViewRow item in listView.Items)
                     {
                         if (item.Stato.Equals("Focus"))
@@ -165,7 +162,10 @@ namespace WpfApplication1
                         }
 
                         // Calcola la percentuale
-                        item.PercentualeFocus = item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100;
+                        item.PercentualeFocus = (item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
+                        
+                        // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
+                        // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
                         listView.Dispatcher.Invoke(delegate
                         {
                             listView.Items.Refresh();
