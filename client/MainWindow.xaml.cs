@@ -237,13 +237,19 @@ namespace WpfApplication1
                                 {
                                     if (((ListViewRow)listView.Items[i]).Nome == strList[1])
                                     {
-                                        listView.Items.Remove(listView.Items[i]); // TODO: non sono sicuro che funzioni, check!
+                                        listView.Dispatcher.Invoke(delegate
+                                        {
+                                            listView.Items.Remove(listView.Items[i]); // TODO: non sono sicuro che funzioni, check!
+                                        });
                                         break;
                                     }
                                 }
                                 break;
                             case "--OPEN":
-                                addItemToListView(strList[1]);
+                                listView.Dispatcher.Invoke(delegate
+                                {
+                                    addItemToListView(strList[1]);
+                                });
                                 break;
                         }
                     }

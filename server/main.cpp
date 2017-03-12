@@ -1,6 +1,7 @@
 /* TODO:
-	- Socket non bloccante ?
-	- Questione app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
+	- Socket non bloccante?
+	- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
+	- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -11,6 +12,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -19,45 +22,95 @@
 #define DEFAULT_BUFLEN 1024
 #define DEFAULT_PORT  "27015"
 
-using namespace std;
-
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 SOCKET acceptConnection();
-void getForeground(SOCKET *clientSocket);
+char* getForeground();
 void receiveCommands(SOCKET* clientSocket);
 void sendApplicationToClient(SOCKET* clientSocket, char* title);
+DWORD WINAPI notificationsManagement(LPVOID lpParam);
 
 int main(int argc, char* argv[])
 {
 	SOCKET clientSocket;
 	
 	while (true) {
-		cout << "In attesa della connessione di un client..." << endl;
+		std::cout << "In attesa della connessione di un client..." << std::endl;
 		clientSocket = acceptConnection();
 
 		/* Stampa ed invia tutte le finestre */
-		cout << "Applicazioni attive:" << endl;
+		std::cout << "Applicazioni attive:" << std::endl;
 		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&clientSocket));		// Passa puntatore a socket come paramentro LPARAM opzionale
 		send(clientSocket, "--END", strlen("--END"), 0);
 
-		/* Stampa ed invia finestra col focus */
-		getForeground(&clientSocket);
+		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
+		DWORD notifThreadId;
+		HANDLE notificationsThread = CreateThread(NULL, 0, notificationsManagement, &clientSocket, 0, &notifThreadId);
+		if (notificationsThread == NULL)
+			std::cout << "ERRORE nella creazione del thread 'notificationsThread'" << std::endl;
 
-		/* Attendi eventuali comandi*/
+		/* Thread principale attende eventuali comandi */
 		receiveCommands(&clientSocket);
+
+		/* TODO: Termina thread notificationsThread 
+		 * Attenzione! Chiamare TerminateThread o altro non è una buona pratica, 
+		 * come specificato nelle slide, perchè non si fa il cleanup prima della
+		 * morte del thread. Fare come scritto nelle slide
+		 */
+
+		/* Chiudi la connessione */
+		int iResult = shutdown(clientSocket, SD_SEND);
+		if (iResult == SOCKET_ERROR) {
+			std::cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << std::endl;
+			closesocket(clientSocket);
+			WSACleanup();
+			return 1;
+		}
+
+		/* Cleanup */
+		closesocket(clientSocket);
+		WSACleanup();
 	}
 	return 0;
 }
 
-void getForeground(SOCKET *clientSocket) {
+DWORD WINAPI notificationsManagement(LPVOID lpParam)
+{
+	// Reinterpreta LPARAM lParam come puntatore a SOCKET
+	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lpParam);
+
+	/* Stampa ed invia finestra col focus */
+	char currentForeground[MAX_PATH];
+	strcpy_s(currentForeground, MAX_PATH, getForeground());
+	printf("Applicazione col focus:\n- %s\n", currentForeground);
+	send(*clientSocket, currentForeground, strlen(currentForeground), 0);
+
+	while (true) {
+		// Esegui ogni mezzo secondo
+		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		char tempForeground[MAX_PATH];
+		strcpy_s(tempForeground, MAX_PATH, getForeground());
+		if (strcmp(tempForeground, currentForeground) != 0) {
+			// Allora il programma che ha il focus è cambiato
+			strcpy_s(currentForeground, MAX_PATH, tempForeground);
+			std::cout << "Applicazione col focus cambiata! Ora e':" << std::endl << "- " << currentForeground << std::endl;
+			char buf[MAX_PATH + 9];
+			strcpy_s(buf, MAX_PATH + 9, "--FOCUS, ");
+			strcat_s(buf, MAX_PATH + 9, currentForeground);
+			send(*clientSocket, buf, strlen(buf), 0);
+		}
+	}
+
+}
+
+char* getForeground() {
 	char title[MAX_PATH];
 
 	HWND handle = GetForegroundWindow();
 	GetWindowText(handle, title, sizeof(title));
+	if (strcmp(title, "") == 0)
+		strcpy_s(title, MAX_PATH, "Desktop");
 
-	cout << "Applicazione col focus:" << endl << "- " << title << endl;
-	send(*clientSocket, title, strlen(title), 0);
-
+	return title;
 }
 
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
@@ -66,13 +119,13 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	char title[MAX_PATH];
 	WINDOWINFO info;
 
-	/* Reinterpreta LPARAM come puntatore a SOCKET */
+	// Reinterpreta LPARAM lParam come puntatore a SOCKET 
 	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lParam);
 
 	if (IsWindowVisible(hwnd)) {
 		GetWindowText(hwnd, title, sizeof(title));
 		if (strlen(title) != 0) {
-			cout << "- " << title << endl;
+			std::cout << "- " << title << std::endl;
 			sendApplicationToClient(clientSocket, title);
 		}
 	}
@@ -128,7 +181,7 @@ SOCKET acceptConnection(void)
 	// Inizializza Winsock
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
-		cout << "WSAStartup() fallita con errore: " << iResult << endl;
+		std::cout << "WSAStartup() fallita con errore: " << iResult << std::endl;
 		return 1;
 	}
 
@@ -141,7 +194,7 @@ SOCKET acceptConnection(void)
 	// Resolve the server address and port
 	iResult = getaddrinfo(NULL, DEFAULT_PORT, &addr, &result);
 	if (iResult != 0) {
-		cout << "getaddrinfo() fallita con errore: " << iResult << endl;
+		std::cout << "getaddrinfo() fallita con errore: " << iResult << std::endl;
 		WSACleanup();
 		return 1;
 	}
@@ -149,7 +202,7 @@ SOCKET acceptConnection(void)
 	// Create a SOCKET for connecting to server
 	listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (listenSocket == INVALID_SOCKET) {
-		cout << "socket() fallita con errore: " << WSAGetLastError() << endl;
+		std::cout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
 		freeaddrinfo(result);
 		WSACleanup();
 		return 1;
@@ -158,7 +211,7 @@ SOCKET acceptConnection(void)
 	// Setup the TCP listening socket
 	iResult = bind(listenSocket, result->ai_addr, (int)result->ai_addrlen);
 	if (iResult == SOCKET_ERROR) {
-		cout << "bind() fallita con errore: " << WSAGetLastError() << endl;
+		std::cout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
 		freeaddrinfo(result);
 		closesocket(listenSocket);
 		WSACleanup();
@@ -169,7 +222,7 @@ SOCKET acceptConnection(void)
 
 	iResult = listen(listenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
-		cout << "listen() fallita con errore: " << WSAGetLastError() << endl;
+		std::cout << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -178,7 +231,7 @@ SOCKET acceptConnection(void)
 	// Accept a client socket
 	clientSocket = accept(listenSocket, NULL, NULL);
 	if (clientSocket == INVALID_SOCKET) {
-		cout << "accept() fallita con errore: " << WSAGetLastError() << endl;
+		std::cout << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -192,7 +245,7 @@ SOCKET acceptConnection(void)
 	char ipstr[INET_ADDRSTRLEN];
 	/* TODO: Fix stampa indirizzo */
 	inet_ntop(AF_INET, &(s->sin_addr), ipstr, INET_ADDRSTRLEN);
-	cout << "Connessione stabilita con " << ipstr << ":" << port << endl;
+	std::cout << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
 	// No longer need server socket
 	closesocket(listenSocket);
@@ -224,28 +277,14 @@ void receiveCommands(SOCKET* clientSocket) {
 			*/
 		}
 		else if (iResult == 0)
-			cout << "Chiusura connessione...\n" << endl << endl;
+			std::cout << "Chiusura connessione...\n" << std::endl << std::endl;
 		else {
-			cout << "recv() fallita con errore: " << WSAGetLastError() << endl;;
+			std::cout << "recv() fallita con errore: " << WSAGetLastError() << std::endl;;
 			closesocket(*clientSocket);
 			WSACleanup();
 			return;
 		}
 
 	} while (iResult > 0);
-
-	// Chiudi la connessione
-	iResult = shutdown(*clientSocket, SD_SEND);
-	if (iResult == SOCKET_ERROR) {
-		cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
-		closesocket(*clientSocket);
-		WSACleanup();
-		return;
-	}
-
-	// Cleanup
-	closesocket(*clientSocket);
-	WSACleanup();
-
-	return;
+	
 }
