@@ -125,10 +125,10 @@ SOCKET acceptConnection(void)
 	char recvbuf[DEFAULT_BUFLEN];
 	int recvbuflen = DEFAULT_BUFLEN;
 
-	// Initialize Winsock
+	// Inizializza Winsock
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
-		printf("WSAStartup failed with error: %d\n", iResult);
+		cout << "WSAStartup() fallita con errore: " << iResult << endl;
 		return 1;
 	}
 
@@ -141,7 +141,7 @@ SOCKET acceptConnection(void)
 	// Resolve the server address and port
 	iResult = getaddrinfo(NULL, DEFAULT_PORT, &addr, &result);
 	if (iResult != 0) {
-		printf("getaddrinfo failed with error: %d\n", iResult);
+		cout << "getaddrinfo() fallita con errore: " << iResult << endl;
 		WSACleanup();
 		return 1;
 	}
@@ -149,7 +149,7 @@ SOCKET acceptConnection(void)
 	// Create a SOCKET for connecting to server
 	listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (listenSocket == INVALID_SOCKET) {
-		printf("socket failed with error: %ld\n", WSAGetLastError());
+		cout << "socket() fallita con errore: " << WSAGetLastError() << endl;
 		freeaddrinfo(result);
 		WSACleanup();
 		return 1;
@@ -158,7 +158,7 @@ SOCKET acceptConnection(void)
 	// Setup the TCP listening socket
 	iResult = bind(listenSocket, result->ai_addr, (int)result->ai_addrlen);
 	if (iResult == SOCKET_ERROR) {
-		printf("bind failed with error: %d\n", WSAGetLastError());
+		cout << "bind() fallita con errore: " << WSAGetLastError() << endl;
 		freeaddrinfo(result);
 		closesocket(listenSocket);
 		WSACleanup();
@@ -169,7 +169,7 @@ SOCKET acceptConnection(void)
 
 	iResult = listen(listenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
-		printf("listen failed with error: %d\n", WSAGetLastError());
+		cout << "listen() fallita con errore: " << WSAGetLastError() << endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -178,7 +178,7 @@ SOCKET acceptConnection(void)
 	// Accept a client socket
 	clientSocket = accept(listenSocket, NULL, NULL);
 	if (clientSocket == INVALID_SOCKET) {
-		printf("accept failed with error: %d\n", WSAGetLastError());
+		cout << "accept() fallita con errore: " << WSAGetLastError() << endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -201,7 +201,7 @@ SOCKET acceptConnection(void)
 }
 
 void receiveCommands(SOCKET* clientSocket) {
-	// Receive until the peer shuts down the connection
+	// Ricevi finchè il client non chiude la connessione
 	char* recvbuf =(char*)malloc(sizeof(char)*DEFAULT_BUFLEN);
 	int iResult;
 	do {
@@ -224,9 +224,9 @@ void receiveCommands(SOCKET* clientSocket) {
 			*/
 		}
 		else if (iResult == 0)
-			printf("Connection closing...\n");
+			cout << "Chiusura connessione...\n" << endl << endl;
 		else {
-			printf("recv failed with error: %d\n", WSAGetLastError());
+			cout << "recv() fallita con errore: " << WSAGetLastError() << endl;;
 			closesocket(*clientSocket);
 			WSACleanup();
 			return;
@@ -234,16 +234,16 @@ void receiveCommands(SOCKET* clientSocket) {
 
 	} while (iResult > 0);
 
-	// shutdown the connection since we're done
+	// Chiudi la connessione
 	iResult = shutdown(*clientSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
-		printf("shutdown failed with error: %d\n", WSAGetLastError());
+		cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
 		closesocket(*clientSocket);
 		WSACleanup();
 		return;
 	}
 
-	// cleanup
+	// Cleanup
 	closesocket(*clientSocket);
 	WSACleanup();
 
