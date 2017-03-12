@@ -94,7 +94,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 			strcpy_s(currentForeground, MAX_PATH, tempForeground);
 			std::cout << "Applicazione col focus cambiata! Ora e':" << std::endl << "- " << currentForeground << std::endl;
 			char buf[MAX_PATH + 9];
-			strcpy_s(buf, MAX_PATH + 9, "--FOCUS, ");
+			strcpy_s(buf, MAX_PATH + 9, "--FOCUS-");
 			strcat_s(buf, MAX_PATH + 9, currentForeground);
 			send(*clientSocket, buf, strlen(buf), 0);
 		}

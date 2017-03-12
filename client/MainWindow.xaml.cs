@@ -214,29 +214,30 @@ namespace WpfApplication1
                     {
                         stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
                         // Possibili valori ricevuti:
-                        // --FOCUS, <nome_nuova_app_focus>
-                        // --CLOSE, <nome_app_chiusa>
-                        // --OPEN, <nome_nuova_app_aperta>
-                        String[] strList = stringRicevuta.Split(new Char[] { ',', ' ' });
-                        switch (strList[0])
+                        // --FOCUS-<nome_nuova_app_focus>
+                        // --CLOSE-<nome_app_chiusa>
+                        // --OPENP-<nome_nuova_app_aperta>
+                        String operation = stringRicevuta.Substring(0, 8);
+                        String progName = stringRicevuta.Substring(8, stringRicevuta.Length - 8);
+                        switch (operation)
                         {
-                            case "--FOCUS":
+                            case "--FOCUS-":
                                 // Cambia programma col focus
                                 for (int i = 0; i < listView.Items.Count; i++)
                                 {
-                                    if (((ListViewRow)listView.Items[i]).Nome == strList[1])
-                                    {
+                                    if (((ListViewRow)listView.Items[i]).Nome.Equals(progName))                                    
                                         ((ListViewRow)listView.Items[i]).Stato = "Focus";
-                                        break;
-                                    }
+                                    else                                    
+                                        ((ListViewRow)listView.Items[i]).Stato = "Background";
                                 }
                                 break;
-                            case "--CLOSE":
+                            case "--CLOSE-":
                                 // Rimuovi programma dalla listView
                                 for (int i = 0; i < listView.Items.Count; i++)
                                 {
-                                    if (((ListViewRow)listView.Items[i]).Nome == strList[1])
+                                    if (((ListViewRow)listView.Items[i]).Nome.Equals(progName))
                                     {
+                                        // TODO: check necessità delegate
                                         listView.Dispatcher.Invoke(delegate
                                         {
                                             listView.Items.Remove(listView.Items[i]); // TODO: non sono sicuro che funzioni, check!
@@ -245,10 +246,11 @@ namespace WpfApplication1
                                     }
                                 }
                                 break;
-                            case "--OPEN":
+                            case "--OPEN-":
+                                // TODO: check necessità delegate
                                 listView.Dispatcher.Invoke(delegate
                                 {
-                                    addItemToListView(strList[1]);
+                                    addItemToListView(progName);
                                 });
                                 break;
                         }
