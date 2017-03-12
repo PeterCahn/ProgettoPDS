@@ -17,6 +17,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Threading;
 
+
 namespace WpfApplication1
 {
     class ListViewRow 
@@ -228,7 +229,7 @@ namespace WpfApplication1
                                     if (item.Nome.Equals(progName)) {
                                         item.Stato = "Focus";
                                     }
-                                    else
+                                    else if (item.Stato.Equals("Focus"))
                                         item.Stato = "Background";
                                 }
                                 break;
@@ -238,16 +239,17 @@ namespace WpfApplication1
                                 {
                                     if (item.Nome.Equals(progName))
                                     {
-                                        // TODO: check necessità delegate
                                         listView1.Dispatcher.Invoke(delegate {
-                                            listView1.Items.Remove(item); // TODO: non sono sicuro che funzioni, check!
+                                            listView1.Items.Remove(item); 
+                                            // Alternativa senza cancellare la riga: item.Stato = "Terminata";
+                                            // Ma problemi quando ritorna in focus un programma con lo stesso nome,
+                                            // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
                                         });
                                         break;
                                     }
                                 }
                                 break;
-                            case "--OPEN-":
-                                // TODO: check necessità delegate
+                            case "--OPENP-":
                                 listView1.Dispatcher.Invoke(delegate
                                 {
                                     addItemToListView(progName);

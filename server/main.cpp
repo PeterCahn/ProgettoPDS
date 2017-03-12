@@ -3,6 +3,7 @@
 	- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
 	- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
 	- Cos'è la finestra "Program Manager"?
+	- Gestione finestra senza nome (Desktop)
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -80,6 +81,8 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	/* Stampa ed invia tutte le finestre */
 	std::cout << "Applicazioni attive:" << std::endl;
 	std::vector<std::string> currentProgNames;
+	// Aggiungi la finstra di default (Desktop)
+	currentProgNames.push_back("Desktop");
 	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgNames));		// Passa puntatore a socket come paramentro LPARAM opzionale
 	std::cout << "Programmi aperti: " << std::endl;
 	for each (std::string progName in currentProgNames) {
@@ -119,7 +122,8 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 		// Check chiusura finestra
 		std::vector<std::string> toBeDeleted;
 		for each (std::string currentProgName in currentProgNames) {
-			if (std::find(tempProgNames.begin(), tempProgNames.end(), currentProgName) == tempProgNames.end()) {
+			if ((currentProgName.compare("Desktop") != 0) && 
+				(std::find(tempProgNames.begin(), tempProgNames.end(), currentProgName) == tempProgNames.end())) {
 				// tempProgNames non contiene più currentProgName
 				std::cout << "Finestra chiusa!" << std::endl << "- " << currentProgName << std::endl;
 				char buf[MAX_PATH + 9];
@@ -142,6 +146,8 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 		if (strcmp(tempForeground, currentForeground) != 0) {
 			// Allora il programma che ha il focus è cambiato
 			strcpy_s(currentForeground, MAX_PATH, tempForeground);
+			if (strcmp(currentForeground, "") == 0)
+				strcpy_s(currentForeground, MAX_PATH, "Desktop");
 			std::cout << "Applicazione col focus cambiata! Ora e':" << std::endl << "- " << currentForeground << std::endl;
 			char buf[MAX_PATH + 9];
 			strcpy_s(buf, MAX_PATH + 9, "--FOCUS-");
