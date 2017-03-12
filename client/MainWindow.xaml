@@ -18,7 +18,7 @@
         <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="236,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click" Grid.Column="1"/>
         <TextBox x:Name="textBoxStato"  IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="396,25,0,0" TextWrapping="Wrap" Text="STATO: Disconnesso." VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
         <Label x:Name="labelApplciazioni" Content="Applicazioni" HorizontalAlignment="Left"  Margin="1,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.Column="1"/>
-        <ListView x:Name="listView" HorizontalAlignment="Left" Height="300" Width="700" Margin="1,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="3" SelectionChanged="listView_SelectionChanged" Foreground="Black" Grid.Column="1">
+        <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="1,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="3" SelectionChanged="listView_SelectionChanged" Foreground="Black" Grid.Column="1">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Header="Icona" DisplayMemberBinding="{Binding Path=Icona}" Width="40"/>

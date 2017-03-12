@@ -19,7 +19,7 @@ using System.Threading;
 
 namespace WpfApplication1
 {
-    class ListViewRow
+    class ListViewRow 
     {
         public string Icona { get; set; }
         public string Nome { get; set; }
@@ -119,7 +119,7 @@ namespace WpfApplication1
         /* TODO: aggiungi anche icona */
         void addItemToListView(string nomeProgramma)
         {
-            listView.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });
+            listView1.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });
         }
 
         /* Riceve ed imposta applicazione col focus */
@@ -128,11 +128,11 @@ namespace WpfApplication1
             byte[] buf = new byte[1024];
             int dim = sock.Receive(buf);
             string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-            for (int i = 0; i < listView.Items.Count; i++)
+            foreach (ListViewRow item in listView1.Items)
             {
-                if (((ListViewRow)listView.Items[i]).Nome == stringRicevuta)
+                if (item.Nome.Equals(stringRicevuta))
                 {
-                    ((ListViewRow)listView.Items[i]).Stato = "Focus";
+                    item.Stato = "Focus";
                     break;
                 }
             }
@@ -153,7 +153,7 @@ namespace WpfApplication1
                 {
                     // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
                     Thread.Sleep(1);
-                    foreach (ListViewRow item in listView.Items)
+                    foreach (ListViewRow item in listView1.Items)
                     {
                         if (item.Stato.Equals("Focus"))
                         {
@@ -166,9 +166,9 @@ namespace WpfApplication1
                         
                         // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                         // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-                        listView.Dispatcher.Invoke(delegate
+                        listView1.Dispatcher.Invoke(delegate
                         {
-                            listView.Items.Refresh();
+                            listView1.Items.Refresh();
                         });
                     }
                     // Aggiorna le statistiche ogni mezzo secondo
@@ -223,24 +223,24 @@ namespace WpfApplication1
                         {
                             case "--FOCUS-":
                                 // Cambia programma col focus
-                                for (int i = 0; i < listView.Items.Count; i++)
+                                foreach (ListViewRow item in listView1.Items)
                                 {
-                                    if (((ListViewRow)listView.Items[i]).Nome.Equals(progName))                                    
-                                        ((ListViewRow)listView.Items[i]).Stato = "Focus";
-                                    else                                    
-                                        ((ListViewRow)listView.Items[i]).Stato = "Background";
+                                    if (item.Nome.Equals(progName)) {
+                                        item.Stato = "Focus";
+                                    }
+                                    else
+                                        item.Stato = "Background";
                                 }
                                 break;
                             case "--CLOSE-":
                                 // Rimuovi programma dalla listView
-                                for (int i = 0; i < listView.Items.Count; i++)
+                                foreach (ListViewRow item in listView1.Items)
                                 {
-                                    if (((ListViewRow)listView.Items[i]).Nome.Equals(progName))
+                                    if (item.Nome.Equals(progName))
                                     {
                                         // TODO: check necessità delegate
-                                        listView.Dispatcher.Invoke(delegate
-                                        {
-                                            listView.Items.Remove(listView.Items[i]); // TODO: non sono sicuro che funzioni, check!
+                                        listView1.Dispatcher.Invoke(delegate {
+                                            listView1.Items.Remove(item); // TODO: non sono sicuro che funzioni, check!
                                         });
                                         break;
                                     }
@@ -248,7 +248,7 @@ namespace WpfApplication1
                                 break;
                             case "--OPEN-":
                                 // TODO: check necessità delegate
-                                listView.Dispatcher.Invoke(delegate
+                                listView1.Dispatcher.Invoke(delegate
                                 {
                                     addItemToListView(progName);
                                 });
@@ -289,7 +289,7 @@ namespace WpfApplication1
                 notificationsThread.Interrupt();
 
                 // Svuota listView
-                listView.Items.Clear();                
+                listView1.Items.Clear();                
             }
             catch (Exception exc) { MessageBox.Show(exc.ToString()); }
         }

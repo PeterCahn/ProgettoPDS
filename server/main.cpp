@@ -2,6 +2,7 @@
 	- Socket non bloccante?
 	- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
 	- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
+	- Cos'è la finestra "Program Manager"?
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -14,6 +15,9 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <string>
+#include <vector>
+#include <algorithm>
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -26,7 +30,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 SOCKET acceptConnection();
 char* getForeground();
 void receiveCommands(SOCKET* clientSocket);
-void sendApplicationToClient(SOCKET* clientSocket, char* title);
+void sendApplicationToClient(SOCKET* clientSocket, const char* title);
 DWORD WINAPI notificationsManagement(LPVOID lpParam);
 
 int main(int argc, char* argv[])
@@ -36,11 +40,6 @@ int main(int argc, char* argv[])
 	while (true) {
 		std::cout << "In attesa della connessione di un client..." << std::endl;
 		clientSocket = acceptConnection();
-
-		/* Stampa ed invia tutte le finestre */
-		std::cout << "Applicazioni attive:" << std::endl;
-		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&clientSocket));		// Passa puntatore a socket come paramentro LPARAM opzionale
-		send(clientSocket, "--END", strlen("--END"), 0);
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		DWORD notifThreadId;
@@ -78,15 +77,66 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	// Reinterpreta LPARAM lParam come puntatore a SOCKET
 	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lpParam);
 
+	/* Stampa ed invia tutte le finestre */
+	std::cout << "Applicazioni attive:" << std::endl;
+	std::vector<std::string> currentProgNames;
+	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgNames));		// Passa puntatore a socket come paramentro LPARAM opzionale
+	std::cout << "Programmi aperti: " << std::endl;
+	for each (std::string progName in currentProgNames) {
+		std::cout << "- " << progName << std::endl;
+		sendApplicationToClient(clientSocket, progName.c_str());
+	}	
+	send(*clientSocket, "--END", strlen("--END"), 0);
+
 	/* Stampa ed invia finestra col focus */
 	char currentForeground[MAX_PATH];
 	strcpy_s(currentForeground, MAX_PATH, getForeground());
 	printf("Applicazione col focus:\n- %s\n", currentForeground);
 	send(*clientSocket, currentForeground, strlen(currentForeground), 0);
 
+	/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 	while (true) {
 		// Esegui ogni mezzo secondo
 		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+		/* Variazioni lista programmi */
+		std::vector<std::string> tempProgNames;
+		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&tempProgNames));
+		// Check nuova finestra
+		for each(std::string tempProgName in tempProgNames) {
+			if (std::find(currentProgNames.begin(), currentProgNames.end(), tempProgName) == currentProgNames.end()) {
+				// currentProgNames non contiene questo programma (quindi è stato aperto ora)
+				currentProgNames.push_back(tempProgName);
+				std::cout << "Nuova finestra aperta!" << std::endl << "- " << tempProgName << std::endl;
+				char buf[MAX_PATH + 9];
+				strcpy_s(buf, MAX_PATH + 9, "--OPENP-");
+				strcat_s(buf, MAX_PATH + 9, tempProgName.c_str());
+				send(*clientSocket, buf, strlen(buf), 0);
+			}
+		}
+
+		
+		// Check chiusura finestra
+		std::vector<std::string> toBeDeleted;
+		for each (std::string currentProgName in currentProgNames) {
+			if (std::find(tempProgNames.begin(), tempProgNames.end(), currentProgName) == tempProgNames.end()) {
+				// tempProgNames non contiene più currentProgName
+				std::cout << "Finestra chiusa!" << std::endl << "- " << currentProgName << std::endl;
+				char buf[MAX_PATH + 9];
+				strcpy_s(buf, MAX_PATH + 9, "--CLOSE-");
+				strcat_s(buf, MAX_PATH + 9, currentProgName.c_str());
+				toBeDeleted.push_back(currentProgName);
+				send(*clientSocket, buf, strlen(buf), 0);
+			}
+		}
+		for each (std::string deleteThis in toBeDeleted) {
+			// Ricava index di deleteThis in currentProgNames per cancellarlo
+			auto index = std::find(currentProgNames.begin(), currentProgNames.end(), deleteThis);
+			currentProgNames.erase(index);
+		}		
+
+
+		/* Variazioni focus */
 		char tempForeground[MAX_PATH];
 		strcpy_s(tempForeground, MAX_PATH, getForeground());
 		if (strcmp(tempForeground, currentForeground) != 0) {
@@ -120,21 +170,24 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	WINDOWINFO info;
 
 	// Reinterpreta LPARAM lParam come puntatore a SOCKET 
-	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lParam);
+	std::vector<std::string>* progNames = (std::vector<std::string>*)(lParam);
 
+	// Aggiungi i nomi dei programmi aperti al vector<std::string> ricevuto
 	if (IsWindowVisible(hwnd)) {
 		GetWindowText(hwnd, title, sizeof(title));
-		if (strlen(title) != 0) {
-			std::cout << "- " << title << std::endl;
-			sendApplicationToClient(clientSocket, title);
+		if (strlen(title) == 0) {
+			/* TODO: ne da troppi */
+			//(*progNames).push_back("Desktop");
 		}
+		else
+			(*progNames).push_back(title);
 	}
 
 	return TRUE;
 }
 
 /* TODO: inviare anche l'icona */
-void sendApplicationToClient(SOCKET* clientSocket, char* title) {
+void sendApplicationToClient(SOCKET* clientSocket, const char* title) {
 	send(*clientSocket, title, strlen(title), 0);
 }
 
