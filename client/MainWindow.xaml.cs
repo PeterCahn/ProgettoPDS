@@ -33,7 +33,6 @@ namespace WpfApplication1
     {
         private byte[] buffer = new byte[1024];
         private Socket sock;
-        private DateTime connectionTime;
         private Thread statisticsThread;
         private Thread notificationsThread;
 
@@ -75,9 +74,6 @@ namespace WpfApplication1
 
                 // Connettiti
                 sock.Connect(ipEndPoint);
-
-                // Imposta tempo connessione
-                connectionTime = DateTime.Now;
 
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
@@ -148,11 +144,15 @@ namespace WpfApplication1
          */
         private void manageStatistics()
         {
+            // Imposta tempo connessione
+            DateTime connectionTime = DateTime.Now;
             try
             {
                 DateTime lastUpdate = DateTime.Now;
                 while (true)
                 {
+                    // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
+                    Thread.Sleep(1);
                     foreach (ListViewRow item in listView.Items)
                     {
                         if (item.Stato.Equals("Focus"))
