@@ -36,6 +36,7 @@ namespace WpfApplication1
         private Socket sock;
         private Thread statisticsThread;
         private Thread notificationsThread;
+        private List<int> comandoDaInviare = new List<int>();
 
         public MainWindow()
         {
@@ -280,6 +281,8 @@ namespace WpfApplication1
                 buttonConnetti.Visibility = Visibility.Visible;
                 buttonInvia.IsEnabled = false;
                 textBoxIpAddress.IsEnabled = true;
+                buttonCattura.IsEnabled = false;
+                buttonCattura.Content = "Cattura Comando";
 
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Disconnesso.");
@@ -291,7 +294,13 @@ namespace WpfApplication1
                 notificationsThread.Interrupt();
 
                 // Svuota listView
-                listView1.Items.Clear();                
+                listView1.Items.Clear();
+
+                // Svuota box comando in cattura
+                textBoxComando.Text = "";
+
+                // Svuota lista di tasti premuti da inviare
+                comandoDaInviare.Clear();
             }
             catch (Exception exc) { MessageBox.Show(exc.ToString()); }
         }
@@ -300,10 +309,20 @@ namespace WpfApplication1
         {
             try
             {
-                // Invia messaggio 
-                string messaggio = textBoxComando.Text;
-                byte[] msg = Encoding.Unicode.GetBytes(messaggio + "<END>");
-                int NumDiBytesInviati = sock.Send(msg);
+                byte[] messaggio;
+
+                // Serializza messaggio da inviare
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                foreach (int virtualKey in comandoDaInviare) {
+                    if (sb.Length != 0)
+                        sb.Append("+");
+                    sb.Append(virtualKey.ToString());
+                    }
+                sb.Append("\0");
+                messaggio = Encoding.ASCII.GetBytes(sb.ToString());
+
+                // Invia messaggio
+                int NumDiBytesInviati = sock.Send(messaggio);
 
                 /* TODO: ricevi */
 
@@ -312,6 +331,9 @@ namespace WpfApplication1
                 buttonInvia.IsEnabled = false;
                 buttonCattura.Content = "Cattura Comando";
                 buttonCattura.IsEnabled = true;
+
+                // Svuota lista di tasti premuti da inviare
+                comandoDaInviare.Clear();
 
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
                 this.KeyDown -= new KeyEventHandler(OnButtonKeyDown);
@@ -346,6 +368,9 @@ namespace WpfApplication1
                 if (!textBoxComando.Text.Contains(e.Key.ToString()))
                     textBoxComando.AppendText("+" + e.Key.ToString());
             }
+
+            // Converti c# Key in Virtual-Key da inviare al server
+            comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key));
         }
 
         private void textBoxIpAddress_TextChanged(object sender, TextChangedEventArgs e)
@@ -354,6 +379,11 @@ namespace WpfApplication1
         }
 
         private void listView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+
+        }
+
+        private void textBoxComando_TextChanged(object sender, TextChangedEventArgs e)
         {
 
         }

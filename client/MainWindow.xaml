@@ -30,7 +30,7 @@
         </ListView>
         <Label x:Name="labelComando" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="1,476,0,0" VerticalAlignment="Top" Foreground="White" Grid.Column="1"/>
         <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="1,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click" Grid.Column="1"/>
-        <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="116,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270" Grid.Column="1"/>
+        <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="116,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270" Grid.Column="1" TextChanged="textBoxComando_TextChanged" IsReadOnlyCaretVisible="True"/>
         <Button x:Name="buttonInvia" Content="Invia" HorizontalAlignment="Left" Margin="391,502,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonInvia_Click" Grid.Column="1"/>
         <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="23" Margin="82,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" Grid.Column="1"/>
 
