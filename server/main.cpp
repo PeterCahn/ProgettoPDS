@@ -4,6 +4,7 @@
 	- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
 	- Cos'è la finestra "Program Manager"?
 	- Gestione finestra senza nome (Desktop)
+	- Deallocazione risorse
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -17,6 +18,7 @@
 #include <thread>
 #include <chrono>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <algorithm>
 
@@ -318,32 +320,86 @@ void receiveCommands(SOCKET* clientSocket) {
 	int iResult;
 	do {
 		iResult = recv(*clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
-		if (iResult > 0) {
-			/*
-			TODO: a che serve quello che segue?
-
-			printf("Bytes received: %d\n", iResult);
-
-			// Echo the buffer back to the sender
-			iSendResult = send(*clientSocket, recvbuf, iResult, 0);
-			if (iSendResult == SOCKET_ERROR) {
-				printf("send failed with error: %d\n", WSAGetLastError());
-				closesocket(*clientSocket);
-				WSACleanup();
-				return;
-			}
-			printf("Bytes sent: %d\n", iSendResult);
-			*/
-		}
-		else if (iResult == 0)
+		if (iResult == 0)
 			std::cout << "Chiusura connessione...\n" << std::endl << std::endl;
-		else {
+		else if(iResult < 0) {
 			std::cout << "recv() fallita con errore: " << WSAGetLastError() << std::endl;;
 			closesocket(*clientSocket);
 			WSACleanup();
 			return;
 		}
 
+		// Questa stringa contiene i virtual-keys ricevuti separati da '+'
+		std::string stringaRicevuta(recvbuf);
+		
+		// Converti la stringa in una lista di virtual-keyes
+		std::stringstream sstream(stringaRicevuta);
+		std::string virtualKey;
+		std::vector<UINT> vKeysList;
+
+		while (std::getline(sstream, virtualKey, '+'))
+		{
+			UINT vKey;
+			sscanf_s(virtualKey.c_str(), "%u", &vKey);
+			vKeysList.push_back(vKey);
+		}
+
+		std::cout << "Virtual-key ricevute da inviare alla finestra in focus:" << std::endl;
+		for each(UINT i in vKeysList)
+			std::cout << "- " << i << std::endl;
+
 	} while (iResult > 0);
 	
 }
+
+#ifdef CIAO
+int SendKeystrokesToProgram(char* text, char* programName)
+{
+	INPUT *keystroke;
+	int i, character_count, keystrokes_lenght, keystrokes_sent;
+	HWND progHandle;
+
+	// Recupera handle del programma a cui inviare il comando
+	progHandle = FindWindow(programName, NULL);
+	if (progHandle == NULL)
+		return 0;
+
+	// Porta in focus la finestra del progrmma
+	if (!SetForegroundWindow(progHandle))
+		return 0;
+
+	// Riempi vettore di keystroke da inviare
+	character_count = strlen(text);
+	keystrokes_lenght = character_count * 2;
+	keystroke = new INPUT[keystrokes_lenght];
+	for each ()
+	{
+		keystroke[i * 2].type = INPUT_KEYBOARD;				// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+															// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+		keystroke[i * 2].ki.wVk = MapVirtualKey(MAPVK_VSC_TO_VK_EX, key);				 /* Virtual-key code dell'input.
+																						  * Map virtual key traduce virtualKeys in char o "scan codes" in Virtual-keys
+																						  * Settandone il primo parametro a MAPVK_VSC_TO_VK_EX, tradurrà il secondo paramentro, che dovrà
+																						  * essere uno "scan code", in una Virtual-key.
+																						  * Se usassimo KEYEVENTF_UNICODE in dwFlags, dovrebbe essere settato a 0
+																						  */
+		keystroke[i * 2].ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+		keystroke[i * 2].ki.dwFlags = 0;					// Eventuali informazioni addizionali sull'evento
+		keystroke[i * 2].ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+		keystroke[i * 2].ki.dwExtraInfo = GetMessageExtraInfo();	// Valore addizionale associato al keystroke
+
+		// Rilascia il tasto
+		keystroke[i * 2 + 1].type = INPUT_KEYBOARD;
+		keystroke[i * 2 + 1].ki.wVk = 0;
+		keystroke[i * 2 + 1].ki.wScan = text[i];
+		keystroke[i * 2 + 1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+		keystroke[i * 2 + 1].ki.time = 0;
+		keystroke[i * 2 + 1].ki.dwExtraInfo = GetMessageExtraInfo();
+	}
+
+	//Send the keystrokes.
+	keystrokes_sent = SendInput((UINT)keystrokes_lenght, keystroke, sizeof(*keystroke));
+	delete[] keystroke;
+
+	return keystrokes_sent == keystrokes_to_send;
+}
+#endif // CIAO
