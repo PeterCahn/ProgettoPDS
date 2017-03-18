@@ -35,6 +35,7 @@ char* getForeground();
 void receiveCommands(SOCKET* clientSocket);
 void sendApplicationToClient(SOCKET* clientSocket, const char* title);
 DWORD WINAPI notificationsManagement(LPVOID lpParam);
+void sendKeystrokesToProgram(std::vector<UINT> vKeysList);
 
 int main(int argc, char* argv[])
 {
@@ -85,7 +86,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	std::vector<std::string> currentProgNames;
 	// Aggiungi la finstra di default (Desktop)
 	currentProgNames.push_back("Desktop");
-	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgNames));		// Passa puntatore a socket come paramentro LPARAM opzionale
+	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgNames));
 	std::cout << "Programmi aperti: " << std::endl;
 	for each (std::string progName in currentProgNames) {
 		std::cout << "- " << progName << std::endl;
@@ -183,11 +184,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	// Aggiungi i nomi dei programmi aperti al vector<std::string> ricevuto
 	if (IsWindowVisible(hwnd)) {
 		GetWindowText(hwnd, title, sizeof(title));
-		if (strlen(title) == 0) {
-			/* TODO: ne da troppi */
-			//(*progNames).push_back("Desktop");
-		}
-		else
+		if (strlen(title) != 0) 
 			(*progNames).push_back(title);
 	}
 
@@ -336,62 +333,55 @@ void receiveCommands(SOCKET* clientSocket) {
 		std::stringstream sstream(stringaRicevuta);
 		std::string virtualKey;
 		std::vector<UINT> vKeysList;
-
-		while (std::getline(sstream, virtualKey, '+'))
+		while (std::getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'
 		{
 			UINT vKey;
 			sscanf_s(virtualKey.c_str(), "%u", &vKey);
 			vKeysList.push_back(vKey);
 		}
 
+		// TODO: reimuovere dopo debug (?)
+		// Stampa codici virtual-key ricevute
 		std::cout << "Virtual-key ricevute da inviare alla finestra in focus:" << std::endl;
 		for each(UINT i in vKeysList)
 			std::cout << "- " << i << std::endl;
+
+		// Invia keystrokes all'applicazione in focus
+		sendKeystrokesToProgram(vKeysList);
 
 	} while (iResult > 0);
 	
 }
 
-#ifdef CIAO
-int SendKeystrokesToProgram(char* text, char* programName)
+void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 {
 	INPUT *keystroke;
-	int i, character_count, keystrokes_lenght, keystrokes_sent;
+	int i, keystrokes_lenght, keystrokes_sent;
 	HWND progHandle;
 
-	// Recupera handle del programma a cui inviare il comando
-	progHandle = FindWindow(programName, NULL);
-	if (progHandle == NULL)
-		return 0;
-
-	// Porta in focus la finestra del progrmma
-	if (!SetForegroundWindow(progHandle))
-		return 0;
+	// Ricava l'handle alla finestra verso cui indirizzare il keystroke
+	progHandle = GetForegroundWindow();
 
 	// Riempi vettore di keystroke da inviare
-	character_count = strlen(text);
-	keystrokes_lenght = character_count * 2;
-	keystroke = new INPUT[keystrokes_lenght];
-	for each ()
-	{
-		keystroke[i * 2].type = INPUT_KEYBOARD;				// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
-															// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-		keystroke[i * 2].ki.wVk = MapVirtualKey(MAPVK_VSC_TO_VK_EX, key);				 /* Virtual-key code dell'input.
-																						  * Map virtual key traduce virtualKeys in char o "scan codes" in Virtual-keys
-																						  * Settandone il primo parametro a MAPVK_VSC_TO_VK_EX, tradurrà il secondo paramentro, che dovrà
-																						  * essere uno "scan code", in una Virtual-key.
-																						  * Se usassimo KEYEVENTF_UNICODE in dwFlags, dovrebbe essere settato a 0
-																						  */
-		keystroke[i * 2].ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-		keystroke[i * 2].ki.dwFlags = 0;					// Eventuali informazioni addizionali sull'evento
-		keystroke[i * 2].ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+	keystrokes_lenght = vKeysList.size();		
+	keystroke = new INPUT[keystrokes_lenght * 2];	// *2 perchè abbiamo pressione e rilascio dei tasti
+	// Pressione dei tasti
+	for (i = 0; i < keystrokes_lenght; ++i)	{
+		keystroke[i * 2].type = INPUT_KEYBOARD;		// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+													// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+		keystroke[i * 2].ki.wVk = vKeysList[i];		// Virtual-key code dell'input.																						  
+		keystroke[i * 2].ki.wScan = 0;				// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+		keystroke[i * 2].ki.dwFlags = 0;			// Eventuali informazioni addizionali sull'evento
+		keystroke[i * 2].ki.time = 0;				// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 		keystroke[i * 2].ki.dwExtraInfo = GetMessageExtraInfo();	// Valore addizionale associato al keystroke
+	}
 
-		// Rilascia il tasto
+	// Rilascio dei tasti
+	for (i = 0; i < keystrokes_lenght; ++i) {
 		keystroke[i * 2 + 1].type = INPUT_KEYBOARD;
-		keystroke[i * 2 + 1].ki.wVk = 0;
-		keystroke[i * 2 + 1].ki.wScan = text[i];
-		keystroke[i * 2 + 1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+		keystroke[i * 2 + 1].ki.wVk = vKeysList[i];
+		keystroke[i * 2 + 1].ki.wScan;
+		keystroke[i * 2 + 1].ki.dwFlags = KEYEVENTF_KEYUP;
 		keystroke[i * 2 + 1].ki.time = 0;
 		keystroke[i * 2 + 1].ki.dwExtraInfo = GetMessageExtraInfo();
 	}
@@ -400,6 +390,12 @@ int SendKeystrokesToProgram(char* text, char* programName)
 	keystrokes_sent = SendInput((UINT)keystrokes_lenght, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
 
-	return keystrokes_sent == keystrokes_to_send;
+	std::cout << "Keystrokes to send: " << keystrokes_lenght << std::endl;
+	std::cout << "Keystrokes sent: " << keystrokes_sent << std::endl;
 }
-#endif // CIAO
+
+/* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys
+ * Settandone il primo parametro a MAPVK_VSC_TO_VK_EX, tradurrà il secondo paramentro, che dovrà
+ * essere uno "scan code", in una Virtual-key.
+ * Se usassimo KEYEVENTF_UNICODE in dwFlags, dovrebbe essere settato a 0
+ */
