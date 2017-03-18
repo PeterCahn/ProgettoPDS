@@ -44,6 +44,7 @@ namespace WpfApplication1
 
             // Inizialmente imposta bottoni come inutilizzabili senza connessione
             buttonDisconnetti.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
         }
@@ -282,7 +283,6 @@ namespace WpfApplication1
                 buttonInvia.IsEnabled = false;
                 textBoxIpAddress.IsEnabled = true;
                 buttonCattura.IsEnabled = false;
-                buttonCattura.Content = "Cattura Comando";
 
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Disconnesso.");
@@ -296,10 +296,10 @@ namespace WpfApplication1
                 // Svuota listView
                 listView1.Items.Clear();
 
-                // Svuota box comando in cattura
+                // Ripristina cattura comando
                 textBoxComando.Text = "";
-
-                // Svuota lista di tasti premuti da inviare
+                buttonCattura.Visibility = Visibility.Visible;
+                buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
             }
             catch (Exception exc) { MessageBox.Show(exc.ToString()); }
@@ -329,8 +329,9 @@ namespace WpfApplication1
                 // Aggiorna bottoni e textBox
                 textBoxComando.Text = "";
                 buttonInvia.IsEnabled = false;
-                buttonCattura.Content = "Cattura Comando";
                 buttonCattura.IsEnabled = true;
+                buttonCattura.Visibility = Visibility.Visible;
+                buttonAnnullaCattura.Visibility = Visibility.Hidden;
 
                 // Svuota lista di tasti premuti da inviare
                 comandoDaInviare.Clear();
@@ -348,9 +349,9 @@ namespace WpfApplication1
 
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
         {
-
-            buttonCattura.Content = "In cattura...";
             buttonCattura.IsEnabled = false;
+            buttonCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.Visibility = Visibility.Visible;
 
             // Crea event handler per scrivere i tasti premuti
             this.KeyDown += new KeyEventHandler(OnButtonKeyDown);
@@ -383,9 +384,17 @@ namespace WpfApplication1
 
         }
 
-        private void textBoxComando_TextChanged(object sender, TextChangedEventArgs e)
+        private void buttonAnnullaCattura_Click(object sender, RoutedEventArgs e)
         {
+            // Svuota la lista di keystroke da inviare
+            comandoDaInviare.Clear();
 
+            // Aggiorna bottoni e textBox
+            textBoxComando.Text = "";
+            buttonInvia.IsEnabled = false;
+            buttonCattura.IsEnabled = true;
+            buttonCattura.Visibility = Visibility.Visible;
+            buttonAnnullaCattura.Visibility = Visibility.Hidden;
         }
     }
 }
