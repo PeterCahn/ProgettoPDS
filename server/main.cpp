@@ -4,7 +4,8 @@
 	- Cos'è la finestra "Program Manager"?
 	- Gestione finestra senza nome (Desktop)
 	- Deallocazione risorse
-	- CRASH quando il client genera un'eccezione !!!!
+	- Quando il client si chiude o si chiude anche il server (e non dovrebbe farlo) o se sopravvive alla prossima apertura di un client non funziona bene
+	  perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -73,7 +74,7 @@ int main(int argc, char* argv[])
 			std::cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << std::endl;
 			closesocket(clientSocket);
 			WSACleanup();
-			return 1;
+			return -1;
 		}
 
 		/* Cleanup */

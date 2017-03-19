@@ -18,10 +18,13 @@ using System.Windows.Shapes;
 using System.Threading;
 
 /* TODO:
- * - Quando c'è la cancellazione degli elementi in listView1 bisogna prima bloccare il thread sulle statistiche, altrimenti si genera eccezione
- *   quando, mentre sta facendo la foreach(), da un'iterazione alla successiva non trova più gli elementi che si aspetta
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  */
+
+/* DA CHIARIRE:
+ * - Quando chiudo una finstra, se questa ha una percentuale != 0, siccome la sua riga viene eliminata dalla listView le percentuali non raggiungono più il 100%:
+ *   siccome c'è scritto di mostrare la percentuale di tempo in cui una finstra è stata in focus dal momento della connessione, a me questo comportamento anche se
+ *   strano sembra corretto. Boh, vedere un po' di chiarire.
 
 namespace WpfApplication1
 {
@@ -97,7 +100,7 @@ namespace WpfApplication1
                 textBoxIpAddress.IsEnabled = false;
 
                 // Avvia thread per notifiche
-                notificationsThread = new Thread(() => manageNotifications(sock));
+                notificationsThread = new Thread(() => manageNotifications(sock));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
                 notificationsThread.Start();
 
@@ -134,28 +137,33 @@ namespace WpfApplication1
             try
             {
                 DateTime lastUpdate = DateTime.Now;
+                // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
+                Thread.Sleep(1);
                 while (true)
                 {
-                    // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
-                    Thread.Sleep(1);
-                    foreach (ListViewRow item in listView1.Items)
+                    if (listView1Mutex.WaitOne(1000))
                     {
-                        if (item.Stato.Equals("Focus"))
+                        foreach (ListViewRow item in listView1.Items)
                         {
-                            item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
-                            lastUpdate = DateTime.Now;
-                        }
+                            if (item.Stato.Equals("Focus"))
+                            {
+                                item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
+                                lastUpdate = DateTime.Now;
+                            }
 
-                        // Calcola la percentuale
-                        item.PercentualeFocus = (item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
-                        
-                        // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
-                        // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-                        listView1.Dispatcher.Invoke(delegate
-                        {
-                            listView1.Items.Refresh();
-                        });
+                            // Calcola la percentuale
+                            item.PercentualeFocus = (item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
+                        }
+                        listView1Mutex.ReleaseMutex();
                     }
+                    
+                    // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
+                    // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
+                    listView1.Dispatcher.Invoke(delegate
+                    {
+                        listView1.Items.Refresh();
+                    });
+
                     // Aggiorna le statistiche ogni mezzo secondo
                     Thread.Sleep(500);
                 }
@@ -163,7 +171,7 @@ namespace WpfApplication1
             catch (ThreadInterruptedException exception)
             {
                 // TODO: c'è qualcosa da fare?
-                // TODO: check che il thread muore davvero
+                // TODO: check se il thread muore davvero
                 return;
             }
         }
@@ -228,30 +236,30 @@ namespace WpfApplication1
                                             }
                                             else if (item.Stato.Equals("Focus"))
                                                 item.Stato = "Background";
-                                        }
+                                        }                                        
                                         listView1Mutex.ReleaseMutex();
-                                    }                                    
+                                    }
                                     break;
                                 case "--CLOSE-":
-                                    if (listView1Mutex.WaitOne(1000))
+                                    // Rimuovi programma dalla listView
+                                    foreach (ListViewRow item in listView1.Items)
                                     {
-                                        // Rimuovi programma dalla listView
-                                        foreach (ListViewRow item in listView1.Items)
+                                        if (item.Nome.Equals(progName))
                                         {
-                                            if (item.Nome.Equals(progName))
+                                            listView1.Dispatcher.Invoke(delegate
                                             {
-                                                listView1.Dispatcher.Invoke(delegate
+                                                if (listView1Mutex.WaitOne(1000))
                                                 {
                                                     listView1.Items.Remove(item);
-                                                // Alternativa senza cancellare la riga: item.Stato = "Terminata";
-                                                // Ma problemi quando ritorna in focus un programma con lo stesso nome,
-                                                // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
+                                                        // Alternativa senza cancellare la riga: item.Stato = "Terminata";
+                                                        // Ma problemi quando ritorna in focus un programma con lo stesso nome,
+                                                        // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
+                                                    listView1Mutex.ReleaseMutex();
+                                                }
                                             });
-                                                break;
-                                            }
+                                            break;
                                         }
-                                        listView1Mutex.ReleaseMutex();
-                                    }                                    
+                                    }                            
                                     break;
                                 case "--OPENP-":
                                     listView1.Dispatcher.Invoke(delegate
