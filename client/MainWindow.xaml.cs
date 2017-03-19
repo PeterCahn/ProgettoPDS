@@ -17,6 +17,10 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Threading;
 
+/* TODO:
+ * - Quando c'è la cancellazione degli elementi in listView1 bisogna prima bloccare il thread sulle statistiche, altrimenti si genera eccezione
+ *   quando, mentre sta facendo la foreach(), da un'iterazione alla successiva non trova più gli elementi che si aspetta
+ */
 
 namespace WpfApplication1
 {
@@ -88,6 +92,13 @@ namespace WpfApplication1
                 buttonCattura.IsEnabled = true;
                 textBoxIpAddress.IsEnabled = false;
 
+                // Avvia thread per notifiche
+                notificationsThread = new Thread(() => manageNotifications(sock));
+                notificationsThread.IsBackground = true;
+                notificationsThread.Start();
+
+                /*
+
                 // Ricevi nomi applicazioni ed aggiungile alla lista
                 byte[] buf = new byte[1024];
                 int dim = sock.Receive(buf);
@@ -102,15 +113,11 @@ namespace WpfApplication1
                 // Ricevi app che ha il focus
                 getFocus(sock);
 
+                */
                 // Avvia thread per statistiche live
                 statisticsThread = new Thread(new ThreadStart(this.manageStatistics));
                 statisticsThread.IsBackground = true;
                 statisticsThread.Start();
-
-                // Avvia thread per eventuali notifiche
-                notificationsThread = new Thread(() => manageNotifications(sock));
-                notificationsThread.IsBackground = true;
-                notificationsThread.Start();
             }
             catch (Exception exc)
             {
@@ -216,47 +223,62 @@ namespace WpfApplication1
                     if (dim != -1)
                     {
                         stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-                        // Possibili valori ricevuti:
-                        // --FOCUS-<nome_nuova_app_focus>
-                        // --CLOSE-<nome_app_chiusa>
-                        // --OPENP-<nome_nuova_app_aperta>
-                        String operation = stringRicevuta.Substring(0, 8);
-                        String progName = stringRicevuta.Substring(8, stringRicevuta.Length - 8);
-                        switch (operation)
+
+                        /* Possibili valori ricevuti:
+                         * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
+                         * --CLOSE-<lunghezza_nome>-<nome_app_chiusa>
+                         * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>
+                         */
+
+                        // È possibile che si concatenino stringhe indicanti più finestre, perciò analizza la stringa ricevuta
+                        // e gestisci questa eventualità
+                        int position = 0;
+                        while (position < stringRicevuta.Length)
                         {
-                            case "--FOCUS-":
-                                // Cambia programma col focus
-                                foreach (ListViewRow item in listView1.Items)
-                                {
-                                    if (item.Nome.Equals(progName)) {
-                                        item.Stato = "Focus";
-                                    }
-                                    else if (item.Stato.Equals("Focus"))
-                                        item.Stato = "Background";
-                                }
-                                break;
-                            case "--CLOSE-":
-                                // Rimuovi programma dalla listView
-                                foreach (ListViewRow item in listView1.Items)
-                                {
-                                    if (item.Nome.Equals(progName))
+                            String operation = stringRicevuta.Substring(position, 8);
+                            String temp = stringRicevuta.Substring(position + 8, stringRicevuta.Length - 8 - position);
+                            String lenght = temp.Substring(0, temp.IndexOf("-"));
+                            String progName = temp.Substring(temp.IndexOf("-") + 1, Int32.Parse(lenght));
+                            switch (operation)
+                            {
+                                case "--FOCUS-":
+                                    // Cambia programma col focus
+                                    foreach (ListViewRow item in listView1.Items)
                                     {
-                                        listView1.Dispatcher.Invoke(delegate {
-                                            listView1.Items.Remove(item); 
-                                            // Alternativa senza cancellare la riga: item.Stato = "Terminata";
-                                            // Ma problemi quando ritorna in focus un programma con lo stesso nome,
-                                            // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
-                                        });
-                                        break;
+                                        if (item.Nome.Equals(progName))
+                                        {
+                                            item.Stato = "Focus";
+                                        }
+                                        else if (item.Stato.Equals("Focus"))
+                                            item.Stato = "Background";
                                     }
-                                }
-                                break;
-                            case "--OPENP-":
-                                listView1.Dispatcher.Invoke(delegate
-                                {
-                                    addItemToListView(progName);
-                                });
-                                break;
+                                    break;
+                                case "--CLOSE-":
+                                    // Rimuovi programma dalla listView
+                                    foreach (ListViewRow item in listView1.Items)
+                                    {
+                                        if (item.Nome.Equals(progName))
+                                        {
+                                            listView1.Dispatcher.Invoke(delegate
+                                            {
+                                                listView1.Items.Remove(item);
+                                                // Alternativa senza cancellare la riga: item.Stato = "Terminata";
+                                                // Ma problemi quando ritorna in focus un programma con lo stesso nome,
+                                                // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
+                                            });
+                                            break;
+                                        }
+                                    }
+                                    break;
+                                case "--OPENP-":
+                                    listView1.Dispatcher.Invoke(delegate
+                                    {
+                                        addItemToListView(progName);
+                                    });
+                                    break;
+                            }
+
+                            position += 9 + lenght.Length + Int32.Parse(lenght);
                         }
                     }
                 }
@@ -305,48 +327,6 @@ namespace WpfApplication1
             catch (Exception exc) { MessageBox.Show(exc.ToString()); }
         }
 
-        private void buttonInvia_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                byte[] messaggio;
-
-                // Serializza messaggio da inviare
-                System.Text.StringBuilder sb = new System.Text.StringBuilder();
-                foreach (int virtualKey in comandoDaInviare) {
-                    if (sb.Length != 0)
-                        sb.Append("+");
-                    sb.Append(virtualKey.ToString());
-                    }
-                sb.Append("\0");
-                messaggio = Encoding.ASCII.GetBytes(sb.ToString());
-
-                // Invia messaggio
-                int NumDiBytesInviati = sock.Send(messaggio);
-
-                /* TODO: ricevi */
-
-                // Aggiorna bottoni e textBox
-                textBoxComando.Text = "";
-                buttonInvia.IsEnabled = false;
-                buttonCattura.IsEnabled = true;
-                buttonCattura.Visibility = Visibility.Visible;
-                buttonAnnullaCattura.Visibility = Visibility.Hidden;
-
-                // Svuota lista di tasti premuti da inviare
-                comandoDaInviare.Clear();
-
-                // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
-                this.KeyDown -= new KeyEventHandler(OnButtonKeyDown);
-
-            }
-            catch (Exception exc)
-            {
-                textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
-                textBoxStato.ScrollToEnd();
-            }
-        }
-
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
         {
             buttonCattura.IsEnabled = false;
@@ -372,6 +352,47 @@ namespace WpfApplication1
 
             // Converti c# Key in Virtual-Key da inviare al server
             comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key));
+        }
+
+        private void buttonInvia_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                byte[] messaggio;
+
+                // Serializza messaggio da inviare
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                foreach (int virtualKey in comandoDaInviare)
+                {
+                    if (sb.Length != 0)
+                        sb.Append("+");
+                    sb.Append(virtualKey.ToString());
+                }
+                sb.Append("\0");
+                messaggio = Encoding.ASCII.GetBytes(sb.ToString());
+
+                // Invia messaggio
+                int NumDiBytesInviati = sock.Send(messaggio);
+
+                // Aggiorna bottoni e textBox
+                textBoxComando.Text = "";
+                buttonInvia.IsEnabled = false;
+                buttonCattura.IsEnabled = true;
+                buttonCattura.Visibility = Visibility.Visible;
+                buttonAnnullaCattura.Visibility = Visibility.Hidden;
+
+                // Svuota lista di tasti premuti da inviare
+                comandoDaInviare.Clear();
+
+                // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
+                this.KeyDown -= new KeyEventHandler(OnButtonKeyDown);
+
+            }
+            catch (Exception exc)
+            {
+                textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
+                textBoxStato.ScrollToEnd();
+            }
         }
 
         private void textBoxIpAddress_TextChanged(object sender, TextChangedEventArgs e)

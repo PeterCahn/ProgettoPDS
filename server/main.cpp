@@ -1,10 +1,10 @@
 /* TODO:
-	- Socket non bloccante?
 	- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
 	- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
 	- Cos'è la finestra "Program Manager"?
 	- Gestione finestra senza nome (Desktop)
 	- Deallocazione risorse
+	- CRASH quando il client genera un'eccezione !!!!
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -29,11 +29,18 @@
 #define DEFAULT_BUFLEN 1024
 #define DEFAULT_PORT  "27015"
 
+/* Definisce che tipo di notifica è associata alla stringa rappresentante il nome di un finestra da inviare al client */
+enum operation {
+	OPEN,
+	CLOSE,
+	FOCUS
+};
+
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 SOCKET acceptConnection();
 char* getForeground();
-void receiveCommands(SOCKET* clientSocket);
-void sendApplicationToClient(SOCKET* clientSocket, const char* title);
+void receiveCommands(SOCKET* clientSocket); 
+void sendApplicationToClient(SOCKET* clientSocket, std::string progName, operation op);
 DWORD WINAPI notificationsManagement(LPVOID lpParam);
 void sendKeystrokesToProgram(std::vector<UINT> vKeysList);
 
@@ -90,15 +97,14 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	std::cout << "Programmi aperti: " << std::endl;
 	for each (std::string progName in currentProgNames) {
 		std::cout << "- " << progName << std::endl;
-		sendApplicationToClient(clientSocket, progName.c_str());
-	}	
-	send(*clientSocket, "--END", strlen("--END"), 0);
+		sendApplicationToClient(clientSocket, progName, OPEN);
+	}
 
 	/* Stampa ed invia finestra col focus */
 	char currentForeground[MAX_PATH];
 	strcpy_s(currentForeground, MAX_PATH, getForeground());
 	printf("Applicazione col focus:\n- %s\n", currentForeground);
-	send(*clientSocket, currentForeground, strlen(currentForeground), 0);
+	sendApplicationToClient(clientSocket, currentForeground, FOCUS);
 
 	/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 	while (true) {
@@ -114,13 +120,9 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 				// currentProgNames non contiene questo programma (quindi è stato aperto ora)
 				currentProgNames.push_back(tempProgName);
 				std::cout << "Nuova finestra aperta!" << std::endl << "- " << tempProgName << std::endl;
-				char buf[MAX_PATH + 9];
-				strcpy_s(buf, MAX_PATH + 9, "--OPENP-");
-				strcat_s(buf, MAX_PATH + 9, tempProgName.c_str());
-				send(*clientSocket, buf, strlen(buf), 0);
+				sendApplicationToClient(clientSocket, tempProgName, OPEN);
 			}
 		}
-
 		
 		// Check chiusura finestra
 		std::vector<std::string> toBeDeleted;
@@ -129,11 +131,8 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 				(std::find(tempProgNames.begin(), tempProgNames.end(), currentProgName) == tempProgNames.end())) {
 				// tempProgNames non contiene più currentProgName
 				std::cout << "Finestra chiusa!" << std::endl << "- " << currentProgName << std::endl;
-				char buf[MAX_PATH + 9];
-				strcpy_s(buf, MAX_PATH + 9, "--CLOSE-");
-				strcat_s(buf, MAX_PATH + 9, currentProgName.c_str());
+				sendApplicationToClient(clientSocket, currentProgName, CLOSE);
 				toBeDeleted.push_back(currentProgName);
-				send(*clientSocket, buf, strlen(buf), 0);
 			}
 		}
 		for each (std::string deleteThis in toBeDeleted) {
@@ -141,8 +140,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 			auto index = std::find(currentProgNames.begin(), currentProgNames.end(), deleteThis);
 			currentProgNames.erase(index);
 		}		
-
-
+		
 		/* Variazioni focus */
 		char tempForeground[MAX_PATH];
 		strcpy_s(tempForeground, MAX_PATH, getForeground());
@@ -152,10 +150,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 			if (strcmp(currentForeground, "") == 0)
 				strcpy_s(currentForeground, MAX_PATH, "Desktop");
 			std::cout << "Applicazione col focus cambiata! Ora e':" << std::endl << "- " << currentForeground << std::endl;
-			char buf[MAX_PATH + 9];
-			strcpy_s(buf, MAX_PATH + 9, "--FOCUS-");
-			strcat_s(buf, MAX_PATH + 9, currentForeground);
-			send(*clientSocket, buf, strlen(buf), 0);
+			sendApplicationToClient(clientSocket, currentForeground, FOCUS);
 		}
 	}
 
@@ -192,8 +187,26 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 }
 
 /* TODO: inviare anche l'icona */
-void sendApplicationToClient(SOCKET* clientSocket, const char* title) {
-	send(*clientSocket, title, strlen(title), 0);
+/* Invia il nome della finestra e l'informazione ad esso associata al client 
+ * Il formato del messaggio è --<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
+ */
+void sendApplicationToClient(SOCKET* clientSocket, std::string progName, operation op) {
+	
+	char buf[MAX_PATH + 12];	// 12 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
+	if (op == OPEN) {
+		strcpy_s(buf, MAX_PATH + 12, "--OPENP-");
+	}
+	else if (op == CLOSE) {
+		strcpy_s(buf, MAX_PATH + 12, "--CLOSE-");
+	}
+	else {
+		strcpy_s(buf, MAX_PATH + 12, "--FOCUS-");
+	}	
+	strcat_s(buf, MAX_PATH + 12, std::to_string(progName.length()).c_str());
+	strcat_s(buf, MAX_PATH + 12, "-");
+	strcat_s(buf, MAX_PATH + 12, progName.c_str());
+	
+	send(*clientSocket, buf, strlen(buf), 0);
 }
 
 HICON getHICONfromHWND(HWND hwnd) {
@@ -375,7 +388,6 @@ void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 		keystroke[i * 2].ki.time = 0;				// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 		keystroke[i * 2].ki.dwExtraInfo = GetMessageExtraInfo();	// Valore addizionale associato al keystroke
 	}
-
 	// Rilascio dei tasti
 	for (i = 0; i < keystrokes_lenght; ++i) {
 		keystroke[i * 2 + 1].type = INPUT_KEYBOARD;
