@@ -299,7 +299,7 @@ SOCKET acceptConnection(void)
 		return 1;
 	}
 
-	// Accept a client socket
+	// Accetta la connessione
 	clientSocket = accept(listenSocket, NULL, NULL);
 	if (clientSocket == INVALID_SOCKET) {
 		std::cout << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
@@ -315,7 +315,7 @@ SOCKET acceptConnection(void)
 	int port = ntohs(s->sin_port);
 	char ipstr[INET_ADDRSTRLEN];
 	/* TODO: Fix stampa indirizzo */
-	inet_ntop(AF_INET, &(s->sin_addr), ipstr, INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
 	std::cout << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
 	// No longer need server socket
@@ -402,8 +402,8 @@ void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	keystrokes_sent = SendInput((UINT)keystrokes_lenght, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
 
-	std::cout << "Keystrokes to send: " << keystrokes_lenght << std::endl;
-	std::cout << "Keystrokes sent: " << keystrokes_sent << std::endl;
+	std::cout << "# of keystrokes to send: " << keystrokes_lenght << std::endl;
+	std::cout << "# of keystrokes sent: " << keystrokes_sent << std::endl;
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys

@@ -20,6 +20,7 @@ using System.Threading;
 /* TODO:
  * - Quando c'è la cancellazione degli elementi in listView1 bisogna prima bloccare il thread sulle statistiche, altrimenti si genera eccezione
  *   quando, mentre sta facendo la foreach(), da un'iterazione alla successiva non trova più gli elementi che si aspetta
+ * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  */
 
 namespace WpfApplication1
@@ -41,6 +42,9 @@ namespace WpfApplication1
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
+
+        // Mutx necessario alla gestione delle modifiche nella listView1
+        private static Mutex listView1Mutex = new Mutex();
 
         public MainWindow()
         {
@@ -97,24 +101,7 @@ namespace WpfApplication1
                 notificationsThread.IsBackground = true;
                 notificationsThread.Start();
 
-                /*
-
-                // Ricevi nomi applicazioni ed aggiungile alla lista
-                byte[] buf = new byte[1024];
-                int dim = sock.Receive(buf);
-                string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-                while (!stringRicevuta.Equals("--END"))
-                {
-                    addItemToListView(stringRicevuta);
-                    dim = sock.Receive(buf);
-                    stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-                }
-
-                // Ricevi app che ha il focus
-                getFocus(sock);
-
-                */
-                // Avvia thread per statistiche live
+               // Avvia thread per statistiche live
                 statisticsThread = new Thread(new ThreadStart(this.manageStatistics));
                 statisticsThread.IsBackground = true;
                 statisticsThread.Start();
@@ -129,22 +116,10 @@ namespace WpfApplication1
         /* TODO: aggiungi anche icona */
         void addItemToListView(string nomeProgramma)
         {
-            listView1.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });
-        }
-
-        /* Riceve ed imposta applicazione col focus */
-        private void getFocus(Socket sock)
-        {
-            byte[] buf = new byte[1024];
-            int dim = sock.Receive(buf);
-            string stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-            foreach (ListViewRow item in listView1.Items)
+            if (listView1Mutex.WaitOne(1000))
             {
-                if (item.Nome.Equals(stringRicevuta))
-                {
-                    item.Stato = "Focus";
-                    break;
-                }
+                listView1.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });
+                listView1Mutex.ReleaseMutex();
             }
         }
 
@@ -242,33 +217,41 @@ namespace WpfApplication1
                             switch (operation)
                             {
                                 case "--FOCUS-":
-                                    // Cambia programma col focus
-                                    foreach (ListViewRow item in listView1.Items)
+                                    if (listView1Mutex.WaitOne(1000))
                                     {
-                                        if (item.Nome.Equals(progName))
+                                        // Cambia programma col focus
+                                        foreach (ListViewRow item in listView1.Items)
                                         {
-                                            item.Stato = "Focus";
+                                            if (item.Nome.Equals(progName))
+                                            {
+                                                item.Stato = "Focus";
+                                            }
+                                            else if (item.Stato.Equals("Focus"))
+                                                item.Stato = "Background";
                                         }
-                                        else if (item.Stato.Equals("Focus"))
-                                            item.Stato = "Background";
-                                    }
+                                        listView1Mutex.ReleaseMutex();
+                                    }                                    
                                     break;
                                 case "--CLOSE-":
-                                    // Rimuovi programma dalla listView
-                                    foreach (ListViewRow item in listView1.Items)
+                                    if (listView1Mutex.WaitOne(1000))
                                     {
-                                        if (item.Nome.Equals(progName))
+                                        // Rimuovi programma dalla listView
+                                        foreach (ListViewRow item in listView1.Items)
                                         {
-                                            listView1.Dispatcher.Invoke(delegate
+                                            if (item.Nome.Equals(progName))
                                             {
-                                                listView1.Items.Remove(item);
+                                                listView1.Dispatcher.Invoke(delegate
+                                                {
+                                                    listView1.Items.Remove(item);
                                                 // Alternativa senza cancellare la riga: item.Stato = "Terminata";
                                                 // Ma problemi quando ritorna in focus un programma con lo stesso nome,
                                                 // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
                                             });
-                                            break;
+                                                break;
+                                            }
                                         }
-                                    }
+                                        listView1Mutex.ReleaseMutex();
+                                    }                                    
                                     break;
                                 case "--OPENP-":
                                     listView1.Dispatcher.Invoke(delegate
@@ -316,7 +299,11 @@ namespace WpfApplication1
                 notificationsThread.Interrupt();
 
                 // Svuota listView
-                listView1.Items.Clear();
+                if (listView1Mutex.WaitOne(1000))
+                {
+                    listView1.Items.Clear();
+                    listView1Mutex.ReleaseMutex();
+                }
 
                 // Ripristina cattura comando
                 textBoxComando.Text = "";
