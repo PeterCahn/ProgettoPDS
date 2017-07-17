@@ -1,21 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Data;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Threading;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
@@ -25,18 +24,19 @@ using System.Threading;
  * - Quando chiudo una finstra, se questa ha una percentuale != 0, siccome la sua riga viene eliminata dalla listView le percentuali non raggiungono più il 100%:
  *   siccome c'è scritto di mostrare la percentuale di tempo in cui una finstra è stata in focus dal momento della connessione, a me questo comportamento anche se
  *   strano sembra corretto. Boh, vedere un po' di chiarire.
+ * - Eccessiva lentezza nel ricevere e aggiornare la lista delle finestre aperte sul server. Possibile riduzione dimensione icona inviata lato server.
+ */
 
 namespace WpfApplication1
 {
-    class ListViewRow 
+    class ListViewRow
     {
-        public string Icona { get; set; }
+        public BitmapImage Icona { get; set; } // WPF accetta, tra gli altri, Bitmapimage, non Bitmap puro
         public string Nome { get; set; }
         public string Stato { get; set; }
         public string PercentualeFocus { get; set; }
         public float TempoFocus { get; set; }
     }
-
 
     public partial class MainWindow : Window
     {
@@ -45,8 +45,9 @@ namespace WpfApplication1
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
+        private ImageList imageList = new ImageList();     
 
-        // Mutx necessario alla gestione delle modifiche nella listView1
+        // Mutex necessario alla gestione delle modifiche nella listView1
         private static Mutex listView1Mutex = new Mutex();
 
         public MainWindow()
@@ -73,7 +74,7 @@ namespace WpfApplication1
                 // Accertati di aver ricevuto il permesso, altrimenti lancia eccezione
                 permission.Demand();
 
-                /* // Interrogazione DNS, crea IPHostEntry contenente vettore di IPAddress di risultato          
+                /* Interrogazione DNS, crea IPHostEntry contenente vettore di IPAddress di risultato          
                 IPHostEntry ipHost = Dns.GetHostEntry(textIpAddress.Text); */
 
                 // Ricava IPAddress da risultati interrogazione DNS
@@ -116,12 +117,11 @@ namespace WpfApplication1
             }
         }
 
-        /* TODO: aggiungi anche icona */
-        void addItemToListView(string nomeProgramma)
+        void addItemToListView(string nomeProgramma, BitmapImage bmp)
         {
             if (listView1Mutex.WaitOne(1000))
             {
-                listView1.Items.Add(new ListViewRow() { Icona = "", Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });
+                listView1.Items.Add(new ListViewRow() { Icona = bmp, Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });                
                 listView1Mutex.ReleaseMutex();
             }
         }
@@ -137,8 +137,10 @@ namespace WpfApplication1
             try
             {
                 DateTime lastUpdate = DateTime.Now;
+
                 // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
-                Thread.Sleep(1);
+                //      Piero: senza sleep (dopo aver messo l'icona), non viene mostrato nessun NaN
+                //Thread.Sleep(1);
                 while (true)
                 {
                     if (listView1Mutex.WaitOne(1000))
@@ -183,95 +185,174 @@ namespace WpfApplication1
         {
             try
             {
-                int dim = -1;
-                string stringRicevuta;
                 byte[] buf = new byte[1024];
+                StringBuilder completeMessage = new StringBuilder();
+                NetworkStream networkStream = new NetworkStream(sock);
 
                 // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
                 // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
                 // Available() ritorna il numero di dati da leggere
                 // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
 
-                // Connected() ritorna false se il socket non è inizializzato
-                while (sock.Connected)
+                // TODO: Da vedere se CanRead è la scelta migliore per il NetworkStream. Giunto all'uso di NetworkStream dopo diverse soluzioni per 
+                //       la gestione singola dei byte in arrivo. In questa configurazione il riempimento della lista è troppo lento, specialmente dopo una riconnessione.
+                //       Probabilmente più efficiente tornare alla precedente Socket.Connected che verifica se il socket è connesso o meno
+                while (networkStream.CanRead)
                 {
+                    int i = 0;
+                    int progNameLength = 0;
+                    string progName = null;
+                    string operation = null;
+                    StringBuilder sb = new StringBuilder();
                     try
                     {
-                        dim = sock.Receive(buf);
+                        /* Leggi e salva il tipo di operazione */
+                        char c;
+                        sb.Append( (char) networkStream.ReadByte() );
+                        sb.Append( (char) networkStream.ReadByte() );
+                        do
+                        {
+                            c = (char) networkStream.ReadByte();
+                            sb.Append(c);
+
+                        } while (c != '-');
+                        operation = sb.ToString(); 
+                        sb.Clear();
+
+                        /* Leggi e salva lunghezza nome programma */
+                        i = 0;                       
+                        do
+                        {
+                            c = (char)networkStream.ReadByte();
+                            buf[i++] = (byte) c;
+                        }
+                        while (networkStream.DataAvailable && c != '-');
+                        progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i-1));
+
+                        i = 0;
+                        /* Leggi e salva nome programma */
+                        while ( i < progNameLength)
+                        {
+                            sb.Append( (char) networkStream.ReadByte() );
+                            i++;
+                        }
+                        progName = sb.ToString();
+                        
                     }
-                    catch (SocketException se)
+                    catch (Exception e)
                     {
                         // TODO: fai qualcosa
                     }
-                    if (dim != -1)
+
+                    /* Possibili valori ricevuti:
+                        * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
+                        * --CLOSE-<lunghezza_nome>-<nome_app_chiusa>
+                        * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>
+                        */                        
+
+                    switch (operation)
                     {
-                        stringRicevuta = Encoding.ASCII.GetString(buf, 0, dim);
-
-                        /* Possibili valori ricevuti:
-                         * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
-                         * --CLOSE-<lunghezza_nome>-<nome_app_chiusa>
-                         * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>
-                         */
-
-                        // È possibile che si concatenino stringhe indicanti più finestre, perciò analizza la stringa ricevuta
-                        // e gestisci questa eventualità
-                        int position = 0;
-                        while (position < stringRicevuta.Length)
-                        {
-                            String operation = stringRicevuta.Substring(position, 8);
-                            String temp = stringRicevuta.Substring(position + 8, stringRicevuta.Length - 8 - position);
-                            String lenght = temp.Substring(0, temp.IndexOf("-"));
-                            String progName = temp.Substring(temp.IndexOf("-") + 1, Int32.Parse(lenght));
-                            switch (operation)
+                        case "--FOCUS-":
+                            if (listView1Mutex.WaitOne(1000))
                             {
-                                case "--FOCUS-":
-                                    if (listView1Mutex.WaitOne(1000))
+                                // Cambia programma col focus
+                                foreach (ListViewRow item in listView1.Items)
+                                {
+                                    if (item.Nome.Equals(progName))
                                     {
-                                        // Cambia programma col focus
-                                        foreach (ListViewRow item in listView1.Items)
-                                        {
-                                            if (item.Nome.Equals(progName))
-                                            {
-                                                item.Stato = "Focus";
-                                            }
-                                            else if (item.Stato.Equals("Focus"))
-                                                item.Stato = "Background";
-                                        }                                        
-                                        listView1Mutex.ReleaseMutex();
+                                        item.Stato = "Focus";
                                     }
-                                    break;
-                                case "--CLOSE-":
-                                    // Rimuovi programma dalla listView
-                                    foreach (ListViewRow item in listView1.Items)
-                                    {
-                                        if (item.Nome.Equals(progName))
-                                        {
-                                            listView1.Dispatcher.Invoke(delegate
-                                            {
-                                                if (listView1Mutex.WaitOne(1000))
-                                                {
-                                                    listView1.Items.Remove(item);
-                                                        // Alternativa senza cancellare la riga: item.Stato = "Terminata";
-                                                        // Ma problemi quando ritorna in focus un programma con lo stesso nome,
-                                                        // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
-                                                    listView1Mutex.ReleaseMutex();
-                                                }
-                                            });
-                                            break;
-                                        }
-                                    }                            
-                                    break;
-                                case "--OPENP-":
+                                    else if (item.Stato.Equals("Focus"))
+                                        item.Stato = "Background";
+                                }                                        
+                                listView1Mutex.ReleaseMutex();
+                            }
+                            break;
+                        case "--CLOSE-":
+                            // Rimuovi programma dalla listView
+                            foreach (ListViewRow item in listView1.Items)
+                            {
+                                if (item.Nome.Equals(progName))
+                                {
                                     listView1.Dispatcher.Invoke(delegate
                                     {
-                                        addItemToListView(progName);
+                                        if (listView1Mutex.WaitOne(1000))
+                                        {
+                                            listView1.Items.Remove(item);
+                                                // Alternativa senza cancellare la riga: item.Stato = "Terminata";
+                                                // Ma problemi quando ritorna in focus un programma con lo stesso nome,
+                                                // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
+                                            listView1Mutex.ReleaseMutex();
+                                        }
                                     });
                                     break;
+                                }
+                            }                            
+                            break;
+                        case "--OPENP-":
+                                    
+                            Bitmap bitmap;
+                            try
+                            {
+                                /* Leggi e salva la lunghezza dell'icona leggendo i successivi byte fino a '-' (escludendo il primo) */
+                                i = 0;
+                                char c = (char)networkStream.ReadByte(); // leggi il primo trattino
+                                do
+                                {
+                                    c = (char)networkStream.ReadByte();
+                                    buf[i++] = (byte)c;
+
+                                } while (networkStream.DataAvailable && c != '-');
+                                int bmpLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
+
+                                /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
+                                byte[] bmpData = new byte[bmpLength];
+                                byte b;
+                                i = 0;
+                                do
+                                {
+                                    bmpData[i++] = (byte)networkStream.ReadByte();
+
+                                } while (networkStream.DataAvailable && i != bmpLength);
+
+                                /* Crea la bitmap a partire dal byte array */
+                                bitmap = CopyDataToBitmap(bmpData);
+
+                                BitmapImage bmpImage;
+                                using (MemoryStream stream = new MemoryStream())
+                                {
+                                    bitmap.Save(stream, ImageFormat.Bmp);
+
+                                    stream.Position = 0;
+                                    BitmapImage result = new BitmapImage();
+                                    result.BeginInit();
+                                    // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
+                                    // Force the bitmap to load right now so we can dispose the stream.
+                                    result.CacheOption = BitmapCacheOption.OnLoad;
+                                    result.StreamSource = stream;
+                                    result.EndInit();
+                                    result.Freeze();
+                                    bmpImage = result;
+                                }
+
+                                listView1.Dispatcher.Invoke(delegate
+                                {
+                                    addItemToListView(progName, bmpImage);
+                                });
+
+                                
+                            }
+                            catch(Exception e)
+                            {
+                                // TODO: Gestisci eccezione
+                                break;
                             }
 
-                            position += 9 + lenght.Length + Int32.Parse(lenght);
-                        }
+                            break;
                     }
+                        
+                    
+                    
                 }
             }
             catch (ThreadInterruptedException exception)
@@ -280,6 +361,28 @@ namespace WpfApplication1
                 // TODO: check che il thread muore davvero
                 return;
             }
+        }
+
+        public Bitmap CopyDataToBitmap(byte[] data)
+        {
+            //Here create the Bitmap to the know height, width and format
+            Bitmap bmp = new Bitmap(256, 256, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+
+            //Create a BitmapData and Lock all pixels to be written 
+            BitmapData bmpData = bmp.LockBits(
+                                 new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
+                                 ImageLockMode.WriteOnly, bmp.PixelFormat);
+
+            //Copy the data from the byte array into BitmapData.Scan0
+            Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
+
+
+            //Unlock the pixels
+            bmp.UnlockBits(bmpData);
+
+
+            //Return the bitmap 
+            return bmp;
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
@@ -319,7 +422,7 @@ namespace WpfApplication1
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
             }
-            catch (Exception exc) { MessageBox.Show(exc.ToString()); }
+            catch (Exception exc) { System.Windows.MessageBox.Show(exc.ToString()); }
         }
 
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
@@ -329,10 +432,10 @@ namespace WpfApplication1
             buttonAnnullaCattura.Visibility = Visibility.Visible;
 
             // Crea event handler per scrivere i tasti premuti
-            this.KeyDown += new KeyEventHandler(OnButtonKeyDown);
+            this.KeyDown += new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
         }
 
-        private void OnButtonKeyDown(object sender, KeyEventArgs e)
+        private void OnButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (textBoxComando.Text.Length == 0)
             {
@@ -380,7 +483,7 @@ namespace WpfApplication1
                 comandoDaInviare.Clear();
 
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
-                this.KeyDown -= new KeyEventHandler(OnButtonKeyDown);
+                this.KeyDown -= new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
 
             }
             catch (Exception exc)

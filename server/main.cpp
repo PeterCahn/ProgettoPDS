@@ -10,7 +10,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 
-#include <windows.h>
+#include <Windows.h>
 #include <Winsock2.h>
 #include <ws2tcpip.h>
 #include <stdlib.h>
@@ -22,6 +22,8 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <strsafe.h>
+#include <Wingdi.h>
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -29,6 +31,8 @@
 
 #define DEFAULT_BUFLEN 1024
 #define DEFAULT_PORT  "27015"
+
+using namespace std;
 
 /* Definisce che tipo di notifica è associata alla stringa rappresentante il nome di un finestra da inviare al client */
 enum operation {
@@ -39,18 +43,24 @@ enum operation {
 
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 SOCKET acceptConnection();
-char* getForeground();
+string getForeground();
+string getTitleFromHwnd(HWND hwnd);
 void receiveCommands(SOCKET* clientSocket); 
-void sendApplicationToClient(SOCKET* clientSocket, std::string progName, operation op);
+void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op);
 DWORD WINAPI notificationsManagement(LPVOID lpParam);
-void sendKeystrokesToProgram(std::vector<UINT> vKeysList);
+void sendKeystrokesToProgram(vector<UINT> vKeysList);
+void ErrorExit(LPTSTR lpszFunction);
+HICON getHICONfromHWND(HWND hwnd);
+HBITMAP getHBITMAPfromHICON(HICON hIcon);
+PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
+
 
 int main(int argc, char* argv[])
 {
 	SOCKET clientSocket;
 	
 	while (true) {
-		std::cout << "In attesa della connessione di un client..." << std::endl;
+		cout << "In attesa della connessione di un client..." << endl;
 		clientSocket = acceptConnection();
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
@@ -71,7 +81,7 @@ int main(int argc, char* argv[])
 		/* Chiudi la connessione */
 		int iResult = shutdown(clientSocket, SD_SEND);
 		if (iResult == SOCKET_ERROR) {
-			std::cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << std::endl;
+			cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
 			closesocket(clientSocket);
 			WSACleanup();
 			return -1;
@@ -90,109 +100,116 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lpParam);
 
 	/* Stampa ed invia tutte le finestre */
-	std::cout << "Applicazioni attive:" << std::endl;
-	std::vector<std::string> currentProgNames;
-	// Aggiungi la finstra di default (Desktop)
-	currentProgNames.push_back("Desktop");
-	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgNames));
-	std::cout << "Programmi aperti: " << std::endl;
-	for each (std::string progName in currentProgNames) {
-		std::cout << "- " << progName << std::endl;
-		sendApplicationToClient(clientSocket, progName, OPEN);
+	cout << "Applicazioni attive:" << endl;
+	vector<HWND> currentProgs;
+
+	// Check aggiunta finstra di default (Desktop)
+	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
+	cout << "Programmi aperti: " << endl;
+	for each (HWND hwnd in currentProgs) {		
+		cout << "- " << getTitleFromHwnd(hwnd) << endl;
+		sendApplicationToClient(clientSocket, hwnd, OPEN);
 	}
 
-	/* Stampa ed invia finestra col focus */
-	char currentForeground[MAX_PATH];
-	strcpy_s(currentForeground, MAX_PATH, getForeground());
-	printf("Applicazione col focus:\n- %s\n", currentForeground);
-	sendApplicationToClient(clientSocket, currentForeground, FOCUS);
+	/* Stampa ed invia finestra col focus */	
+	HWND currentForegroundHwnd = GetForegroundWindow();
+	cout << "Applicazione col focus:" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+	sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 
 	/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 	while (true) {
 		// Esegui ogni mezzo secondo
-		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		this_thread::sleep_for(chrono::milliseconds(500));
 
 		/* Variazioni lista programmi */
-		std::vector<std::string> tempProgNames;
-		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&tempProgNames));
+		vector<HWND> tempProgs;
+		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&tempProgs));
+
 		// Check nuova finestra
-		for each(std::string tempProgName in tempProgNames) {
-			if (std::find(currentProgNames.begin(), currentProgNames.end(), tempProgName) == currentProgNames.end()) {
-				// currentProgNames non contiene questo programma (quindi è stato aperto ora)
-				currentProgNames.push_back(tempProgName);
-				std::cout << "Nuova finestra aperta!" << std::endl << "- " << tempProgName << std::endl;
-				sendApplicationToClient(clientSocket, tempProgName, OPEN);
+		for each(HWND currentHwnd in tempProgs) {
+			if ( find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
+				// currentProgs non contiene questo programma (quindi è stato aperto ora)
+				currentProgs.push_back(currentHwnd);
+				cout << "Nuova finestra aperta!" << endl << "- " << getTitleFromHwnd(currentHwnd) << endl;
+				sendApplicationToClient(clientSocket, currentHwnd, OPEN);
 			}
 		}
 		
 		// Check chiusura finestra
-		std::vector<std::string> toBeDeleted;
-		for each (std::string currentProgName in currentProgNames) {
-			if ((currentProgName.compare("Desktop") != 0) && 
-				(std::find(tempProgNames.begin(), tempProgNames.end(), currentProgName) == tempProgNames.end())) {
-				// tempProgNames non contiene più currentProgName
-				std::cout << "Finestra chiusa!" << std::endl << "- " << currentProgName << std::endl;
-				sendApplicationToClient(clientSocket, currentProgName, CLOSE);
-				toBeDeleted.push_back(currentProgName);
+		vector<HWND> toBeDeleted;
+		for each (HWND currentHwnd in currentProgs) {
+			if ( find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end() ) {
+				// tempProgs non contiene più currentHwnd
+				cout << "Finestra chiusa!" << endl << "- " << getTitleFromHwnd(currentHwnd) << endl;
+				sendApplicationToClient(clientSocket, currentHwnd, CLOSE);
+				toBeDeleted.push_back(currentHwnd);
 			}
 		}
-		for each (std::string deleteThis in toBeDeleted) {
+		for each (HWND deleteThis in toBeDeleted) {
 			// Ricava index di deleteThis in currentProgNames per cancellarlo
-			auto index = std::find(currentProgNames.begin(), currentProgNames.end(), deleteThis);
-			currentProgNames.erase(index);
+			auto index = find(currentProgs.begin(), currentProgs.end(), deleteThis);
+			currentProgs.erase(index);
 		}		
 		
 		/* Variazioni focus */
-		char tempForeground[MAX_PATH];
-		strcpy_s(tempForeground, MAX_PATH, getForeground());
-		if (strcmp(tempForeground, currentForeground) != 0) {
+		HWND tempForeground = GetForegroundWindow();
+		if ( tempForeground != currentForegroundHwnd ) {
 			// Allora il programma che ha il focus è cambiato
-			strcpy_s(currentForeground, MAX_PATH, tempForeground);
-			if (strcmp(currentForeground, "") == 0)
-				strcpy_s(currentForeground, MAX_PATH, "Desktop");
-			std::cout << "Applicazione col focus cambiata! Ora e':" << std::endl << "- " << currentForeground << std::endl;
-			sendApplicationToClient(clientSocket, currentForeground, FOCUS);
+			currentForegroundHwnd = tempForeground;			
+			cout << "Applicazione col focus cambiata! Ora e':" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+			sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 		}
 	}
 
 }
 
-char* getForeground() {
+
+string getTitleFromHwnd(HWND hwnd) {
 	char title[MAX_PATH];
 
-	HWND handle = GetForegroundWindow();
-	GetWindowText(handle, title, sizeof(title));
+	GetWindowText(hwnd, title, sizeof(title));
 	if (strcmp(title, "") == 0)
 		strcpy_s(title, MAX_PATH, "Desktop");
 
-	return title;
+	return string(title);
+}
+
+string getForeground() {
+	HWND handle = GetForegroundWindow();
+	return getTitleFromHwnd(handle);
 }
 
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 {
-	char class_name[80];
-	char title[MAX_PATH];
-	WINDOWINFO info;
+	// Reinterpreta LPARAM lParam come puntatore alla lista dei nomi 
+	vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
 
-	// Reinterpreta LPARAM lParam come puntatore a SOCKET 
-	std::vector<std::string>* progNames = (std::vector<std::string>*)(lParam);
-
-	// Aggiungi i nomi dei programmi aperti al vector<std::string> ricevuto
-	if (IsWindowVisible(hwnd)) {
-		GetWindowText(hwnd, title, sizeof(title));
-		if (strlen(title) != 0) 
-			(*progNames).push_back(title);
+	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
+	if (IsWindowVisible(hwnd)) {		
+		if ( getTitleFromHwnd(hwnd).length()  != 0) 
+			(*progNames).push_back(hwnd);
 	}
 
 	return TRUE;
 }
 
-/* TODO: inviare anche l'icona */
+/* TODO: inviare anche l'icona (in progress) */
 /* Invia il nome della finestra e l'informazione ad esso associata al client 
- * Il formato del messaggio è --<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
- */
-void sendApplicationToClient(SOCKET* clientSocket, std::string progName, operation op) {
+ * Il formato del messaggio per le operazioni CLOSE e FOCUS è :
+ *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
+ *
+ * Se l'operazione è OPEN, aggiunge al precedente formato la lunghezza del file contenente l'icona 
+ * seguito dal file stesso secondo il seguente formato:
+ *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>-<lunghezza_file_icona>-<dati_file_icona_bmp>
+ *
+ * NB: in notificationsManagement il primo check è quello di nuove finestre (operazione OPEN), i successivi check (FOCUS/CLOSE)
+ *	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
+ */ 
+void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 	
+	string progName(getTitleFromHwnd(hwnd));
+	int lBuf = 0;
+
 	char buf[MAX_PATH + 12];	// 12 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
 	if (op == OPEN) {
 		strcpy_s(buf, MAX_PATH + 12, "--OPENP-");
@@ -203,18 +220,88 @@ void sendApplicationToClient(SOCKET* clientSocket, std::string progName, operati
 	else {
 		strcpy_s(buf, MAX_PATH + 12, "--FOCUS-");
 	}	
-	strcat_s(buf, MAX_PATH + 12, std::to_string(progName.length()).c_str());
+	strcat_s(buf, MAX_PATH + 12, to_string(progName.length()).c_str());
 	strcat_s(buf, MAX_PATH + 12, "-");
 	strcat_s(buf, MAX_PATH + 12, progName.c_str());
+
+	lBuf = strlen(buf);
+	BYTE* lpPixels;
+
+	/* Se è una nuova finestra aggiungere in coda lunghezza file icona e file icona stesso  */
+	if (op == OPEN) {
+		HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));
+		PBITMAPINFO pbi = CreateBitmapInfoStruct(hSource);
+		HDC hdc = GetDC(NULL);
+		HDC hdcSource = CreateCompatibleDC(hdc);
+
+		BITMAPINFO MyBMInfo = { 0 };
+		MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
+
+		// Get the BITMAPINFO structure from the bitmap
+		int res;
+		if ( (res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0 )
+		{
+			ErrorExit("GetDIBits1()");
+		}
+
+		// create the pixel buffer
+		lpPixels = new BYTE[MyBMInfo.bmiHeader.biSizeImage];
+		
+		MyBMInfo.bmiHeader.biCompression = BI_RGB;
+		
+		// Call GetDIBits a second time, this time to (format and) store the actual
+		// bitmap data (the "pixels") in the buffer lpPixels		
+		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+		{
+			ErrorExit("GetDIBits2()");
+		}		
+		
+		int len = MyBMInfo.bmiHeader.biSizeImage;
+		strcat_s(buf, MAX_PATH, "-");
+		strcat_s(buf, MAX_PATH, to_string(len).c_str());
+		strcat_s(buf, MAX_PATH, "-");
+
+		/* Prepara un nuovo buffer con le ulteriori informazioni da inviare */
+		BYTE *buffer = new BYTE[lBuf + to_string(len).length() + 2 + len];
+		memcpy(buffer, buf, lBuf + to_string(len).length() + 2);
+		memcpy(buffer + +lBuf + to_string(len).length() + 2, lpPixels, len);
+
+		send(*clientSocket, (char*) buffer, lBuf + to_string(len).length() + 2 + len, 0);
+
+		DeleteObject(hSource);
+		ReleaseDC(NULL, hdcSource);
+		delete[] lpPixels;
+		delete[] buffer;
+		return;
+	}
 	
-	send(*clientSocket, buf, strlen(buf), 0);
+	send(*clientSocket, buf, lBuf, 0);
+	
+	return;
 }
 
 HICON getHICONfromHWND(HWND hwnd) {
-	return (HICON)GetClassLong(hwnd, GCL_HICON);
+
+	// Get the window icon
+	HICON hIcon = (HICON)(::SendMessageW(hwnd, WM_GETICON, ICON_SMALL, 0));
+	if (hIcon == 0) {
+		// Alternative method. Get from the window class
+		hIcon = reinterpret_cast<HICON>(::GetClassLongPtrW(hwnd, GCLP_HICONSM));
+	}
+	// Alternative: get the first icon from the main module 
+	if (hIcon == 0) {
+		hIcon = ::LoadIcon(GetModuleHandleW(0), MAKEINTRESOURCE(0));
+	}
+	// Alternative method. Use OS default icon
+	if (hIcon == 0) {
+		hIcon = ::LoadIcon(0, IDI_APPLICATION);
+	}
+
+	return hIcon;
+	//return (HICON)GetClassLong(hwnd, GCL_HICON);
 }
 
-HBITMAP convertHICONtoHBITMAP(HICON hIcon) {
+HBITMAP getHBITMAPfromHICON(HICON hIcon) {
 	int bitmapXdimension = 256;
 	int bitmapYdimension = 256;
 	HDC hDC = GetDC(NULL);
@@ -233,6 +320,72 @@ HBITMAP convertHICONtoHBITMAP(HICON hIcon) {
 	ReleaseDC(NULL, hDC);
 	DestroyIcon(hIcon);
 	return hResultBmp;
+}
+
+PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp)
+{
+	BITMAP bmp;
+	PBITMAPINFO pbmi;
+	WORD    cClrBits;
+
+	// Retrieve the bitmap color format, width, and height.  
+	if (!GetObject(hBmp, sizeof(BITMAP), (LPVOID*)&bmp)) {
+		std::cout << "Impossibile ottenere la PBITMAPINFO" << std::endl;
+		return nullptr;
+	}
+
+	// Convert the color format to a count of bits.
+	cClrBits = (WORD)(bmp.bmPlanes * bmp.bmBitsPixel);
+	if (cClrBits == 1)
+		cClrBits = 1;
+	else if (cClrBits <= 4)
+		cClrBits = 4;
+	else if (cClrBits <= 8)
+		cClrBits = 8;
+	else if (cClrBits <= 16)
+		cClrBits = 16;
+	else if (cClrBits <= 24)
+		cClrBits = 24;
+	else cClrBits = 32;
+
+	// Allocate memory for the BITMAPINFO structure. (This structure  
+	// contains a BITMAPINFOHEADER structure and an array of RGBQUAD  
+	// data structures.)  
+
+	if (cClrBits < 24)
+		pbmi = (PBITMAPINFO)LocalAlloc(LPTR,
+			sizeof(BITMAPINFOHEADER) +
+			sizeof(RGBQUAD) * (1 << cClrBits));
+
+	// There is no RGBQUAD array for these formats: 24-bit-per-pixel or 32-bit-per-pixel 
+
+	else
+		pbmi = (PBITMAPINFO)LocalAlloc(LPTR,
+			sizeof(BITMAPINFOHEADER));
+
+	// Initialize the fields in the BITMAPINFO structure.  
+
+	pbmi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	pbmi->bmiHeader.biWidth = bmp.bmWidth;
+	pbmi->bmiHeader.biHeight = bmp.bmHeight;
+	pbmi->bmiHeader.biPlanes = bmp.bmPlanes;
+	pbmi->bmiHeader.biBitCount = bmp.bmBitsPixel;
+	if (cClrBits < 24)
+		pbmi->bmiHeader.biClrUsed = (1 << cClrBits);
+
+	// If the bitmap is not compressed, set the BI_RGB flag.  
+	pbmi->bmiHeader.biCompression = BI_RGB;
+
+	// Compute the number of bytes in the array of color  
+	// indices and store the result in biSizeImage.  
+	// The width must be DWORD aligned unless the bitmap is RLE 
+	// compressed. 
+	pbmi->bmiHeader.biSizeImage = ((pbmi->bmiHeader.biWidth * cClrBits + 31) & ~31) / 8
+		* pbmi->bmiHeader.biHeight;
+	// Set biClrImportant to 0, indicating that all of the  
+	// device colors are important.  
+	pbmi->bmiHeader.biClrImportant = 0;
+	return pbmi;
 }
 
 SOCKET acceptConnection(void)
@@ -281,7 +434,7 @@ SOCKET acceptConnection(void)
 	}
 
 	// Setup the TCP listening socket
-	iResult = bind(listenSocket, result->ai_addr, (int)result->ai_addrlen);
+	iResult = ::bind(listenSocket, result->ai_addr, (int)result->ai_addrlen);
 	if (iResult == SOCKET_ERROR) {
 		std::cout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
 		freeaddrinfo(result);
@@ -365,6 +518,39 @@ void receiveCommands(SOCKET* clientSocket) {
 
 	} while (iResult > 0);
 	
+}
+
+void ErrorExit(LPTSTR lpszFunction)
+{
+	// Retrieve the system error message for the last-error code
+
+	LPVOID lpMsgBuf;
+	LPVOID lpDisplayBuf;
+	DWORD dw = GetLastError();
+
+	FormatMessage(
+		FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL,
+		dw,
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPTSTR)&lpMsgBuf,
+		0, NULL);
+
+	// Display the error message and exit the process
+
+	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
+		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+	StringCchPrintf((LPTSTR)lpDisplayBuf,
+		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+		TEXT("%s failed with error %d: %s"),
+		lpszFunction, dw, lpMsgBuf);
+	MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
+
+	LocalFree(lpMsgBuf);
+	LocalFree(lpDisplayBuf);
+	return;
 }
 
 void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
