@@ -307,7 +307,6 @@ namespace WpfApplication1
 
                                 /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
                                 byte[] bmpData = new byte[bmpLength];
-                                byte b;
                                 i = 0;
                                 do
                                 {
@@ -316,13 +315,14 @@ namespace WpfApplication1
                                 } while (networkStream.DataAvailable && i != bmpLength);
 
                                 /* Crea la bitmap a partire dal byte array */
-                                bitmap = CopyDataToBitmap(bmpData);
+                                bitmap = CopyDataToBitmap(bmpData);                  
+                                /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+                                bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
                                 BitmapImage bmpImage;
                                 using (MemoryStream stream = new MemoryStream())
                                 {
                                     bitmap.Save(stream, ImageFormat.Bmp);
-
                                     stream.Position = 0;
                                     BitmapImage result = new BitmapImage();
                                     result.BeginInit();
@@ -350,15 +350,13 @@ namespace WpfApplication1
 
                             break;
                     }
-                        
-                    
-                    
+
                 }
             }
             catch (ThreadInterruptedException exception)
             {
                 // TODO: c'è qualcosa da fare?
-                // TODO: check che il thread muore davvero
+                // TODO: check che il thread muoia davvero
                 return;
             }
         }

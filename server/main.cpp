@@ -103,7 +103,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	cout << "Applicazioni attive:" << endl;
 	vector<HWND> currentProgs;
 
-	// Check aggiunta finstra di default (Desktop)
+	// Check aggiunta finestra di default (Desktop)
 	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
 	cout << "Programmi aperti: " << endl;
 	for each (HWND hwnd in currentProgs) {		
