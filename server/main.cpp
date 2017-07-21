@@ -45,7 +45,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
 SOCKET acceptConnection();
 string getForeground();
 string getTitleFromHwnd(HWND hwnd);
-void receiveCommands(SOCKET* clientSocket); 
+void receiveCommands(SOCKET* clientSocket);
 void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op);
 DWORD WINAPI notificationsManagement(LPVOID lpParam);
 void sendKeystrokesToProgram(vector<UINT> vKeysList);
@@ -58,7 +58,7 @@ PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
 int main(int argc, char* argv[])
 {
 	SOCKET clientSocket;
-	
+
 	while (true) {
 		cout << "In attesa della connessione di un client..." << endl;
 		clientSocket = acceptConnection();
@@ -72,13 +72,13 @@ int main(int argc, char* argv[])
 		/* Thread principale attende eventuali comandi */
 		receiveCommands(&clientSocket);
 
-		/* TODO: Termina thread notificationsThread 
-		 * Attenzione! Chiamare TerminateThread o altro non è una buona pratica, 
+		/* TODO: Termina thread notificationsThread
+		 * Attenzione! Chiamare TerminateThread o altro non è una buona pratica,
 		 * come specificato nelle slide, perchè non si fa il cleanup prima della
 		 * morte del thread. Fare come scritto nelle slide
 		 */
 
-		/* Chiudi la connessione */
+		 /* Chiudi la connessione */
 		int iResult = shutdown(clientSocket, SD_SEND);
 		if (iResult == SOCKET_ERROR) {
 			cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
@@ -104,12 +104,21 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	vector<HWND> currentProgs;
 	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
 	cout << "Programmi aperti: " << endl;
-	for each (HWND hwnd in currentProgs) {		
-		cout << "- " << getTitleFromHwnd(hwnd) << endl;
+	bool desktopAlreadySent = FALSE;
+	for each (HWND hwnd in currentProgs) {
+		string windowTitle = getTitleFromHwnd(hwnd);
+		if (windowTitle.length() == 0 && !desktopAlreadySent) {
+			desktopAlreadySent = TRUE;
+			windowTitle = "Desktop";
+		}
+		else if (windowTitle.length() == 0 && desktopAlreadySent)
+			continue;
+
+		cout << "- " << windowTitle << endl;
 		sendApplicationToClient(clientSocket, hwnd, OPEN);
 	}
 
-	/* Stampa ed invia finestra col focus */	
+	/* Stampa ed invia finestra col focus */
 	HWND currentForegroundHwnd = GetForegroundWindow();
 	cout << "Applicazione col focus:" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
 	sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
@@ -125,36 +134,45 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 
 		// Check nuova finestra
 		for each(HWND currentHwnd in tempProgs) {
-			if ( find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
+			if (find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
 				// currentProgs non contiene questo programma (quindi è stato aperto ora)
-				currentProgs.push_back(currentHwnd);
-				cout << "Nuova finestra aperta!" << endl << "- " << getTitleFromHwnd(currentHwnd) << endl;
-				sendApplicationToClient(clientSocket, currentHwnd, OPEN);
+				string windowTitle = getTitleFromHwnd(currentHwnd);
+				if (windowTitle.length() != 0) {
+					currentProgs.push_back(currentHwnd);
+					cout << "Nuova finestra aperta!" << endl << "- " << windowTitle << endl;
+					sendApplicationToClient(clientSocket, currentHwnd, OPEN);
+				}
 			}
 		}
-		
+
 		// Check chiusura finestra
 		vector<HWND> toBeDeleted;
 		for each (HWND currentHwnd in currentProgs) {
-			if ( find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end() ) {
+			if (find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end()) {
 				// tempProgs non contiene più currentHwnd
-				cout << "Finestra chiusa!" << endl << "- " << getTitleFromHwnd(currentHwnd) << endl;
-				sendApplicationToClient(clientSocket, currentHwnd, CLOSE);
-				toBeDeleted.push_back(currentHwnd);
+				string windowTitle = getTitleFromHwnd(currentHwnd);
+				if (windowTitle.length() != 0) {
+					cout << "Finestra chiusa!" << endl << "- " << windowTitle << endl;
+					sendApplicationToClient(clientSocket, currentHwnd, CLOSE);
+					toBeDeleted.push_back(currentHwnd);
+				}
 			}
 		}
 		for each (HWND deleteThis in toBeDeleted) {
 			// Ricava index di deleteThis in currentProgNames per cancellarlo
 			auto index = find(currentProgs.begin(), currentProgs.end(), deleteThis);
 			currentProgs.erase(index);
-		}		
-		
+		}
+
 		/* Variazioni focus */
 		HWND tempForeground = GetForegroundWindow();
-		if ( tempForeground != currentForegroundHwnd ) {
+		if (tempForeground != currentForegroundHwnd) {
 			// Allora il programma che ha il focus è cambiato
-			currentForegroundHwnd = tempForeground;			
-			cout << "Applicazione col focus cambiata! Ora e':" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+			currentForegroundHwnd = tempForeground;
+			string windowTitle = getTitleFromHwnd(currentForegroundHwnd);
+			if (windowTitle.length() == 0)
+				windowTitle = "Desktop";
+			cout << "Applicazione col focus cambiata! Ora e':" << endl << "- " << windowTitle << endl;
 			sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 		}
 	}
@@ -166,8 +184,6 @@ string getTitleFromHwnd(HWND hwnd) {
 	char title[MAX_PATH];
 
 	GetWindowText(hwnd, title, sizeof(title));
-	if (strcmp(title, "") == 0)
-		strcpy_s(title, MAX_PATH, "Desktop");
 
 	return string(title);
 }
@@ -183,31 +199,31 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
 
 	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
-	if (IsWindowVisible(hwnd)) {		
-		if ( getTitleFromHwnd(hwnd).length()  != 0) 
-			(*progNames).push_back(hwnd);
-	}
+	if (IsWindowVisible(hwnd)) 
+		(*progNames).push_back(hwnd);
+	
 
 	return TRUE;
 }
 
 /* TODO: inviare anche l'icona (in progress) */
-/* Invia il nome della finestra e l'informazione ad esso associata al client 
+/* Invia il nome della finestra e l'informazione ad esso associata al client
  * Il formato del messaggio per le operazioni CLOSE e FOCUS è :
  *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
  *
- * Se l'operazione è OPEN, aggiunge al precedente formato la lunghezza del file contenente l'icona 
+ * Se l'operazione è OPEN, aggiunge al precedente formato la lunghezza del file contenente l'icona
  * seguito dal file stesso secondo il seguente formato:
  *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>-<lunghezza_file_icona>-<dati_file_icona_bmp>
  *
  * NB: in notificationsManagement il primo check è quello di nuove finestre (operazione OPEN), i successivi check (FOCUS/CLOSE)
  *	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
- */ 
+ */
 void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 
-	printf("DEBUGGGGGGGGGGGGGGGGGGG Invio!\n");
-	
 	string progName(getTitleFromHwnd(hwnd));
+	if (progName.length() == 0)
+		progName = "Desktop";
+
 	int lBuf = 0;
 
 	char buf[MAX_PATH + 12];	// 12 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
@@ -219,7 +235,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 	}
 	else {
 		strcpy_s(buf, MAX_PATH + 12, "--FOCUS-");
-	}	
+	}
 	strcat_s(buf, MAX_PATH + 12, to_string(progName.length()).c_str());
 	strcat_s(buf, MAX_PATH + 12, "-");
 	strcat_s(buf, MAX_PATH + 12, progName.c_str());
@@ -239,23 +255,23 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 
 		// Get the BITMAPINFO structure from the bitmap
 		int res;
-		if ( (res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0 )
+		if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
 			ErrorExit("GetDIBits1()");
 		}
 
 		// create the pixel buffer
 		lpPixels = new BYTE[MyBMInfo.bmiHeader.biSizeImage];
-		
+
 		MyBMInfo.bmiHeader.biCompression = BI_RGB;
-		
+
 		// Call GetDIBits a second time, this time to (format and) store the actual
 		// bitmap data (the "pixels") in the buffer lpPixels		
 		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
 			ErrorExit("GetDIBits2()");
-		}		
-		
+		}
+
 		int len = MyBMInfo.bmiHeader.biSizeImage;
 		strcat_s(buf, MAX_PATH, "-");
 		strcat_s(buf, MAX_PATH, to_string(len).c_str());
@@ -266,7 +282,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		memcpy(buffer, buf, lBuf + to_string(len).length() + 2);
 		memcpy(buffer + +lBuf + to_string(len).length() + 2, lpPixels, len);
 
-		send(*clientSocket, (char*) buffer, lBuf + to_string(len).length() + 2 + len, 0);
+		send(*clientSocket, (char*)buffer, lBuf + to_string(len).length() + 2 + len, 0);
 
 		DeleteObject(hSource);
 		ReleaseDC(NULL, hdcSource);
@@ -274,9 +290,9 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		delete[] buffer;
 		return;
 	}
-	
+
 	send(*clientSocket, buf, lBuf, 0);
-	
+
 	return;
 }
 
@@ -480,13 +496,13 @@ SOCKET acceptConnection(void)
 
 void receiveCommands(SOCKET* clientSocket) {
 	// Ricevi finchè il client non chiude la connessione
-	char* recvbuf =(char*)malloc(sizeof(char)*DEFAULT_BUFLEN);
+	char* recvbuf = (char*)malloc(sizeof(char)*DEFAULT_BUFLEN);
 	int iResult;
 	do {
 		iResult = recv(*clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
 		if (iResult == 0)
 			std::cout << "Chiusura connessione...\n" << std::endl << std::endl;
-		else if(iResult < 0) {
+		else if (iResult < 0) {
 			std::cout << "recv() fallita con errore: " << WSAGetLastError() << std::endl;;
 			closesocket(*clientSocket);
 			WSACleanup();
@@ -495,7 +511,7 @@ void receiveCommands(SOCKET* clientSocket) {
 
 		// Questa stringa contiene i virtual-keys ricevuti separati da '+'
 		std::string stringaRicevuta(recvbuf);
-		
+
 		// Converti la stringa in una lista di virtual-keyes
 		std::stringstream sstream(stringaRicevuta);
 		std::string virtualKey;
@@ -517,7 +533,7 @@ void receiveCommands(SOCKET* clientSocket) {
 		sendKeystrokesToProgram(vKeysList);
 
 	} while (iResult > 0);
-	
+
 }
 
 void ErrorExit(LPTSTR lpszFunction)
@@ -563,10 +579,10 @@ void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	progHandle = GetForegroundWindow();
 
 	// Riempi vettore di keystroke da inviare
-	keystrokes_lenght = vKeysList.size();		
+	keystrokes_lenght = vKeysList.size();
 	keystroke = new INPUT[keystrokes_lenght * 2];	// *2 perchè abbiamo pressione e rilascio dei tasti
 	// Pressione dei tasti
-	for (i = 0; i < keystrokes_lenght; ++i)	{
+	for (i = 0; i < keystrokes_lenght; ++i) {
 		keystroke[i * 2].type = INPUT_KEYBOARD;		// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
 													// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
 		keystroke[i * 2].ki.wVk = vKeysList[i];		// Virtual-key code dell'input.																						  

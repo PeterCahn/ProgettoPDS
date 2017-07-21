@@ -245,6 +245,7 @@ namespace WpfApplication1
                     catch (Exception e)
                     {
                         var excString = e.ToString();
+                        //TODO: Fix disallineamenti!
                     }
 
                     /* Possibili valori ricevuti:
@@ -295,7 +296,8 @@ namespace WpfApplication1
 
                         case "--OPENP-":
                             /* Ricevi icona processo */
-                            Bitmap bitmap;
+                            Bitmap bitmap = new Bitmap(64, 64);
+                            bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
                             Array.Clear(buf, 0, buf.Length);
                             try
                             {
