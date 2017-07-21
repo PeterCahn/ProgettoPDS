@@ -102,8 +102,6 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	/* Stampa ed invia tutte le finestre */
 	cout << "Applicazioni attive:" << endl;
 	vector<HWND> currentProgs;
-
-	// Check aggiunta finestra di default (Desktop)
 	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
 	cout << "Programmi aperti: " << endl;
 	for each (HWND hwnd in currentProgs) {		
@@ -206,6 +204,8 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
  *	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
  */ 
 void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
+
+	printf("DEBUGGGGGGGGGGGGGGGGGGG Invio!\n");
 	
 	string progName(getTitleFromHwnd(hwnd));
 	int lBuf = 0;

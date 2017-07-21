@@ -12,6 +12,7 @@ using System.Threading;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -204,6 +205,8 @@ namespace WpfApplication1
                     string progName = null;
                     string operation = null;
                     StringBuilder sb = new StringBuilder();
+                    Array.Clear(buf, 0, buf.Length);
+
                     try
                     {
                         /* Leggi e salva il tipo di operazione */
@@ -229,8 +232,8 @@ namespace WpfApplication1
                         while (networkStream.DataAvailable && c != '-');
                         progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i-1));
 
-                        i = 0;
                         /* Leggi e salva nome programma */
+                        i = 0;
                         while ( i < progNameLength)
                         {
                             sb.Append( (char) networkStream.ReadByte() );
@@ -241,13 +244,13 @@ namespace WpfApplication1
                     }
                     catch (Exception e)
                     {
-                        // TODO: fai qualcosa
+                        var excString = e.ToString();
                     }
 
                     /* Possibili valori ricevuti:
                         * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
                         * --CLOSE-<lunghezza_nome>-<nome_app_chiusa>
-                        * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>
+                        * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>-<dimensione_bitmap>-<bitmap>
                         */                        
 
                     switch (operation)
@@ -289,9 +292,11 @@ namespace WpfApplication1
                                 }
                             }                            
                             break;
+
                         case "--OPENP-":
-                                    
+                            /* Ricevi icona processo */
                             Bitmap bitmap;
+                            Array.Clear(buf, 0, buf.Length);
                             try
                             {
                                 /* Leggi e salva la lunghezza dell'icona leggendo i successivi byte fino a '-' (escludendo il primo) */
@@ -307,13 +312,8 @@ namespace WpfApplication1
 
                                 /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
                                 byte[] bmpData = new byte[bmpLength];
-                                i = 0;
-                                do
-                                {
-                                    bmpData[i++] = (byte)networkStream.ReadByte();
-
-                                } while (networkStream.DataAvailable && i != bmpLength);
-
+                                networkStream.Read(bmpData, 0, bmpLength);
+                              
                                 /* Crea la bitmap a partire dal byte array */
                                 bitmap = CopyDataToBitmap(bmpData);                  
                                 /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
