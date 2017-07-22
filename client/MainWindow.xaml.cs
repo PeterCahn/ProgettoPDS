@@ -233,19 +233,14 @@ namespace WpfApplication1
                         progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i-1));
 
                         /* Leggi e salva nome programma */
-                        i = 0;
-                        while ( i < progNameLength)
-                        {
-                            sb.Append( (char) networkStream.ReadByte() );
-                            i++;
-                        }
-                        progName = sb.ToString();
-                        
+                        byte[] buffer = new byte[progNameLength];
+                        networkStream.Read(buffer, 0, progNameLength);
+                        progName = Encoding.ASCII.GetString(buffer, 0, progNameLength);
                     }
                     catch (Exception e)
                     {
                         var excString = e.ToString();
-                        //TODO: Fix disallineamenti!
+                        //TODO: Reagire
                     }
 
                     /* Possibili valori ricevuti:
@@ -311,10 +306,16 @@ namespace WpfApplication1
 
                                 } while (networkStream.DataAvailable && c != '-');
                                 int bmpLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
+                                
 
                                 /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
                                 byte[] bmpData = new byte[bmpLength];
-                                networkStream.Read(bmpData, 0, bmpLength);
+                                int received = 0;
+                                while (received < bmpLength)
+                                {
+                                    received += networkStream.Read(bmpData, received, bmpLength-received);
+                                }
+                                
                               
                                 /* Crea la bitmap a partire dal byte array */
                                 bitmap = CopyDataToBitmap(bmpData);                  
