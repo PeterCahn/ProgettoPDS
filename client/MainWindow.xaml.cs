@@ -198,7 +198,7 @@ namespace WpfApplication1
                 // TODO: Da vedere se CanRead è la scelta migliore per il NetworkStream. Giunto all'uso di NetworkStream dopo diverse soluzioni per 
                 //       la gestione singola dei byte in arrivo. In questa configurazione il riempimento della lista è troppo lento, specialmente dopo una riconnessione.
                 //       Probabilmente più efficiente tornare alla precedente Socket.Connected che verifica se il socket è connesso o meno
-                while (networkStream.CanRead)
+                while (networkStream.CanRead && sock.Connected)
                 {
                     int i = 0;
                     int progNameLength = 0;
@@ -389,7 +389,7 @@ namespace WpfApplication1
         {
             try
             {
-                // Disabilita e chiudi socket 
+                // Disabilita e chiudi socket
                 sock.Shutdown(SocketShutdown.Both);
                 sock.Close();
 
