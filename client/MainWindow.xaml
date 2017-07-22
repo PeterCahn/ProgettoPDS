@@ -21,10 +21,10 @@
         <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="1,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="3" SelectionChanged="listView_SelectionChanged" Foreground="Black" Grid.Column="1">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Width="40" Header="Icona">
+                    <GridViewColumn Width="Auto" Header="Icona">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
-                                <Image Width="16" Height="16" Source="{Binding Icona}">
+                                <Image Width="16" Height="16" Source="{Binding Icona}" >
                                     <Image.Style>
                                         <Style TargetType="{x:Type Image}"></Style>
                                     </Image.Style>
@@ -32,11 +32,21 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>                    
-                    <GridViewColumn Header="Nome" DisplayMemberBinding="{Binding Path=Nome}" Width="350"/>
+                    <GridViewColumn Header="Nome" DisplayMemberBinding="{Binding Path=Nome}" Width="370"/>
                     <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path=Stato}" Width="150"/>
-                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path=PercentualeFocus}" Width="150"/>
+                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path=PercentualeFocus}" Width="110" />
                 </GridView>
             </ListView.View>
+            <ListView.Resources>
+                <Style TargetType="{x:Type ListViewItem}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Stato}" Value="Focus">
+                            <Setter Property="Background" Value="#FF34A0F9" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ListView.Resources>
+            
         </ListView>
         <Label x:Name="labelComando" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="1,476,0,0" VerticalAlignment="Top" Foreground="White" Grid.Column="1"/>
         <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="1,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click" Grid.Column="1"/>

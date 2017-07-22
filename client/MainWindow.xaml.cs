@@ -258,9 +258,7 @@ namespace WpfApplication1
                                 foreach (ListViewRow item in listView1.Items)
                                 {
                                     if (item.Nome.Equals(progName))
-                                    {
-                                        item.Stato = "Focus";
-                                    }
+                                        item.Stato = "Focus";                                        
                                     else if (item.Stato.Equals("Focus"))
                                         item.Stato = "Background";
                                 }                                        
@@ -342,8 +340,6 @@ namespace WpfApplication1
                                 {
                                     addItemToListView(progName, bmpImage);
                                 });
-
-                                
                             }
                             catch(Exception e)
                             {
