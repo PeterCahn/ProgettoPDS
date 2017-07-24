@@ -34,7 +34,6 @@ namespace WpfApplication1
     public partial class MainWindow : Window
     {
         private byte[] buffer = new byte[1024];
-        private Socket sock;
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
@@ -43,6 +42,7 @@ namespace WpfApplication1
         private Dictionary<Server, MyTable> tablesMap = new Dictionary<Server, MyTable>();
         private Dictionary<Server, Thread> notificationsThreadsList = new Dictionary<Server, Thread>();
         private Dictionary<Server, Thread> statisticsThreadsList = new Dictionary<Server, Thread>();
+        private Dictionary<Server, Socket> socketsList = new Dictionary<Server, Socket>();
 
         // Mutex necessario alla gestione delle modifiche nella listView1
         private static Mutex listView1Mutex = new Mutex();
@@ -76,13 +76,15 @@ namespace WpfApplication1
                 IPHostEntry ipHost = Dns.GetHostEntry(textIpAddress.Text); */
 
                 // Ricava IPAddress da risultati interrogazione DNS
-                IPAddress ipAddr = IPAddress.Parse(textBoxIpAddress.Text);
+                string[] fields = textBoxIpAddress.Text.Split(':');
+                IPAddress ipAddr = IPAddress.Parse(fields[0]);
+                Int32 port = Int32.Parse(fields[1]);
 
                 // Crea endpoint a cui connettersi
-                IPEndPoint ipEndPoint = new IPEndPoint(ipAddr, 27015);
+                IPEndPoint ipEndPoint = new IPEndPoint(ipAddr, port);
 
                 // Crea socket
-                sock = new Socket(ipAddr.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                Socket sock = new Socket(ipAddr.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
                 // Connettiti
                 sock.Connect(ipEndPoint);
@@ -107,13 +109,16 @@ namespace WpfApplication1
                 // Mostra la nuova tavola
                 listView1.ItemsSource = tablesMap[addedServer].rowsList.DefaultView;
 
+                // Salva il socket relativo al nuovo server
+                socketsList.Add(addedServer, sock);
+
                 // Aggiungi il nuovo server alla lista di server
                 int index = serversListComboBox.Items.Add(addedServer);
                 serversListComboBox.SelectedIndex = index;
                 currentConnectedServer = serversListComboBox.Items[index] as Server;
 
                 // Avvia thread per notifiche
-                notificationsThread = new Thread(() => manageNotifications(sock, addedServer));      // lambda perchè è necessario anche passare il parametro
+                notificationsThread = new Thread(() => manageNotifications(addedServer));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
                 notificationsThread.Start();
                 notificationsThreadsList.Add(addedServer, notificationsThread);
@@ -195,13 +200,13 @@ namespace WpfApplication1
         /* Viene eseguito in un thread a parte.
          * Si occupa della ricezione e gestione delle notifiche.
          */
-        private void manageNotifications(Socket sock, Server server)
+        private void manageNotifications(Server server)
         {
             try
             {
                 byte[] buf = new byte[1024];
                 StringBuilder completeMessage = new StringBuilder();
-                NetworkStream networkStream = new NetworkStream(sock);
+                NetworkStream networkStream = new NetworkStream(socketsList[server]);
 
                 // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
                 // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
@@ -211,7 +216,7 @@ namespace WpfApplication1
                 // TODO: Da vedere se CanRead è la scelta migliore per il NetworkStream. Giunto all'uso di NetworkStream dopo diverse soluzioni per 
                 //       la gestione singola dei byte in arrivo. In questa configurazione il riempimento della lista è troppo lento, specialmente dopo una riconnessione.
                 //       Probabilmente più efficiente tornare alla precedente Socket.Connected che verifica se il socket è connesso o meno
-                while (networkStream.CanRead && sock.Connected)
+                while (networkStream.CanRead && socketsList[server].Connected)
                 {
                     int i = 0;
                     int progNameLength = 0;
@@ -382,8 +387,8 @@ namespace WpfApplication1
             try
             {
                 // Disabilita e chiudi socket
-                sock.Shutdown(SocketShutdown.Both);
-                sock.Close();
+                socketsList[currentConnectedServer].Shutdown(SocketShutdown.Both);
+                socketsList[currentConnectedServer].Close();
 
                 // Aggiorna bottoni
                 buttonDisconnetti.Visibility = Visibility.Hidden;
@@ -466,7 +471,7 @@ namespace WpfApplication1
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
 
                 // Invia messaggio
-                int NumDiBytesInviati = sock.Send(messaggio);
+                int NumDiBytesInviati = socketsList[currentConnectedServer].Send(messaggio);
 
                 // Aggiorna bottoni e textBox
                 textBoxComando.Text = "";
@@ -509,6 +514,15 @@ namespace WpfApplication1
             {
                 currentConnectedServer = selectedServer;
                 listView1.ItemsSource = tablesMap[currentConnectedServer].rowsList.DefaultView;
+
+                // Aggiorna bottoni
+                buttonDisconnetti.Visibility = Visibility.Visible;
+                buttonConnetti.Visibility = Visibility.Hidden;
+                buttonCattura.IsEnabled = true;
+                textBoxIpAddress.IsEnabled = false;
+
+                // Permetti di connettere un altro server
+                buttonAltroServer.Visibility = Visibility.Visible;
             }
         }
 

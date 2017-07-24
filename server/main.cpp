@@ -436,7 +436,12 @@ SOCKET acceptConnection(void)
 	addr.ai_flags = AI_PASSIVE;
 
 	// Resolve the server address and port
-	iResult = getaddrinfo(NULL, DEFAULT_PORT, &addr, &result);
+	cout << "Inserire la porta su cui ascoltare: ";
+	string listeningPort;
+	cin >> listeningPort;
+	cout << endl;
+
+	iResult = getaddrinfo(NULL, listeningPort.c_str(), &addr, &result);
 	if (iResult != 0) {
 		std::cout << "getaddrinfo() fallita con errore: " << iResult << std::endl;
 		WSACleanup();
