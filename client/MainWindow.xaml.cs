@@ -15,7 +15,8 @@ using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-
+using client;
+using System.Data;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
@@ -30,15 +31,6 @@ using System.Windows.Forms;
 
 namespace WpfApplication1
 {
-    class ListViewRow
-    {
-        public BitmapImage Icona { get; set; } // WPF accetta, tra gli altri, Bitmapimage, non Bitmap puro
-        public string Nome { get; set; }
-        public string Stato { get; set; }
-        public string PercentualeFocus { get; set; }
-        public float TempoFocus { get; set; }
-    }
-
     public partial class MainWindow : Window
     {
         private byte[] buffer = new byte[1024];
@@ -46,7 +38,11 @@ namespace WpfApplication1
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
-        private ImageList imageList = new ImageList();     
+        private ImageList imageList = new ImageList();
+        private Server currentConnectedServer;
+        private Dictionary<Server, MyTable> tablesMap = new Dictionary<Server, MyTable>();
+        private Dictionary<Server, Thread> notificationsThreadsList = new Dictionary<Server, Thread>();
+        private Dictionary<Server, Thread> statisticsThreadsList = new Dictionary<Server, Thread>();
 
         // Mutex necessario alla gestione delle modifiche nella listView1
         private static Mutex listView1Mutex = new Mutex();
@@ -60,6 +56,7 @@ namespace WpfApplication1
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
+
         }
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
@@ -81,7 +78,6 @@ namespace WpfApplication1
                 // Ricava IPAddress da risultati interrogazione DNS
                 IPAddress ipAddr = IPAddress.Parse(textBoxIpAddress.Text);
 
-
                 // Crea endpoint a cui connettersi
                 IPEndPoint ipEndPoint = new IPEndPoint(ipAddr, 27015);
 
@@ -101,15 +97,32 @@ namespace WpfApplication1
                 buttonCattura.IsEnabled = true;
                 textBoxIpAddress.IsEnabled = false;
 
+                // Permetti di connettere un altro server
+                buttonAltroServer.Visibility = Visibility.Visible;
+
+                // Crea tavola per il nuovo server
+                Server addedServer = new Server { Name = "", Address = ipAddr };
+                tablesMap.Add(addedServer, new MyTable());
+
+                // Mostra la nuova tavola
+                listView1.ItemsSource = tablesMap[addedServer].rowsList.DefaultView;
+
+                // Aggiungi il nuovo server alla lista di server
+                int index = serversListComboBox.Items.Add(addedServer);
+                serversListComboBox.SelectedIndex = index;
+                currentConnectedServer = serversListComboBox.Items[index] as Server;
+
                 // Avvia thread per notifiche
-                notificationsThread = new Thread(() => manageNotifications(sock));      // lambda perchè è necessario anche passare il parametro
+                notificationsThread = new Thread(() => manageNotifications(sock, addedServer));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
                 notificationsThread.Start();
+                notificationsThreadsList.Add(addedServer, notificationsThread);
 
-               // Avvia thread per statistiche live
-                statisticsThread = new Thread(new ThreadStart(this.manageStatistics));
+                // Avvia thread per statistiche live
+                statisticsThread = new Thread(() => manageStatistics(addedServer));
                 statisticsThread.IsBackground = true;
                 statisticsThread.Start();
+                statisticsThreadsList.Add(addedServer, statisticsThread);
             }
             catch (Exception exc)
             {
@@ -118,20 +131,23 @@ namespace WpfApplication1
             }
         }
 
-        void addItemToListView(string nomeProgramma, BitmapImage bmp)
+        void addItemToListView(Server server, string nomeProgramma, BitmapImage bmp)
         {
-            if (listView1Mutex.WaitOne(1000))
-            {
-                listView1.Items.Add(new ListViewRow() { Icona = bmp, Nome = nomeProgramma, Stato = "Background", PercentualeFocus = "0", TempoFocus = 0 });                
-                listView1Mutex.ReleaseMutex();
-            }
+            // Aggiungi il nuovo elemento alla tabella
+            DataRow newRow = tablesMap[server].rowsList.NewRow();
+            /* newRow["Icona"] = bmp;*/
+            newRow["Nome applicazione"] = nomeProgramma;
+            newRow["Stato finestra"] = "Background";
+            newRow["Tempo in focus (%)"] = 0;
+            newRow["Tempo in focus"] = 0;
+            tablesMap[server].rowsList.Rows.Add(newRow);
         }
 
         /* Viene eseguito in un thread a parte.
          * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
          * In questo modo abbiamo statistiche "live"
          */
-        private void manageStatistics()
+        private void manageStatistics(Server server)
         {
             // Imposta tempo connessione
             DateTime connectionTime = DateTime.Now;
@@ -141,25 +157,22 @@ namespace WpfApplication1
 
                 // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
                 //      Piero: senza sleep (dopo aver messo l'icona), non viene mostrato nessun NaN
-                //Thread.Sleep(1);
+                // Thread.Sleep(1);
                 while (true)
                 {
-                    if (listView1Mutex.WaitOne(1000))
+                    foreach (DataRow item in tablesMap[server].rowsList.Rows)
                     {
-                        foreach (ListViewRow item in listView1.Items)
-                        {
-                            if (item.Stato.Equals("Focus"))
-                            {
-                                item.TempoFocus += (float)(DateTime.Now - lastUpdate).TotalMilliseconds;
-                                lastUpdate = DateTime.Now;
-                            }
 
-                            // Calcola la percentuale
-                            item.PercentualeFocus = (item.TempoFocus / (float)(DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
+                        if (item["Stato finestra"].Equals("Focus"))
+                        {
+                            item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
+                            lastUpdate = DateTime.Now;
                         }
-                        listView1Mutex.ReleaseMutex();
+
+                        // Calcola la percentuale
+                        item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
                     }
-                    
+
                     // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                     // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
                     listView1.Dispatcher.Invoke(delegate
@@ -182,7 +195,7 @@ namespace WpfApplication1
         /* Viene eseguito in un thread a parte.
          * Si occupa della ricezione e gestione delle notifiche.
          */
-        private void manageNotifications(Socket sock)
+        private void manageNotifications(Socket sock, Server server)
         {
             try
             {
@@ -211,26 +224,26 @@ namespace WpfApplication1
                     {
                         /* Leggi e salva il tipo di operazione */
                         char c;
-                        sb.Append( (char) networkStream.ReadByte() );
-                        sb.Append( (char) networkStream.ReadByte() );
-                        do
-                        {
-                            c = (char) networkStream.ReadByte();
-                            sb.Append(c);
-
-                        } while (c != '-');
-                        operation = sb.ToString(); 
-                        sb.Clear();
-
-                        /* Leggi e salva lunghezza nome programma */
-                        i = 0;                       
+                        sb.Append((char)networkStream.ReadByte());
+                        sb.Append((char)networkStream.ReadByte());
                         do
                         {
                             c = (char)networkStream.ReadByte();
-                            buf[i++] = (byte) c;
+                            sb.Append(c);
+
+                        } while (c != '-');
+                        operation = sb.ToString();
+                        sb.Clear();
+
+                        /* Leggi e salva lunghezza nome programma */
+                        i = 0;
+                        do
+                        {
+                            c = (char)networkStream.ReadByte();
+                            buf[i++] = (byte)c;
                         }
                         while (networkStream.DataAvailable && c != '-');
-                        progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i-1));
+                        progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
 
                         /* Leggi e salva nome programma */
                         byte[] buffer = new byte[progNameLength];
@@ -247,44 +260,31 @@ namespace WpfApplication1
                         * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
                         * --CLOSE-<lunghezza_nome>-<nome_app_chiusa>
                         * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>-<dimensione_bitmap>-<bitmap>
-                        */                        
+                        */
 
                     switch (operation)
                     {
                         case "--FOCUS-":
-                            if (listView1Mutex.WaitOne(1000))
+                            // Cambia programma col focus
+                            foreach (DataRow item in tablesMap[server].rowsList.Rows)
                             {
-                                // Cambia programma col focus
-                                foreach (ListViewRow item in listView1.Items)
-                                {
-                                    if (item.Nome.Equals(progName))
-                                        item.Stato = "Focus";                                        
-                                    else if (item.Stato.Equals("Focus"))
-                                        item.Stato = "Background";
-                                }                                        
-                                listView1Mutex.ReleaseMutex();
+                                if (item["Nome applicazione"].Equals(progName))
+                                    item["Stato finestra"] = "Focus";
+                                else if (item["Stato finestra"].Equals("Focus"))
+                                    item["Stato finestra"] = "Background";
                             }
+
                             break;
                         case "--CLOSE-":
                             // Rimuovi programma dalla listView
-                            foreach (ListViewRow item in listView1.Items)
+                            foreach (DataRow item in tablesMap[server].rowsList.Rows)
                             {
-                                if (item.Nome.Equals(progName))
+                                if (item["Nome applicazione"].Equals(progName))
                                 {
-                                    listView1.Dispatcher.Invoke(delegate
-                                    {
-                                        if (listView1Mutex.WaitOne(1000))
-                                        {
-                                            listView1.Items.Remove(item);
-                                                // Alternativa senza cancellare la riga: item.Stato = "Terminata";
-                                                // Ma problemi quando ritorna in focus un programma con lo stesso nome,
-                                                // visto che a volte viene passato a "Focus" anche lo stato della vecchia istanza
-                                            listView1Mutex.ReleaseMutex();
-                                        }
-                                    });
+                                    tablesMap[server].rowsList.Rows.Remove(item);
                                     break;
                                 }
-                            }                            
+                            }
                             break;
 
                         case "--OPENP-":
@@ -304,19 +304,19 @@ namespace WpfApplication1
 
                                 } while (networkStream.DataAvailable && c != '-');
                                 int bmpLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
-                                
+
 
                                 /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
                                 byte[] bmpData = new byte[bmpLength];
                                 int received = 0;
                                 while (received < bmpLength)
                                 {
-                                    received += networkStream.Read(bmpData, received, bmpLength-received);
+                                    received += networkStream.Read(bmpData, received, bmpLength - received);
                                 }
-                                
-                              
+
+
                                 /* Crea la bitmap a partire dal byte array */
-                                bitmap = CopyDataToBitmap(bmpData);                  
+                                bitmap = CopyDataToBitmap(bmpData);
                                 /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
                                 bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
@@ -336,12 +336,9 @@ namespace WpfApplication1
                                     bmpImage = result;
                                 }
 
-                                listView1.Dispatcher.Invoke(delegate
-                                {
-                                    addItemToListView(progName, bmpImage);
-                                });
+                                addItemToListView(server, progName, bmpImage);
                             }
-                            catch(Exception e)
+                            catch (Exception e)
                             {
                                 // TODO: Gestisci eccezione
                                 break;
@@ -362,21 +359,19 @@ namespace WpfApplication1
 
         public Bitmap CopyDataToBitmap(byte[] data)
         {
-            //Here create the Bitmap to the know height, width and format
+            // Here create the Bitmap to the know height, width and format
             Bitmap bmp = new Bitmap(256, 256, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
 
-            //Create a BitmapData and Lock all pixels to be written 
+            // Create a BitmapData and Lock all pixels to be written 
             BitmapData bmpData = bmp.LockBits(
                                  new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
                                  ImageLockMode.WriteOnly, bmp.PixelFormat);
 
-            //Copy the data from the byte array into BitmapData.Scan0
+            // Copy the data from the byte array into BitmapData.Scan0
             Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
 
-
-            //Unlock the pixels
+            // Unlock the pixels
             bmp.UnlockBits(bmpData);
-
 
             //Return the bitmap 
             return bmp;
@@ -396,28 +391,32 @@ namespace WpfApplication1
                 buttonInvia.IsEnabled = false;
                 textBoxIpAddress.IsEnabled = true;
                 buttonCattura.IsEnabled = false;
+                buttonAltroServer.Visibility = Visibility.Hidden;
 
                 // Aggiorna stato
                 textBoxStato.AppendText("\nSTATO: Disconnesso.");
                 textBoxStato.ScrollToEnd();
 
-                // Uccidi thread per statistiche e notifiche
-                // Sconsigliato uso di Abort(), meglio Interrupt e gestione relativa eccezione nel thread
-                statisticsThread.Interrupt();
-                notificationsThread.Interrupt();
-
                 // Svuota listView
                 if (listView1Mutex.WaitOne(1000))
                 {
-                    listView1.Items.Clear();
+                    listView1.ItemsSource = null;
                     listView1Mutex.ReleaseMutex();
                 }
+
+                // Rimuovi server da serverListComboBox
+                serversListComboBox.Items.Remove(currentConnectedServer);
 
                 // Ripristina cattura comando
                 textBoxComando.Text = "";
                 buttonCattura.Visibility = Visibility.Visible;
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
+
+                // Termina i thread relativi ai dati di questo server
+                // TODO: Sconsigliato uso di Abort(), meglio Interrupt e gestione relativa eccezione nel thread
+                notificationsThreadsList[currentConnectedServer].Interrupt();
+                statisticsThreadsList[currentConnectedServer].Interrupt();
             }
             catch (Exception exc) { System.Windows.MessageBox.Show(exc.ToString()); }
         }
@@ -490,16 +489,6 @@ namespace WpfApplication1
             }
         }
 
-        private void textBoxIpAddress_TextChanged(object sender, TextChangedEventArgs e)
-        {
-
-        }
-
-        private void listView_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-
-        }
-
         private void buttonAnnullaCattura_Click(object sender, RoutedEventArgs e)
         {
             // Svuota la lista di keystroke da inviare
@@ -511,6 +500,37 @@ namespace WpfApplication1
             buttonCattura.IsEnabled = true;
             buttonCattura.Visibility = Visibility.Visible;
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
+        }
+
+        private void serversListComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            Server selectedServer = ((sender as System.Windows.Controls.ComboBox).SelectedItem as Server);
+            if (selectedServer != null)
+            {
+                currentConnectedServer = selectedServer;
+                listView1.ItemsSource = tablesMap[currentConnectedServer].rowsList.DefaultView;
+            }
+        }
+
+        private void buttonAltroServer_Click(object sender, RoutedEventArgs e)
+        {
+            // Pulizia interfaccia
+            buttonAnnullaCattura_Click(null, null);
+            buttonDisconnetti.Visibility = Visibility.Hidden;
+            buttonConnetti.Visibility = Visibility.Visible;
+            buttonInvia.IsEnabled = false;
+            textBoxIpAddress.IsEnabled = true;
+            textBoxIpAddress.Text = "";
+            buttonCattura.IsEnabled = false;
+
+            // Svuota listView
+            if (listView1Mutex.WaitOne(1000))
+            {
+                listView1.ItemsSource = null;
+                listView1Mutex.ReleaseMutex();
+            }
+
+            serversListComboBox.SelectedValue = 0;
         }
     }
 }

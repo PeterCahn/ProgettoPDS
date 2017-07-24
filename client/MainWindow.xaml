@@ -17,11 +17,11 @@
         <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="236,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click" Grid.Column="1"/>
         <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="236,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click" Grid.Column="1" Panel.ZIndex="-1"/>
         <TextBox x:Name="textBoxStato"  IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="396,25,0,0" TextWrapping="Wrap" Text="STATO: Disconnesso." VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
-        <Label x:Name="labelApplciazioni" Content="Applicazioni" HorizontalAlignment="Left"  Margin="1,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.Column="1"/>
-        <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="1,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="3" SelectionChanged="listView_SelectionChanged" Foreground="Black" Grid.Column="1">
+        <Label x:Name="labelApplciazioni" Content="Applicazioni server selezionato" HorizontalAlignment="Left"  Margin="1,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.Column="1"/>
+        <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="1,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="3" Foreground="Black" Grid.Column="1">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Width="Auto" Header="Icona">
+                    <GridViewColumn Width="Auto" Header="Icona" DisplayMemberBinding="{Binding Path='Icona'}">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <Image Width="16" Height="16" Source="{Binding Icona}" >
@@ -31,29 +31,33 @@
                                 </Image>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
-                    </GridViewColumn>                    
-                    <GridViewColumn Header="Nome" DisplayMemberBinding="{Binding Path=Nome}" Width="370"/>
-                    <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path=Stato}" Width="150"/>
-                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path=PercentualeFocus}" Width="110" />
+                    </GridViewColumn>
+                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='Nome applicazione'}" Width="370"/>
+                    <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path='Stato finestra'}" Width="150"/>
+                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='Tempo in focus (%)'}" Width="110" />
                 </GridView>
             </ListView.View>
             <ListView.Resources>
                 <Style TargetType="{x:Type ListViewItem}">
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding Stato}" Value="Focus">
+                        <DataTrigger Binding="{Binding 'Stato finestra'}" Value="Focus">
                             <Setter Property="Background" Value="#FF34A0F9" />
+                            <Setter Property="Height" Value="40" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </ListView.Resources>
-            
+
         </ListView>
         <Label x:Name="labelComando" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="1,476,0,0" VerticalAlignment="Top" Foreground="White" Grid.Column="1"/>
         <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="1,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click" Grid.Column="1"/>
         <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="116,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270" Grid.Column="1" IsReadOnlyCaretVisible="True"/>
         <Button x:Name="buttonInvia" Content="Invia" HorizontalAlignment="Left" Margin="391,502,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonInvia_Click" Grid.Column="1"/>
-        <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="23" Margin="82,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" Grid.Column="1"/>
+        <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="23" Margin="82,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" Grid.Column="1" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
         <Button x:Name="buttonAnnullaCattura" Content="Annulla Cattura" Grid.Column="1" HorizontalAlignment="Left" Margin="1,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonAnnullaCattura_Click" Panel.ZIndex="-1"/>
+        <ComboBox x:Name="serversListComboBox" Grid.Column="1" HorizontalAlignment="Left" Margin="82,96,0,0" VerticalAlignment="Top" Width="230" IsReadOnly="True" SelectionChanged="serversListComboBox_SelectionChanged"/>
+        <Label x:Name="labelServers" Content="Servers" HorizontalAlignment="Left" Margin="2,96,0,0" VerticalAlignment="Top" Width="80" Height="23" Foreground="White" Grid.Column="1" VerticalContentAlignment="Center"/>
+        <Button x:Name="buttonAltroServer" Content="Connetti un altro server" HorizontalAlignment="Left" VerticalAlignment="Top" Width="149" Click="buttonAltroServer_Click" Grid.Column="1" Margin="82,57,0,0" Height="23" Visibility="Hidden"/>
 
 
     </Grid>
