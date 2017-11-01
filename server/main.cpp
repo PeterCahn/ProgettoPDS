@@ -85,9 +85,6 @@ int main(int argc, char* argv[])
 		int iResult = shutdown(clientSocket, SD_SEND);
 		if (iResult == SOCKET_ERROR) {
 			cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
-			closesocket(clientSocket);
-			WSACleanup();
-			return -1;
 		}
 
 		/* Cleanup */
@@ -439,7 +436,10 @@ SOCKET acceptConnection(void)
 	cout << "Inserire la porta su cui ascoltare: ";
 	string listeningPort;
 	cin >> listeningPort;
-	cout << endl;
+	while (!cin.good()) {
+		cout << "Errore nella lettura della porta da ascoltare, reinserirne il valore" << endl;
+		cin >> listeningPort;
+	}
 
 	iResult = getaddrinfo(NULL, listeningPort.c_str(), &addr, &result);
 	if (iResult != 0) {

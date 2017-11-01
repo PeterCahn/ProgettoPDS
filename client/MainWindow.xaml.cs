@@ -14,7 +14,6 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using client;
 using System.Data;
 
@@ -37,7 +36,6 @@ namespace WpfApplication1
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
-        private ImageList imageList = new ImageList();
         private Server currentConnectedServer;
         private Dictionary<Server, MyTable> tablesMap = new Dictionary<Server, MyTable>();
         private Dictionary<Server, Thread> notificationsThreadsList = new Dictionary<Server, Thread>();
@@ -103,7 +101,7 @@ namespace WpfApplication1
                 buttonAltroServer.Visibility = Visibility.Visible;
 
                 // Crea tavola per il nuovo server
-                Server addedServer = new Server { Name = "", Address = ipAddr };
+                Server addedServer = new Server { Name = "IP " + fields[0] + " - porta " + fields[1], Address = ipAddr };
                 tablesMap.Add(addedServer, new MyTable());
 
                 // Mostra la nuova tavola
@@ -145,6 +143,7 @@ namespace WpfApplication1
             newRow["Stato finestra"] = "Background";
             newRow["Tempo in focus (%)"] = 0;
             newRow["Tempo in focus"] = 0;
+            newRow["Icona"] = bmp;
             tablesMap[server].rowsList.Rows.Add(newRow);
         }
 
@@ -536,6 +535,7 @@ namespace WpfApplication1
             textBoxIpAddress.IsEnabled = true;
             textBoxIpAddress.Text = "";
             buttonCattura.IsEnabled = false;
+            buttonAltroServer.Visibility = Visibility.Hidden;
 
             // Svuota listView
             if (listView1Mutex.WaitOne(1000))

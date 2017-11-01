@@ -14,10 +14,10 @@ namespace client
 
         override public string ToString()
         {
-            if (Address != null)
-                return Address.ToString();
-            else
+            if (Name != null)
                 return Name;
+            else
+                return Address.ToString();
         }
     }
 }
