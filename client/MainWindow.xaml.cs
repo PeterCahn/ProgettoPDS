@@ -143,7 +143,7 @@ namespace WpfApplication1
             newRow["Stato finestra"] = "Background";
             newRow["Tempo in focus (%)"] = 0;
             newRow["Tempo in focus"] = 0;
-            newRow["Icona"] = bmp;
+            // TODO: newRow["Icona"] = bmp;
             tablesMap[server].rowsList.Rows.Add(newRow);
         }
 
