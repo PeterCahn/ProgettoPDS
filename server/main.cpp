@@ -10,6 +10,7 @@
 	  solo la prima nella lista del client ha la percentuale che aumenta
 	- Gestire caso in cui finestra cambia nome (es: "Telegram" con 1 notifica diventa "Telegram(1)")
 	- std::promise globale va bene?
+	- PASSARE DA THREAD NATIVI WINDOWS A THREAD C++11
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -59,7 +60,7 @@ HICON getHICONfromHWND(HWND hwnd);
 HBITMAP getHBITMAPfromHICON(HICON hIcon);
 PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
 
-promise<bool> stopNotificationThread;
+promise<bool> stopNotificationsThread;
 
 int main(int argc, char* argv[])
 {
@@ -70,19 +71,18 @@ int main(int argc, char* argv[])
 		clientSocket = acceptConnection();
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
-		stopNotificationThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
-		DWORD notifThreadId;		
-		HANDLE notificationsThread = CreateThread(NULL, 0, notificationsManagement, &clientSocket, 0, &notifThreadId);
-		if (notificationsThread == NULL)
-			std::cout << "ERRORE nella creazione del thread 'notificationsThread'" << std::endl;
-
-		/* Thread principale attende eventuali comandi */
-		receiveCommands(&clientSocket);
-
-		/* Procedura terminazione */
-		stopNotificationThread.set_value(TRUE);
-		//DWORD dwEvent = WaitForSingleObject(notificationsThread, INFINITE);	// Dopo avere segnalato al thread di terminare, aspetto che lo faccia
-		CloseHandle(notificationsThread);	// Handle non più necessaria
+		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
+		try {
+			thread notificationsThread(notificationsManagement, &clientSocket);
+			/* Thread principale attende eventuali comandi */
+			receiveCommands(&clientSocket);
+			/* Procedura terminazione thread notifiche */
+			stopNotificationsThread.set_value(TRUE);
+			notificationsThread.join();
+		}
+		catch (system_error se) {
+			cout << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << std::endl;
+		}
 
 		 /* Chiudi la connessione */
 		int iResult = shutdown(clientSocket, SD_SEND);
@@ -129,7 +129,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 	/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 
 	/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
-	future<bool> f = stopNotificationThread.get_future();
+	future<bool> f = stopNotificationsThread.get_future();
 	while (f.wait_for(std::chrono::seconds(0)) != future_status::ready) {
 		// Esegui ogni mezzo secondo
 		this_thread::sleep_for(chrono::milliseconds(500));
@@ -213,6 +213,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 }
 
 /* TODO: inviare anche l'icona (in progress) */
+
 /* Invia il nome della finestra e l'informazione ad esso associata al client
  * Il formato del messaggio per le operazioni CLOSE e FOCUS è :
  *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
