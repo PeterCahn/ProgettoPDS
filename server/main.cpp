@@ -55,7 +55,7 @@ void receiveCommands(SOCKET* clientSocket);
 void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op);
 DWORD WINAPI notificationsManagement(LPVOID lpParam);
 void sendKeystrokesToProgram(vector<UINT> vKeysList);
-void ErrorExit(LPTSTR lpszFunction);
+void BitmapInfoErrorExit(LPTSTR lpszFunction);
 HICON getHICONfromHWND(HWND hwnd);
 HBITMAP getHBITMAPfromHICON(HICON hIcon);
 PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
@@ -261,7 +261,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		int res;
 		if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			ErrorExit("GetDIBits1()");
+			BitmapInfoErrorExit("GetDIBits1()");
 		}
 
 		// create the pixel buffer
@@ -273,7 +273,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		// bitmap data (the "pixels") in the buffer lpPixels		
 		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			ErrorExit("GetDIBits2()");
+			BitmapInfoErrorExit("GetDIBits2()");
 		}
 
 		int len = MyBMInfo.bmiHeader.biSizeImage;
@@ -427,6 +427,14 @@ SOCKET acceptConnection(void)
 		return 1;
 	}
 
+	// Creazione socket
+	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (listenSocket == INVALID_SOCKET) {
+		std::cout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
+		WSACleanup();
+		return 1;
+	}
+
 	// Ottieni porta su cui ascoltare
 	cout << "Inserire la porta su cui ascoltare: ";
 	string listeningPort;
@@ -436,22 +444,13 @@ SOCKET acceptConnection(void)
 		cin >> listeningPort;
 	}
 
-	// Create a SOCKET for connecting to server
-	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (listenSocket == INVALID_SOCKET) {
-		std::cout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
-		WSACleanup();
-		return 1;
-	}
-
 	// Imposta struct sockaddr_in
 	struct sockaddr_in mySockaddr_in;
-
 	mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
 	mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
 	mySockaddr_in.sin_family = AF_INET;
 
-	// Setup the TCP listening socket
+	// Associa socket a indirizzo locale
 	iResult = ::bind(listenSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
 	if (iResult == SOCKET_ERROR) {
 		std::cout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
@@ -460,6 +459,7 @@ SOCKET acceptConnection(void)
 		return 1;
 	}
 
+	// Ascolta per richieste di connessione
 	iResult = listen(listenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
 		std::cout << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
@@ -477,17 +477,14 @@ SOCKET acceptConnection(void)
 		return 1;
 	}
 
-	struct sockaddr clientSockAddr;
-	int nameLength;
-	getpeername(clientSocket, &clientSockAddr, &nameLength);
-	struct sockaddr_in *s = (struct sockaddr_in *)&clientSockAddr;
-	int port = ntohs(s->sin_port);
+	struct sockaddr_in clientSockAddr;
+	int nameLength = sizeof(clientSockAddr);
+	getpeername(clientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
+	int port = ntohs(clientSockAddr.sin_port);
 	char ipstr[INET_ADDRSTRLEN];
-	/* TODO: Fix stampa indirizzo */
-	inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
+	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
 	std::cout << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
-	// No longer need server socket
 	closesocket(listenSocket);
 
 	return clientSocket;
@@ -535,7 +532,7 @@ void receiveCommands(SOCKET* clientSocket) {
 
 }
 
-void ErrorExit(LPTSTR lpszFunction)
+void BitmapInfoErrorExit(LPTSTR lpszFunction)
 {
 	// Retrieve the system error message for the last-error code
 
