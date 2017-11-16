@@ -188,9 +188,7 @@ DWORD WINAPI notificationsManagement(LPVOID lpParam)
 
 string getTitleFromHwnd(HWND hwnd) {
 	char title[MAX_PATH];
-
 	GetWindowText(hwnd, title, sizeof(title));
-
 	return string(title);
 }
 
@@ -208,7 +206,6 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	if (IsWindowVisible(hwnd)) 
 		(*progNames).push_back(hwnd);
 	
-
 	return TRUE;
 }
 
@@ -231,7 +228,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 	if (progName.length() == 0)
 		progName = "Desktop";
 
-	int lBuf = 0;
+	int bufLen = 0;
 
 	char buf[MAX_PATH + 12];	// 12 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
 	if (op == OPEN) {
@@ -247,7 +244,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 	strcat_s(buf, MAX_PATH + 12, "-");
 	strcat_s(buf, MAX_PATH + 12, progName.c_str());
 
-	lBuf = strlen(buf);
+	bufLen = strlen(buf);
 	BYTE* lpPixels;
 
 	/* Se è una nuova finestra aggiungere in coda lunghezza file icona e file icona stesso  */
@@ -285,11 +282,11 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		strcat_s(buf, MAX_PATH, "-");
 
 		/* Prepara un nuovo buffer con le ulteriori informazioni da inviare */
-		BYTE *buffer = new BYTE[lBuf + to_string(len).length() + 2 + len];
-		memcpy(buffer, buf, lBuf + to_string(len).length() + 2);
-		memcpy(buffer + +lBuf + to_string(len).length() + 2, lpPixels, len);
+		BYTE *buffer = new BYTE[bufLen + to_string(len).length() + 2 + len];
+		memcpy(buffer, buf, bufLen + to_string(len).length() + 2);
+		memcpy(buffer + +bufLen + to_string(len).length() + 2, lpPixels, len);
 
-		send(*clientSocket, (char*)buffer, lBuf + to_string(len).length() + 2 + len, 0);
+		send(*clientSocket, (char*)buffer, bufLen + to_string(len).length() + 2 + len, 0);
 
 		DeleteObject(hSource);
 		ReleaseDC(NULL, hdcSource);
@@ -298,7 +295,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		return;
 	}
 
-	send(*clientSocket, buf, lBuf, 0);
+	send(*clientSocket, buf, bufLen, 0);
 
 	return;
 }
@@ -419,9 +416,6 @@ SOCKET acceptConnection(void)
 	SOCKET listenSocket = INVALID_SOCKET;
 	SOCKET clientSocket = INVALID_SOCKET;
 
-	struct addrinfo *result = NULL;
-	struct addrinfo addr;
-
 	int iSendResult;
 	char recvbuf[DEFAULT_BUFLEN];
 	int recvbuflen = DEFAULT_BUFLEN;
@@ -433,13 +427,7 @@ SOCKET acceptConnection(void)
 		return 1;
 	}
 
-	ZeroMemory(&addr, sizeof(addr));
-	addr.ai_family = AF_INET;
-	addr.ai_socktype = SOCK_STREAM;
-	addr.ai_protocol = IPPROTO_TCP;
-	addr.ai_flags = AI_PASSIVE;
-
-	// Resolve the server address and port
+	// Ottieni porta su cui ascoltare
 	cout << "Inserire la porta su cui ascoltare: ";
 	string listeningPort;
 	cin >> listeningPort;
@@ -448,33 +436,33 @@ SOCKET acceptConnection(void)
 		cin >> listeningPort;
 	}
 
-	iResult = getaddrinfo(NULL, listeningPort.c_str(), &addr, &result);
-	if (iResult != 0) {
-		std::cout << "getaddrinfo() fallita con errore: " << iResult << std::endl;
-		WSACleanup();
-		return 1;
-	}
-
 	// Create a SOCKET for connecting to server
-	listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (listenSocket == INVALID_SOCKET) {
 		std::cout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
-		freeaddrinfo(result);
 		WSACleanup();
 		return 1;
 	}
 
+	// Imposta struct sockaddr_in
+	struct sockaddr_in mySockaddr_in;
+	hostent* localHost;
+	char* localIP;
+	localHost = gethostbyname("");
+	localIP = inet_ntoa(*(struct in_addr *)*localHost->h_addr_list);
+
+	mySockaddr_in.sin_addr.s_addr = inet_addr(localIP);
+	mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
+	mySockaddr_in.sin_family = AF_INET;
+
 	// Setup the TCP listening socket
-	iResult = ::bind(listenSocket, result->ai_addr, (int)result->ai_addrlen);
+	iResult = ::bind(listenSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
 	if (iResult == SOCKET_ERROR) {
 		std::cout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
-		freeaddrinfo(result);
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
 	}
-
-	freeaddrinfo(result);
 
 	iResult = listen(listenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
