@@ -277,7 +277,6 @@ namespace WpfApplication1
                                 else if (item["Stato finestra"].Equals("Focus"))
                                     item["Stato finestra"] = "Background";
                             }
-
                             break;
                         case "--CLOSE-":
                             // Rimuovi programma dalla listView

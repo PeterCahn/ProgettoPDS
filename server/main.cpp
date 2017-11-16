@@ -446,12 +446,8 @@ SOCKET acceptConnection(void)
 
 	// Imposta struct sockaddr_in
 	struct sockaddr_in mySockaddr_in;
-	hostent* localHost;
-	char* localIP;
-	localHost = gethostbyname("");
-	localIP = inet_ntoa(*(struct in_addr *)*localHost->h_addr_list);
 
-	mySockaddr_in.sin_addr.s_addr = inet_addr(localIP);
+	mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
 	mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
 	mySockaddr_in.sin_family = AF_INET;
 
