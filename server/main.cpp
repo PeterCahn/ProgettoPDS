@@ -15,9 +15,8 @@
 
 int main(int argc, char* argv[])
 {
-	Server server = Server();
+	Server server;	
 	server.start();
-
 	
 	return 0;
 }

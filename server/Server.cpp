@@ -1,16 +1,23 @@
 /* TODO:
-- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
-- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
-- Cos'è la finestra "Program Manager"?
-- Gestione finestra senza nome (Desktop)
 - Deallocazione risorse
 - Quando il client si chiude o si chiude anche il server (e non dovrebbe farlo) o se sopravvive alla prossima apertura di un client non funziona bene
 perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
 - Se due finestre hanno lo stesso nome ed una delle due è in focus, vengono entrambe segnate come in focus perchè non sa distinguere quale lo sia veramente, ma poi
 solo la prima nella lista del client ha la percentuale che aumenta
-- Gestire caso in cui finestra cambia nome (es: "Telegram" con 1 notifica diventa "Telegram(1)")
+- Gestire caso in cui finestra cambia nome (es: "Telegram" con 1 notifica diventa "Telegram(1)") (hint: gestire le app per un ID e non per il loro nome)
+- Caso Google Chrome: mostra solo il tab che era aperto al momento dell'avvio del server. Se si cambia tab, rimane il titolo della finestra iniziale.
+
+RISOLTI:
+- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
+	=> Eliminato perchè le variabili sono ora variabili privte di classe, quindi accessibili senza che vengano passate.
 - std::promise globale va bene?
-- PASSARE DA THREAD NATIVI WINDOWS A THREAD C++11
+	=> E' una variabile privata della classe Server.
+- PASSARE DA THREAD NATIVI WINDOWS A THREAD C++11.
+	=> Erano già usati i thread C++11.
+- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
+	=> Aggiunto "[thread_id] " prima di ogni stampa per mostrare che i thread sono diversi.
+- Cos'è la finestra "Program Manager"? - Gestione finestra senza nome (Desktop)
+	=> Risolto con "IsAltTabWindow". Mostra solo le finestre veramente visibili, non come "IsWindowVisible"
 */
 
 #define WIN32_LEAN_AND_MEAN
@@ -30,6 +37,11 @@ solo la prima nella lista del client ha la percentuale che aumenta
 #include <strsafe.h>
 #include <Wingdi.h>
 #include <future>
+
+#include <exception>
+#include <typeinfo>
+#include <stdexcept>
+
 #include "Server.h"
 
 // Need to link with Ws2_32.lib
@@ -48,120 +60,215 @@ enum operation {
 	FOCUS
 };
 
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
-SOCKET acceptConnection();
-void receiveCommands(SOCKET* clientSocket);
-DWORD WINAPI notificationsManagement(LPVOID lpParam);
-
-void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op);
-
-string getForeground();
-string getTitleFromHwnd(HWND hwnd);
-void sendKeystrokesToProgram(vector<UINT> vKeysList);
-void BitmapInfoErrorExit(LPTSTR lpszFunction);
-HICON getHICONfromHWND(HWND hwnd);
-HBITMAP getHBITMAPfromHICON(HICON hIcon);
-PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
-
-promise<bool> stopNotificationsThread;
-
 Server::Server()
 {
+	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
+	globalExceptionPtr = nullptr;
+
+	stopNotificationsThread = promise<bool>();
+	this->start();
 }
 
 Server::~Server()
 {
+	
 }
 
-DWORD WINAPI notificationsManagement(LPVOID lpParam)
+void Server::start()
 {
-	// Reinterpreta LPARAM lParam come puntatore a SOCKET
-	SOCKET* clientSocket = reinterpret_cast<SOCKET*>(lpParam);
-
-	/* Stampa ed invia tutte le finestre */
-	cout << "Applicazioni attive:" << endl;
-	vector<HWND> currentProgs;
-	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
-	cout << "Programmi aperti: " << endl;
-	bool desktopAlreadySent = FALSE;
-	for each (HWND hwnd in currentProgs) {
-		string windowTitle = getTitleFromHwnd(hwnd);
-		if (windowTitle.length() == 0 && !desktopAlreadySent) {
-			desktopAlreadySent = TRUE;
-			windowTitle = "Desktop";
-		}
-		else if (windowTitle.length() == 0 && desktopAlreadySent)
-			continue;
-
-		cout << "- " << windowTitle << endl;
-		sendApplicationToClient(clientSocket, hwnd, OPEN);
+	/* Ottieni porta su cui ascoltare */
+	cout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
+	cin >> listeningPort;
+	while (!cin.good()) {
+		cout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura della porta da ascoltare, reinserirne il valore" << endl;
+		cin >> listeningPort;
 	}
 
-	/* Stampa ed invia finestra col focus */
-	HWND currentForegroundHwnd = GetForegroundWindow();
-	cout << "Applicazione col focus:" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
-	sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
+	while (true) {		
 
-	/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
+		cout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
+		clientSocket = acceptConnection();
 
-	/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
-	future<bool> f = stopNotificationsThread.get_future();
-	while (f.wait_for(std::chrono::seconds(0)) != future_status::ready) {
-		// Esegui ogni mezzo secondo
-		this_thread::sleep_for(chrono::milliseconds(500));
+		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
+		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
+		try {
+			/* Crea thread per gestire le notifiche */
+			thread notificationsThread(&Server::notificationsManagement, this);
 
-		/* Variazioni lista programmi */
-		vector<HWND> tempProgs;
-		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&tempProgs));
+			/* Thread principale attende eventuali comandi sulla finestra attualmente in focus */
+			receiveCommands();	// ritorna quando la connessione con il client è chiusa
 
-		// Check nuova finestra
-		for each(HWND currentHwnd in tempProgs) {
-			if (find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
-				// currentProgs non contiene questo programma (quindi è stato aperto ora)
-				string windowTitle = getTitleFromHwnd(currentHwnd);
-				if (windowTitle.length() != 0) {
-					currentProgs.push_back(currentHwnd);
-					cout << "Nuova finestra aperta!" << endl << "- " << windowTitle << endl;
-					sendApplicationToClient(clientSocket, currentHwnd, OPEN);
-				}
-			}
+			/* Procedura terminazione thread notifiche */
+			stopNotificationsThread.set_value(TRUE);
+			notificationsThread.join();
+
+			/* Se un'eccezione si è verificata nel background thread viene rilanciata nel main thread */
+			if (globalExceptionPtr) rethrow_exception(globalExceptionPtr);
 		}
-
-		// Check chiusura finestra
-		vector<HWND> toBeDeleted;
-		for each (HWND currentHwnd in currentProgs) {
-			if (find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end()) {
-				// tempProgs non contiene più currentHwnd
-				string windowTitle = getTitleFromHwnd(currentHwnd);
-				if (windowTitle.length() != 0) {
-					cout << "Finestra chiusa!" << endl << "- " << windowTitle << endl;
-					sendApplicationToClient(clientSocket, currentHwnd, CLOSE);
-					toBeDeleted.push_back(currentHwnd);
-				}
-			}
+		catch (system_error se) {
+			cout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
 		}
-		for each (HWND deleteThis in toBeDeleted) {
-			// Ricava index di deleteThis in currentProgNames per cancellarlo
-			auto index = find(currentProgs.begin(), currentProgs.end(), deleteThis);
-			currentProgs.erase(index);
+		catch (const exception &ex)
+		{
+			cout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
+			/* Riprova a lanciare il thread (?) */
+			//thread notificationsThread(&Server::notificationsManagement, this, reinterpret_cast<LPVOID>(&clientSocket));
 		}
+		
+		/* Chiudi la connessione */
+		int iResult = shutdown(clientSocket, SD_SEND);
+		if (iResult == SOCKET_ERROR) {
+			cout << "[" << GetCurrentThreadId() << "] " << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
+		}
+		
+		/* Cleanup */
+		closesocket(clientSocket);
+		WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+	}
 
-		/* Variazioni focus */
-		HWND tempForeground = GetForegroundWindow();
-		if (tempForeground != currentForegroundHwnd) {
-			// Allora il programma che ha il focus è cambiato
-			currentForegroundHwnd = tempForeground;
-			string windowTitle = getTitleFromHwnd(currentForegroundHwnd);
-			if (windowTitle.length() == 0)
+}
+
+BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
+{
+	// Reinterpreta LPARAM lParam come puntatore alla lista dei nomi 
+	vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
+
+	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
+	if (IsAltTabWindow(hWnd) )
+	//if (IsWindowVisible(hWnd))
+		(*progNames).push_back(hWnd);
+
+	return TRUE;
+}
+
+BOOL Server::IsAltTabWindow(HWND hwnd)
+{
+	TITLEBARINFO ti;
+	HWND hwndTry, hwndWalk = NULL;
+
+	if(!IsWindowVisible(hwnd))
+		return FALSE;
+
+	hwndTry = GetAncestor(hwnd, GA_ROOTOWNER);
+	while(hwndTry != hwndWalk) 
+	{
+		hwndWalk = hwndTry;
+		hwndTry = GetLastActivePopup(hwndWalk);
+		if(IsWindowVisible(hwndTry)) 
+			break;
+	}
+	if(hwndWalk != hwnd)
+		return FALSE;
+
+	// the following removes some task tray programs and "Program Manager"
+	ti.cbSize = sizeof(ti);
+	GetTitleBarInfo(hwnd, &ti);
+	if(ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
+		return FALSE;
+
+	return TRUE;
+}
+
+DWORD WINAPI Server::notificationsManagement()
+{
+	try {
+
+		/* Stampa ed invia tutte le finestre */
+		cout << "[" << GetCurrentThreadId() << "] " << "Applicazioni attive:" << endl;
+		vector<HWND> currentProgs;
+
+		::EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
+		cout << "[" << GetCurrentThreadId() << "] " << "Programmi aperti: " << endl;
+		bool desktopAlreadySent = FALSE;
+		for each (HWND hwnd in currentProgs) {
+			string windowTitle = getTitleFromHwnd(hwnd);
+			if (windowTitle.length() == 0 && !desktopAlreadySent) {
+				desktopAlreadySent = TRUE;
 				windowTitle = "Desktop";
-			cout << "Applicazione col focus cambiata! Ora e':" << endl << "- " << windowTitle << endl;
-			sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
+			}
+			else if (windowTitle.length() == 0 && desktopAlreadySent)
+				continue;
+
+			cout << "- " << windowTitle << endl;
+			sendApplicationToClient(&clientSocket, hwnd, OPEN);
+		}
+
+		/* Stampa ed invia finestra col focus */
+		HWND currentForegroundHwnd = GetForegroundWindow();
+		cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+		sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
+
+		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
+
+		/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
+		future<bool> f = stopNotificationsThread.get_future();
+		while (f.wait_for(chrono::seconds(0)) != future_status::ready) {
+			// Esegui ogni mezzo secondo
+			this_thread::sleep_for(chrono::milliseconds(500));
+
+			
+		//this_thread::sleep_for(chrono::milliseconds(7000));
+		//throw runtime_error("Catch me in MAIN");
+
+			/* Variazioni lista programmi */
+			vector<HWND> tempProgs;
+			::EnumWindows(&Server::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempProgs));
+
+			// Check nuova finestra
+			for each(HWND currentHwnd in tempProgs) {
+				if (find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
+					// currentProgs non contiene questo programma (quindi è stato aperto ora)
+					string windowTitle = getTitleFromHwnd(currentHwnd);
+					if (windowTitle.length() != 0) {
+						currentProgs.push_back(currentHwnd);
+						cout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl << "- " << windowTitle << endl;
+						sendApplicationToClient(&clientSocket, currentHwnd, OPEN);
+					}
+				}
+			}
+
+			// Check chiusura finestra
+			vector<HWND> toBeDeleted;
+			for each (HWND currentHwnd in currentProgs) {
+				if (find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end()) {
+					// tempProgs non contiene più currentHwnd
+					string windowTitle = getTitleFromHwnd(currentHwnd);
+					if (windowTitle.length() != 0) {
+						cout << "Finestra chiusa!" << endl << "- " << windowTitle << endl;
+						sendApplicationToClient(&clientSocket, currentHwnd, CLOSE);
+						toBeDeleted.push_back(currentHwnd);
+					}
+				}
+			}
+			for each (HWND deleteThis in toBeDeleted) {
+				// Ricava index di deleteThis in currentProgNames per cancellarlo
+				auto index = find(currentProgs.begin(), currentProgs.end(), deleteThis);
+				currentProgs.erase(index);
+			}
+
+			/* Variazioni focus */
+			HWND tempForeground = GetForegroundWindow();
+			if (tempForeground != currentForegroundHwnd) {
+				// Allora il programma che ha il focus è cambiato
+				currentForegroundHwnd = tempForeground;
+				string windowTitle = getTitleFromHwnd(currentForegroundHwnd);
+				if (windowTitle.length() == 0)
+					windowTitle = "Desktop";
+				cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl << "- " << windowTitle << endl;
+				sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
+			}
 		}
 	}
+	catch (...)
+	{
+		//Set the global exception pointer in case of an exception
+		globalExceptionPtr = current_exception();
+	}
+
 	return 0;
 }
 
-SOCKET acceptConnection(void)
+SOCKET Server::acceptConnection(void)
 {
 	WSADATA wsaData;
 	int iResult;
@@ -184,15 +291,6 @@ SOCKET acceptConnection(void)
 		std::cout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
 		WSACleanup();
 		return 1;
-	}
-
-	// Ottieni porta su cui ascoltare
-	cout << "Inserire la porta su cui ascoltare: ";
-	string listeningPort;
-	cin >> listeningPort;
-	while (!cin.good()) {
-		cout << "Errore nella lettura della porta da ascoltare, reinserirne il valore" << endl;
-		cin >> listeningPort;
 	}
 
 	// Imposta struct sockaddr_in
@@ -241,27 +339,10 @@ SOCKET acceptConnection(void)
 	return clientSocket;
 }
 
-string getTitleFromHwnd(HWND hwnd) {
+string Server::getTitleFromHwnd(HWND hwnd) {
 	char title[MAX_PATH];
 	GetWindowText(hwnd, title, sizeof(title));
 	return string(title);
-}
-
-string getForeground() {
-	HWND handle = GetForegroundWindow();
-	return getTitleFromHwnd(handle);
-}
-
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
-{
-	// Reinterpreta LPARAM lParam come puntatore alla lista dei nomi 
-	vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
-
-	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
-	if (IsWindowVisible(hwnd))
-		(*progNames).push_back(hwnd);
-
-	return TRUE;
 }
 
 /* TODO: inviare anche l'icona (in progress) */
@@ -277,29 +358,31 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 * NB: in notificationsManagement il primo check è quello di nuove finestre (operazione OPEN), i successivi check (FOCUS/CLOSE)
 *	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
 */
-void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
+void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 
+	int moreChars = 20;		// 20 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
 	string progName(getTitleFromHwnd(hwnd));
 	if (progName.length() == 0)
 		progName = "Desktop";
 
 	int bufLen = 0;
 
-	char buf[MAX_PATH + 12];	// 12 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
+	char buf[MAX_PATH + 1000];	
 	if (op == OPEN) {
-		strcpy_s(buf, MAX_PATH + 12, "--OPENP-");
+		strcpy_s(buf, MAX_PATH + moreChars, "--OPENP-");
 	}
 	else if (op == CLOSE) {
-		strcpy_s(buf, MAX_PATH + 12, "--CLOSE-");
+		strcpy_s(buf, MAX_PATH + moreChars, "--CLOSE-");
 	}
 	else {
-		strcpy_s(buf, MAX_PATH + 12, "--FOCUS-");
+		strcpy_s(buf, MAX_PATH + moreChars, "--FOCUS-");
 	}
-	strcat_s(buf, MAX_PATH + 12, to_string(progName.length()).c_str());
-	strcat_s(buf, MAX_PATH + 12, "-");
-	strcat_s(buf, MAX_PATH + 12, progName.c_str());
+	strcat_s(buf, MAX_PATH + moreChars, to_string(progName.length()).c_str());
+	strcat_s(buf, MAX_PATH + moreChars, "-");
+	strcat_s(buf, MAX_PATH + moreChars, progName.c_str());
 
 	bufLen = strlen(buf);
+	//bufLen = sizeof(buf);
 	BYTE* lpPixels;
 
 	/* Se è una nuova finestra aggiungere in coda lunghezza file icona e file icona stesso  */
@@ -339,7 +422,7 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		/* Prepara un nuovo buffer con le ulteriori informazioni da inviare */
 		BYTE *buffer = new BYTE[bufLen + to_string(len).length() + 2 + len];
 		memcpy(buffer, buf, bufLen + to_string(len).length() + 2);
-		memcpy(buffer + +bufLen + to_string(len).length() + 2, lpPixels, len);
+		memcpy(buffer + bufLen + to_string(len).length() + 2, lpPixels, len);
 
 		send(*clientSocket, (char*)buffer, bufLen + to_string(len).length() + 2 + len, 0);
 
@@ -348,14 +431,13 @@ void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 		delete[] lpPixels;
 		delete[] buffer;
 		return;
-	}
-
-	send(*clientSocket, buf, bufLen, 0);
+	} else
+		send(*clientSocket, buf, bufLen, 0);
 
 	return;
 }
 
-HICON getHICONfromHWND(HWND hwnd) {
+HICON Server::getHICONfromHWND(HWND hwnd) {
 
 	// Get the window icon
 	HICON hIcon = (HICON)(::SendMessageW(hwnd, WM_GETICON, ICON_SMALL, 0));
@@ -376,7 +458,7 @@ HICON getHICONfromHWND(HWND hwnd) {
 	//return (HICON)GetClassLong(hwnd, GCL_HICON);
 }
 
-HBITMAP getHBITMAPfromHICON(HICON hIcon) {
+HBITMAP Server::getHBITMAPfromHICON(HICON hIcon) {
 	int bitmapXdimension = 256;
 	int bitmapYdimension = 256;
 	HDC hDC = GetDC(NULL);
@@ -397,7 +479,7 @@ HBITMAP getHBITMAPfromHICON(HICON hIcon) {
 	return hResultBmp;
 }
 
-PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp)
+PBITMAPINFO Server::CreateBitmapInfoStruct(HBITMAP hBmp)
 {
 	BITMAP bmp;
 	PBITMAPINFO pbmi;
@@ -463,17 +545,17 @@ PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp)
 	return pbmi;
 }
 
-void receiveCommands(SOCKET* clientSocket) {
+void Server::receiveCommands() {
 	// Ricevi finchè il client non chiude la connessione
 	char* recvbuf = (char*)malloc(sizeof(char)*DEFAULT_BUFLEN);
 	int iResult;
 	do {
-		iResult = recv(*clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
+		iResult = recv(clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
 		if (iResult == 0)
 			std::cout << "Chiusura connessione...\n" << std::endl << std::endl;
 		else if (iResult < 0) {
 			std::cout << "recv() fallita con errore: " << WSAGetLastError() << std::endl;;
-			closesocket(*clientSocket);
+			closesocket(clientSocket);
 			WSACleanup();
 			return;
 		}
@@ -505,7 +587,7 @@ void receiveCommands(SOCKET* clientSocket) {
 
 }
 
-void BitmapInfoErrorExit(LPTSTR lpszFunction)
+void Server::BitmapInfoErrorExit(LPTSTR lpszFunction)
 {
 	// Retrieve the system error message for the last-error code
 
@@ -526,7 +608,9 @@ void BitmapInfoErrorExit(LPTSTR lpszFunction)
 	// Display the error message and exit the process
 
 	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
-		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+		//(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+		(sizeof((LPCTSTR)lpMsgBuf) + sizeof((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+
 	StringCchPrintf((LPTSTR)lpDisplayBuf,
 		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
 		TEXT("%s failed with error %d: %s"),
@@ -538,7 +622,7 @@ void BitmapInfoErrorExit(LPTSTR lpszFunction)
 	return;
 }
 
-void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
+void Server::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 {
 	INPUT *keystroke;
 	int i, keystrokes_lenght, keystrokes_sent;
@@ -583,36 +667,3 @@ void sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 * essere uno "scan code", in una Virtual-key.
 * Se usassimo KEYEVENTF_UNICODE in dwFlags, dovrebbe essere settato a 0
 */
-
-void Server::start()
-{
-	while (true) {
-		cout << "In attesa della connessione di un client..." << endl;
-		clientSocket = acceptConnection();
-
-		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
-		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
-		try {
-			thread notificationsThread(notificationsManagement, &clientSocket);
-			/* Thread principale attende eventuali comandi */
-			receiveCommands(&clientSocket);
-			/* Procedura terminazione thread notifiche */
-			stopNotificationsThread.set_value(TRUE);
-			notificationsThread.join();
-		}
-		catch (system_error se) {
-			cout << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << std::endl;
-		}
-
-		/* Chiudi la connessione */
-		int iResult = shutdown(clientSocket, SD_SEND);
-		if (iResult == SOCKET_ERROR) {
-			cout << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
-		}
-
-		/* Cleanup */
-		closesocket(clientSocket);
-		WSACleanup();
-	}
-
-}

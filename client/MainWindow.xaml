@@ -6,6 +6,16 @@
         xmlns:local="clr-namespace:WpfApplication1"
         mc:Ignorable="d"
         Title="Client" Height="600" Width="800" ResizeMode="NoResize" Background="White">
+    <Window.Resources>
+        <DataGridTemplateColumn x:Key="dgt" Header="Icona" Width="SizeToCells">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <Image Source="{Binding Icona}" />
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+    </Window.Resources>
+    
     <Grid Background="#FF2E2E2E" Margin="0,0,0,0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="23*"/>
@@ -21,7 +31,7 @@
         <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="43,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Foreground="Black">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Width="Auto" Header="Icona" DisplayMemberBinding="{Binding Path='Icona'}">
+                    <GridViewColumn Width="Auto" Header="Icona">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <Image Width="16" Height="16" Source="{Binding Icona}" >

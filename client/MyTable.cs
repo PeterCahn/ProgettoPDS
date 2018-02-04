@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
+using System.Windows.Forms;
+using System.Drawing;
 using System.Data;
 
 namespace client
@@ -15,6 +17,8 @@ namespace client
         public MyTable()
         {
             rowsList = new DataTable();
+
+            ImageList imageList = new ImageList();
 
             DataColumn nameColumn = new DataColumn();
             nameColumn.DataType = System.Type.GetType("System.String");
@@ -40,11 +44,12 @@ namespace client
             timeColumn.ReadOnly = false;
             rowsList.Columns.Add(timeColumn);
 
-            /*DataColumn iconColumn = new DataColumn();
-            iconColumn.DataType = System.Type.GetType("System.Windows.Media.Imaging.BitmapImage");
+            DataColumn iconColumn = new DataColumn();
+            iconColumn.DataType = typeof(BitmapImage);
             iconColumn.ColumnName = "Icona";
-            iconColumn.ReadOnly = true;
-            rowsList.Columns.Add(iconColumn);*/
+            iconColumn.ReadOnly = false;
+            rowsList.Columns.Add(iconColumn);
+                        
         }
     }
 }

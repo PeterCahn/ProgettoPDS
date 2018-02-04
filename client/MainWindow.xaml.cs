@@ -19,10 +19,11 @@ using System.Data;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
+ * - Risolvere crash quando ci si connette a più server
  */
 
 /* DA CHIARIRE:
- * - Quando chiudo una finstra, se questa ha una percentuale != 0, siccome la sua riga viene eliminata dalla listView le percentuali non raggiungono più il 100%:
+ * - Quando chiudo una finestra, se questa ha una percentuale != 0, siccome la sua riga viene eliminata dalla listView le percentuali non raggiungono più il 100%:
  *   siccome c'è scritto di mostrare la percentuale di tempo in cui una finstra è stata in focus dal momento della connessione, a me questo comportamento anche se
  *   strano sembra corretto. Boh, vedere un po' di chiarire.
  * - Eccessiva lentezza nel ricevere e aggiornare la lista delle finestre aperte sul server. Possibile riduzione dimensione icona inviata lato server.
@@ -101,7 +102,7 @@ namespace WpfApplication1
                 buttonAltroServer.Visibility = Visibility.Visible;
 
                 // Crea tavola per il nuovo server
-                Server addedServer = new Server { Name = "IP " + fields[0] + " - porta " + fields[1], Address = ipAddr };
+                Server addedServer = new Server { Name = "IP " + fields[0] + " - Porta " + fields[1], Address = ipAddr };
                 tablesMap.Add(addedServer, new MyTable());
 
                 // Mostra la nuova tavola
@@ -136,6 +137,9 @@ namespace WpfApplication1
 
         void addItemToListView(Server server, string nomeProgramma, BitmapImage bmp)
         {
+            
+            var imageConverter = new ImageConverter();
+
             // Aggiungi il nuovo elemento alla tabella
             DataRow newRow = tablesMap[server].rowsList.NewRow();
             /* newRow["Icona"] = bmp;*/
@@ -144,6 +148,8 @@ namespace WpfApplication1
             newRow["Tempo in focus (%)"] = 0;
             newRow["Tempo in focus"] = 0;
             // TODO: newRow["Icona"] = bmp;
+            //newRow["Icona"] = imageConverter.ConvertTo(bmp, System.Type.GetType("System.Byte[]"));
+            newRow["Icona"] = bmp;
             tablesMap[server].rowsList.Rows.Add(newRow);
         }
 
@@ -180,9 +186,9 @@ namespace WpfApplication1
                     // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                     // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
                     listView1.Dispatcher.Invoke(delegate
-                    {
-                        listView1.Items.Refresh();
-                    });
+                        {
+                            listView1.Items.Refresh();
+                        });
 
                     // Aggiorna le statistiche ogni mezzo secondo
                     Thread.Sleep(500);
@@ -192,6 +198,8 @@ namespace WpfApplication1
             {
                 // TODO: c'è qualcosa da fare?
                 // TODO: check se il thread muore davvero
+                textBoxStato.AppendText("\nECCEZIONE: " + exception.ToString());
+                textBoxStato.ScrollToEnd();
                 return;
             }
         }
@@ -253,6 +261,7 @@ namespace WpfApplication1
                         byte[] buffer = new byte[progNameLength];
                         networkStream.Read(buffer, 0, progNameLength);
                         progName = Encoding.ASCII.GetString(buffer, 0, progNameLength);
+
                     }
                     catch (Exception e)
                     {
@@ -289,64 +298,56 @@ namespace WpfApplication1
                                 }
                             }
                             break;
-
                         case "--OPENP-":
                             /* Ricevi icona processo */
+                            char c;
                             Bitmap bitmap = new Bitmap(64, 64);
                             bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
                             Array.Clear(buf, 0, buf.Length);
-                            try
+
+                            /* Leggi e salva la lunghezza dell'icona leggendo i successivi byte fino a '-' (escludendo il primo) */
+                            i = 0;
+                            c = (char)networkStream.ReadByte(); // leggi il primo trattino
+                            do
                             {
-                                /* Leggi e salva la lunghezza dell'icona leggendo i successivi byte fino a '-' (escludendo il primo) */
-                                i = 0;
-                                char c = (char)networkStream.ReadByte(); // leggi il primo trattino
-                                do
-                                {
-                                    c = (char)networkStream.ReadByte();
-                                    buf[i++] = (byte)c;
+                                c = (char)networkStream.ReadByte();
+                                buf[i++] = (byte)c;
 
-                                } while (networkStream.DataAvailable && c != '-');
-                                int bmpLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
+                            } while (networkStream.DataAvailable && c != '-');
+                            int bmpLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
 
 
-                                /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
-                                byte[] bmpData = new byte[bmpLength];
-                                int received = 0;
-                                while (received < bmpLength)
-                                {
-                                    received += networkStream.Read(bmpData, received, bmpLength - received);
-                                }
-
-
-                                /* Crea la bitmap a partire dal byte array */
-                                bitmap = CopyDataToBitmap(bmpData);
-                                /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
-                                bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
-
-                                BitmapImage bmpImage;
-                                using (MemoryStream stream = new MemoryStream())
-                                {
-                                    bitmap.Save(stream, ImageFormat.Bmp);
-                                    stream.Position = 0;
-                                    BitmapImage result = new BitmapImage();
-                                    result.BeginInit();
-                                    // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
-                                    // Force the bitmap to load right now so we can dispose the stream.
-                                    result.CacheOption = BitmapCacheOption.OnLoad;
-                                    result.StreamSource = stream;
-                                    result.EndInit();
-                                    result.Freeze();
-                                    bmpImage = result;
-                                }
-
-                                addItemToListView(server, progName, bmpImage);
-                            }
-                            catch (Exception e)
+                            /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
+                            byte[] bmpData = new byte[bmpLength];
+                            int received = 0;
+                            while (received < bmpLength)
                             {
-                                // TODO: Gestisci eccezione
-                                break;
+                                received += networkStream.Read(bmpData, received, bmpLength - received);
                             }
 
+
+                            /* Crea la bitmap a partire dal byte array */
+                            bitmap = CopyDataToBitmap(bmpData);
+                            /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+                            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+
+                            BitmapImage bmpImage;
+                            using (MemoryStream stream = new MemoryStream())
+                            {
+                                bitmap.Save(stream, ImageFormat.Bmp);
+                                stream.Position = 0;
+                                BitmapImage result = new BitmapImage();
+                                result.BeginInit();
+                                // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
+                                // Force the bitmap to load right now so we can dispose the stream.
+                                result.CacheOption = BitmapCacheOption.OnLoad;
+                                result.StreamSource = stream;
+                                result.EndInit();
+                                result.Freeze();
+                                bmpImage = result;
+                            }
+
+                            addItemToListView(server, progName, bmpImage);
                             break;
                     }
 
@@ -356,6 +357,8 @@ namespace WpfApplication1
             {
                 // TODO: c'è qualcosa da fare?
                 // TODO: check che il thread muoia davvero
+                textBoxStato.AppendText("\nECCEZIONE: " + exception.ToString());
+                textBoxStato.ScrollToEnd();
                 return;
             }
         }
