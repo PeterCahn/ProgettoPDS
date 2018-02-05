@@ -42,6 +42,11 @@ namespace WpfApplication1
         private Dictionary<Server, Thread> notificationsThreadsList = new Dictionary<Server, Thread>();
         private Dictionary<Server, Thread> statisticsThreadsList = new Dictionary<Server, Thread>();
         private Dictionary<Server, Socket> socketsList = new Dictionary<Server, Socket>();
+        
+        private Dictionary<Server, ManualResetEvent> pauseThreadsList = new Dictionary<Server, ManualResetEvent>();
+        //private Dictionary<Server, ManualResetEvent> pauseNotificationsThreadsList = new Dictionary<Server, ManualResetEvent>();
+
+        private ManualResetEvent mre = new ManualResetEvent(false);
 
         // Mutex necessario alla gestione delle modifiche nella listView1
         private static Mutex listView1Mutex = new Mutex();
@@ -119,14 +124,23 @@ namespace WpfApplication1
                 // Avvia thread per notifiche
                 notificationsThread = new Thread(() => manageNotifications(addedServer));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
+                notificationsThread.Name = "notif_thread_" + addedServer.ToString();
                 notificationsThread.Start();
                 notificationsThreadsList.Add(addedServer, notificationsThread);
+                /* Aggiungi ManualResetEvent per il server aggiunto */
+                //pauseNotificationsThreadsList.Add(addedServer, new ManualResetEvent(false));
 
                 // Avvia thread per statistiche live
                 statisticsThread = new Thread(() => manageStatistics(addedServer));
                 statisticsThread.IsBackground = true;
+                statisticsThread.Name = "stats_thread_"+addedServer.ToString();
                 statisticsThread.Start();
                 statisticsThreadsList.Add(addedServer, statisticsThread);
+                /* Aggiungi ManualResetEvent per il server aggiunto */
+                //pauseStatisticsThreadsList.Add(addedServer, new ManualResetEvent(false));
+
+                pauseThreadsList.Add(addedServer, new ManualResetEvent(false));                
+
             }
             catch (Exception exc)
             {
@@ -137,20 +151,20 @@ namespace WpfApplication1
 
         void addItemToListView(Server server, string nomeProgramma, BitmapImage bmp)
         {
-            
-            var imageConverter = new ImageConverter();
+            listView1.Dispatcher.Invoke(delegate
+            {            
+                // Aggiungi il nuovo elemento alla tabella
+                DataRow newRow = tablesMap[server].rowsList.NewRow();
+                newRow["Nome applicazione"] = nomeProgramma;
+                newRow["Stato finestra"] = "Background";
+                newRow["Tempo in focus (%)"] = 0;
+                newRow["Tempo in focus"] = 0;
+                newRow["Icona"] = bmp;
+                tablesMap[server].rowsList.Rows.Add(newRow);
+            });
 
-            // Aggiungi il nuovo elemento alla tabella
-            DataRow newRow = tablesMap[server].rowsList.NewRow();
-            /* newRow["Icona"] = bmp;*/
-            newRow["Nome applicazione"] = nomeProgramma;
-            newRow["Stato finestra"] = "Background";
-            newRow["Tempo in focus (%)"] = 0;
-            newRow["Tempo in focus"] = 0;
-            // TODO: newRow["Icona"] = bmp;
+            //var imageConverter = new ImageConverter();
             //newRow["Icona"] = imageConverter.ConvertTo(bmp, System.Type.GetType("System.Byte[]"));
-            newRow["Icona"] = bmp;
-            tablesMap[server].rowsList.Rows.Add(newRow);
         }
 
         /* Viene eseguito in un thread a parte.
@@ -170,37 +184,42 @@ namespace WpfApplication1
                 // Thread.Sleep(1);
                 while (true)
                 {
-                    foreach (DataRow item in tablesMap[server].rowsList.Rows)
-                    {
-
-                        if (item["Stato finestra"].Equals("Focus"))
-                        {
-                            item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
-                            lastUpdate = DateTime.Now;
-                        }
-
-                        // Calcola la percentuale
-                        item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
-                    }
+                    
+                    //Thread.Sleep(500);
+                    bool isSignaled = pauseThreadsList[server].WaitOne(500);
+                    if (isSignaled) break;
 
                     // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                     // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
                     listView1.Dispatcher.Invoke(delegate
                         {
-                            listView1.Items.Refresh();
-                        });
+                            foreach (DataRow item in tablesMap[server].rowsList.Rows)
+                            {
 
-                    // Aggiorna le statistiche ogni mezzo secondo
-                    Thread.Sleep(500);
+                                if (item["Stato finestra"].Equals("Focus"))
+                                {
+                                    item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
+                                    lastUpdate = DateTime.Now;
+                                }
+
+                                // Calcola la percentuale
+                                item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
+                            }
+
+                            listView1.Items.Refresh();
+                        });                                        
                 }
             }
             catch (ThreadInterruptedException exception)
             {
                 // TODO: c'è qualcosa da fare?
                 // TODO: check se il thread muore davvero
-                textBoxStato.AppendText("\nECCEZIONE: " + exception.ToString());
-                textBoxStato.ScrollToEnd();
-                return;
+                listView1.Dispatcher.Invoke(delegate
+                {
+                    textBoxStato.AppendText("Thread che riceve aggiornamenti dal server interrotto.\n");
+                    textBoxStato.ScrollToEnd();
+                    return;
+                });                
             }
         }
 
@@ -209,22 +228,23 @@ namespace WpfApplication1
          */
         private void manageNotifications(Server server)
         {
+            byte[] buf = new byte[1024];
+            StringBuilder completeMessage = new StringBuilder();
+            NetworkStream networkStream = new NetworkStream(socketsList[server]);
+
+            // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
+            // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
+            // Available() ritorna il numero di dati da leggere
+            // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
+            
             try
             {
-                byte[] buf = new byte[1024];
-                StringBuilder completeMessage = new StringBuilder();
-                NetworkStream networkStream = new NetworkStream(socketsList[server]);
-
-                // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
-                // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
-                // Available() ritorna il numero di dati da leggere
-                // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
-
-                // TODO: Da vedere se CanRead è la scelta migliore per il NetworkStream. Giunto all'uso di NetworkStream dopo diverse soluzioni per 
-                //       la gestione singola dei byte in arrivo. In questa configurazione il riempimento della lista è troppo lento, specialmente dopo una riconnessione.
-                //       Probabilmente più efficiente tornare alla precedente Socket.Connected che verifica se il socket è connesso o meno
                 while (networkStream.CanRead && socketsList[server].Connected)
                 {
+                    bool isSignaled = pauseThreadsList[server].WaitOne(0);
+                    if (isSignaled) break;
+
+                    
                     int i = 0;
                     int progNameLength = 0;
                     string progName = null;
@@ -232,42 +252,34 @@ namespace WpfApplication1
                     StringBuilder sb = new StringBuilder();
                     Array.Clear(buf, 0, buf.Length);
 
-                    try
+
+                    /* Leggi e salva il tipo di operazione */
+                    char c;
+                    sb.Append((char)networkStream.ReadByte());
+                    sb.Append((char)networkStream.ReadByte());
+                    do
                     {
-                        /* Leggi e salva il tipo di operazione */
-                        char c;
-                        sb.Append((char)networkStream.ReadByte());
-                        sb.Append((char)networkStream.ReadByte());
-                        do
-                        {
-                            c = (char)networkStream.ReadByte();
-                            sb.Append(c);
+                        c = (char)networkStream.ReadByte();
+                        sb.Append(c);
 
-                        } while (c != '-');
-                        operation = sb.ToString();
-                        sb.Clear();
+                    } while (c != '-');
+                    operation = sb.ToString();
+                    sb.Clear();
 
-                        /* Leggi e salva lunghezza nome programma */
-                        i = 0;
-                        do
-                        {
-                            c = (char)networkStream.ReadByte();
-                            buf[i++] = (byte)c;
-                        }
-                        while (networkStream.DataAvailable && c != '-');
-                        progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
-
-                        /* Leggi e salva nome programma */
-                        byte[] buffer = new byte[progNameLength];
-                        networkStream.Read(buffer, 0, progNameLength);
-                        progName = Encoding.ASCII.GetString(buffer, 0, progNameLength);
-
-                    }
-                    catch (Exception e)
+                    /* Leggi e salva lunghezza nome programma */
+                    i = 0;
+                    do
                     {
-                        var excString = e.ToString();
-                        //TODO: Reagire
+                        c = (char)networkStream.ReadByte();
+                        buf[i++] = (byte)c;
                     }
+                    while (networkStream.DataAvailable && c != '-');
+                    progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
+
+                    /* Leggi e salva nome programma */
+                    byte[] buffer = new byte[progNameLength];
+                    networkStream.Read(buffer, 0, progNameLength);
+                    progName = Encoding.ASCII.GetString(buffer, 0, progNameLength);
 
                     /* Possibili valori ricevuti:
                         * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
@@ -300,7 +312,6 @@ namespace WpfApplication1
                             break;
                         case "--OPENP-":
                             /* Ricevi icona processo */
-                            char c;
                             Bitmap bitmap = new Bitmap(64, 64);
                             bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
                             Array.Clear(buf, 0, buf.Length);
@@ -325,7 +336,6 @@ namespace WpfApplication1
                                 received += networkStream.Read(bmpData, received, bmpLength - received);
                             }
 
-
                             /* Crea la bitmap a partire dal byte array */
                             bitmap = CopyDataToBitmap(bmpData);
                             /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
@@ -349,17 +359,29 @@ namespace WpfApplication1
 
                             addItemToListView(server, progName, bmpImage);
                             break;
+                        
                     }
-
                 }
             }
             catch (ThreadInterruptedException exception)
             {
                 // TODO: c'è qualcosa da fare?
                 // TODO: check che il thread muoia davvero
-                textBoxStato.AppendText("\nECCEZIONE: " + exception.ToString());
-                textBoxStato.ScrollToEnd();
+                listView1.Dispatcher.Invoke(delegate
+                {
+                    textBoxStato.AppendText("Thread che riceve aggiornamenti dal server interrotto.\n");
+                    textBoxStato.ScrollToEnd();
+                });
+                
                 return;
+            }
+            catch (IOException ioe)
+            {
+                listView1.Dispatcher.Invoke(delegate
+                {
+                    textBoxStato.AppendText("\nECCEZIONE: " + ioe.ToString());
+                    textBoxStato.ScrollToEnd();
+                });
             }
         }
 
@@ -387,6 +409,18 @@ namespace WpfApplication1
         {
             try
             {
+                /* Set sul ManualResetEvent per uscire dal while loop e poter terminare il thread */
+                pauseThreadsList[currentConnectedServer].Set();
+                textBoxStato.AppendText("\nSTATO: Disconnessione da "+currentConnectedServer+"...");
+                //Thread.Sleep(1000);
+
+                // Join dei thread
+                notificationsThreadsList[currentConnectedServer].Join();
+                statisticsThreadsList[currentConnectedServer].Join();
+
+                // Resetta il ManualResetEvent al valore iniziale
+                pauseThreadsList[currentConnectedServer].Reset();
+
                 // Disabilita e chiudi socket
                 socketsList[currentConnectedServer].Shutdown(SocketShutdown.Both);
                 socketsList[currentConnectedServer].Close();
@@ -400,11 +434,11 @@ namespace WpfApplication1
                 buttonAltroServer.Visibility = Visibility.Hidden;
 
                 // Aggiorna stato
-                textBoxStato.AppendText("\nSTATO: Disconnesso.");
+                textBoxStato.AppendText("\nSTATO: Disconnesso da " + currentConnectedServer + "...");
                 textBoxStato.ScrollToEnd();
 
                 // Svuota listView
-                if (listView1Mutex.WaitOne(1000))
+                if (listView1Mutex.WaitOne(500))
                 {
                     listView1.ItemsSource = null;
                     listView1Mutex.ReleaseMutex();
@@ -413,18 +447,32 @@ namespace WpfApplication1
                 // Rimuovi server da serverListComboBox
                 serversListComboBox.Items.Remove(currentConnectedServer);
 
+                // Rimuovi notificationsThread da notificationsThreadsList
+                notificationsThreadsList.Remove(currentConnectedServer);
+                
+                // Rimuovi statisticsThread da statisticsThreadsList
+                statisticsThreadsList.Remove(currentConnectedServer);
+
+                // Rimuovi il ManualResetEvent
+                pauseThreadsList.Remove(currentConnectedServer);
+
+                // Rimuovi il socket del server
+                socketsList.Remove(currentConnectedServer);
+
+                // Rimuovi server da tablesMap
+                tablesMap.Remove(currentConnectedServer);                                
+                
                 // Ripristina cattura comando
                 textBoxComando.Text = "";
                 buttonCattura.Visibility = Visibility.Visible;
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
-
-                // Termina i thread relativi ai dati di questo server
-                // TODO: Sconsigliato uso di Abort(), meglio Interrupt e gestione relativa eccezione nel thread
-                notificationsThreadsList[currentConnectedServer].Interrupt();
-                statisticsThreadsList[currentConnectedServer].Interrupt();
+                
             }
-            catch (Exception exc) { System.Windows.MessageBox.Show(exc.ToString()); }
+            catch (Exception exc)
+            {
+                System.Windows.MessageBox.Show("BUTTON DISCONNETTI: " + exc.ToString());
+            }
         }
 
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
