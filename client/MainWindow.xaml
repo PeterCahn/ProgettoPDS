@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:WpfApplication1"
         mc:Ignorable="d"
         Title="Client" Height="600" Width="800" ResizeMode="NoResize" Background="White">
+    
     <Window.Resources>
         <DataGridTemplateColumn x:Key="dgt" Header="Icona" Width="SizeToCells">
             <DataGridTemplateColumn.CellTemplate>
@@ -34,7 +35,7 @@
                     <GridViewColumn Width="Auto" Header="Icona">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
-                                <Image Width="16" Height="16" Source="{Binding Icona}" >
+                                <Image Width="16" Height="16" Source="{Binding Icona}">
                                     <Image.Style>
                                         <Style TargetType="{x:Type Image}"></Style>
                                     </Image.Style>
@@ -47,14 +48,14 @@
                     <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='Tempo in focus (%)'}" Width="110" />
                 </GridView>
             </ListView.View>
-            <ListView.Resources>
+            <ListView.Resources>                
                 <Style TargetType="{x:Type ListViewItem}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding 'Stato finestra'}" Value="Focus">
-                            <Setter Property="Background" Value="#FF34A0F9" />
+                            <Setter Property="Background" Value="LightBlue"/>
                             <Setter Property="Height" Value="40" />
                         </DataTrigger>
-                    </Style.Triggers>
+                    </Style.Triggers>                    
                 </Style>
             </ListView.Resources>
 

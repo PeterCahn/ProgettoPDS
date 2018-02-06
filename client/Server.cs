@@ -14,5 +14,12 @@ namespace client
             else
                 return Address.ToString();
         }
+        /*
+        public bool CheckValidity()
+        {
+            return IPAddress.TryParse(Address.ToString(), Address);
+            
+        }
+        */
     }
 }

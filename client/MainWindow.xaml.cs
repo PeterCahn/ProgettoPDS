@@ -19,14 +19,12 @@ using System.Data;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
- * - Risolvere crash quando ci si connette a più server
  */
 
 /* DA CHIARIRE:
  * - Quando chiudo una finestra, se questa ha una percentuale != 0, siccome la sua riga viene eliminata dalla listView le percentuali non raggiungono più il 100%:
  *   siccome c'è scritto di mostrare la percentuale di tempo in cui una finstra è stata in focus dal momento della connessione, a me questo comportamento anche se
- *   strano sembra corretto. Boh, vedere un po' di chiarire.
- * - Eccessiva lentezza nel ricevere e aggiornare la lista delle finestre aperte sul server. Possibile riduzione dimensione icona inviata lato server.
+ *   strano sembra corretto. Boh, vedere un po' di chiarire. 
  */
 
 namespace WpfApplication1
@@ -44,9 +42,10 @@ namespace WpfApplication1
         private Dictionary<Server, Socket> socketsList = new Dictionary<Server, Socket>();
         
         private Dictionary<Server, ManualResetEvent> pauseThreadsList = new Dictionary<Server, ManualResetEvent>();
-        //private Dictionary<Server, ManualResetEvent> pauseNotificationsThreadsList = new Dictionary<Server, ManualResetEvent>();
+        
+        private ManualResetEvent waitingManageNotifications = new ManualResetEvent(false);
+        private ManualResetEvent manageNotificationsTerminate= new ManualResetEvent(false);
 
-        private ManualResetEvent mre = new ManualResetEvent(false);
 
         // Mutex necessario alla gestione delle modifiche nella listView1
         private static Mutex listView1Mutex = new Mutex();
@@ -68,7 +67,7 @@ namespace WpfApplication1
             try
             {
                 // Aggiorna stato
-                textBoxStato.AppendText("\nSTATO: In connessione...");
+                textBoxStato.AppendText("\n[" + Thread.CurrentThread.GetHashCode() + "] STATO: In connessione...");
 
                 // Crea SocketPermission per richiedere l'autorizzazione alla creazione del socket
                 SocketPermission permission = new SocketPermission(NetworkAccess.Connect, TransportType.Tcp, textBoxIpAddress.Text, SocketPermission.AllPorts);
@@ -94,7 +93,7 @@ namespace WpfApplication1
                 sock.Connect(ipEndPoint);
 
                 // Aggiorna stato
-                textBoxStato.AppendText("\nSTATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
+                textBoxStato.AppendText("\n[" + Thread.CurrentThread.ManagedThreadId + "] STATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
                 textBoxStato.ScrollToEnd();
 
                 // Aggiorna bottoni
@@ -127,8 +126,6 @@ namespace WpfApplication1
                 notificationsThread.Name = "notif_thread_" + addedServer.ToString();
                 notificationsThread.Start();
                 notificationsThreadsList.Add(addedServer, notificationsThread);
-                /* Aggiungi ManualResetEvent per il server aggiunto */
-                //pauseNotificationsThreadsList.Add(addedServer, new ManualResetEvent(false));
 
                 // Avvia thread per statistiche live
                 statisticsThread = new Thread(() => manageStatistics(addedServer));
@@ -136,10 +133,9 @@ namespace WpfApplication1
                 statisticsThread.Name = "stats_thread_"+addedServer.ToString();
                 statisticsThread.Start();
                 statisticsThreadsList.Add(addedServer, statisticsThread);
-                /* Aggiungi ManualResetEvent per il server aggiunto */
-                //pauseStatisticsThreadsList.Add(addedServer, new ManualResetEvent(false));
 
-                pauseThreadsList.Add(addedServer, new ManualResetEvent(false));                
+                // ManualResetEvent settato a false perché il thread si blocchi quando chiama WaitOne
+                pauseThreadsList.Add(addedServer, new ManualResetEvent(false));
 
             }
             catch (Exception exc)
@@ -151,17 +147,14 @@ namespace WpfApplication1
 
         void addItemToListView(Server server, string nomeProgramma, BitmapImage bmp)
         {
-            listView1.Dispatcher.Invoke(delegate
-            {            
-                // Aggiungi il nuovo elemento alla tabella
-                DataRow newRow = tablesMap[server].rowsList.NewRow();
-                newRow["Nome applicazione"] = nomeProgramma;
-                newRow["Stato finestra"] = "Background";
-                newRow["Tempo in focus (%)"] = 0;
-                newRow["Tempo in focus"] = 0;
-                newRow["Icona"] = bmp;
-                tablesMap[server].rowsList.Rows.Add(newRow);
-            });
+            // Aggiungi il nuovo elemento alla tabella
+            DataRow newRow = tablesMap[server].rowsList.NewRow();
+            newRow["Nome applicazione"] = nomeProgramma;
+            newRow["Stato finestra"] = "Background";
+            newRow["Tempo in focus (%)"] = 0;
+            newRow["Tempo in focus"] = 0;
+            newRow["Icona"] = bmp;
+            tablesMap[server].rowsList.Rows.Add(newRow);            
 
             //var imageConverter = new ImageConverter();
             //newRow["Icona"] = imageConverter.ConvertTo(bmp, System.Type.GetType("System.Byte[]"));
@@ -183,43 +176,46 @@ namespace WpfApplication1
                 //      Piero: senza sleep (dopo aver messo l'icona), non viene mostrato nessun NaN
                 // Thread.Sleep(1);
                 while (true)
-                {
-                    
-                    //Thread.Sleep(500);
+                {                    
                     bool isSignaled = pauseThreadsList[server].WaitOne(500);
                     if (isSignaled) break;
 
+                    
+                    foreach (DataRow item in tablesMap[server].rowsList.Rows)
+                    {
+
+                        if (item["Stato finestra"].Equals("Focus"))
+                        {
+                            item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
+                            lastUpdate = DateTime.Now;
+                        }
+
+                        // Calcola la percentuale
+                        item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
+                    }                    
+
                     // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                     // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-                    listView1.Dispatcher.Invoke(delegate
-                        {
-                            foreach (DataRow item in tablesMap[server].rowsList.Rows)
-                            {
-
-                                if (item["Stato finestra"].Equals("Focus"))
-                                {
-                                    item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
-                                    lastUpdate = DateTime.Now;
-                                }
-
-                                // Calcola la percentuale
-                                item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
-                            }
-
-                            listView1.Items.Refresh();
-                        });                                        
+                    Dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        listView1.Items.Refresh();
+                    }));
                 }
             }
             catch (ThreadInterruptedException exception)
             {
                 // TODO: c'è qualcosa da fare?
                 // TODO: check se il thread muore davvero
-                listView1.Dispatcher.Invoke(delegate
+                Dispatcher.Invoke(delegate
                 {
                     textBoxStato.AppendText("Thread che riceve aggiornamenti dal server interrotto.\n");
                     textBoxStato.ScrollToEnd();
                     return;
-                });                
+                });
+            }
+            catch (Exception exc)
+            {
+                System.Windows.MessageBox.Show("manageStatistics(): " + exc.ToString());
             }
         }
 
@@ -241,10 +237,15 @@ namespace WpfApplication1
             {
                 while (networkStream.CanRead && socketsList[server].Connected)
                 {
-                    bool isSignaled = pauseThreadsList[server].WaitOne(0);
-                    if (isSignaled) break;
+                    /* TODO: a volte (?) non trova la Key è scatena un'eccezione */
+                    bool isSignaled = manageNotificationsTerminate.WaitOne(1);
+                    if (isSignaled)
+                    {
+                        // Sblocca il main thread che aspetta che questo thread finisca per chiudere la connessione
+                        waitingManageNotifications.Set();
+                        break;
+                    }                        
 
-                    
                     int i = 0;
                     int progNameLength = 0;
                     string progName = null;
@@ -298,17 +299,22 @@ namespace WpfApplication1
                                 else if (item["Stato finestra"].Equals("Focus"))
                                     item["Stato finestra"] = "Background";
                             }
+                           
                             break;
                         case "--CLOSE-":
                             // Rimuovi programma dalla listView
-                            foreach (DataRow item in tablesMap[server].rowsList.Rows)
-                            {
-                                if (item["Nome applicazione"].Equals(progName))
+                            //Dispatcher.Invoke((Action)(() =>
+                            //{
+                                foreach (DataRow item in tablesMap[server].rowsList.Rows)
                                 {
-                                    tablesMap[server].rowsList.Rows.Remove(item);
-                                    break;
+                                    if (item["Nome applicazione"].Equals(progName))
+                                    {
+                                        tablesMap[server].rowsList.Rows.Remove(item);
+                                        break;
+                                    }
                                 }
-                            }
+                            //}));
+                            
                             break;
                         case "--OPENP-":
                             /* Ricevi icona processo */
@@ -383,6 +389,10 @@ namespace WpfApplication1
                     textBoxStato.ScrollToEnd();
                 });
             }
+            catch (Exception exc)
+            {
+                System.Windows.MessageBox.Show("manageNotifications(): " + exc.ToString());
+            }
         }
 
         public Bitmap CopyDataToBitmap(byte[] data)
@@ -409,20 +419,29 @@ namespace WpfApplication1
         {
             try
             {
-                /* Set sul ManualResetEvent per uscire dal while loop e poter terminare il thread */
-                pauseThreadsList[currentConnectedServer].Set();
-                textBoxStato.AppendText("\nSTATO: Disconnessione da "+currentConnectedServer+"...");
-                //Thread.Sleep(1000);
+                textBoxStato.AppendText("\nSTATO: Disconnessione da "+currentConnectedServer+" in corso...");
 
-                // Join dei thread
-                notificationsThreadsList[currentConnectedServer].Join();
+                // Set del ManualResetEvent "manageNotificationsTerminate" per uscire dal loop in manageNotifications()
+                manageNotificationsTerminate.Set();
+
+                // Set del ManualResetEvent "pauseThreadsList[currentConnectedServer]" per uscire dal loop in manageStatistics()
+                pauseThreadsList[currentConnectedServer].Set();
+                // Aspetto che il thread manageStatistics() finisca
                 statisticsThreadsList[currentConnectedServer].Join();
 
-                // Resetta il ManualResetEvent al valore iniziale
-                pauseThreadsList[currentConnectedServer].Reset();
+                // Il main thread aspetta che manageNotifications setti waitingManageNotifications. 
+                // Il main thread è svegliato quando "manageNotificationsTerminate" verrà settato (fine ciclo while).
+                waitingManageNotifications.WaitOne();           
 
-                // Disabilita e chiudi socket
-                socketsList[currentConnectedServer].Shutdown(SocketShutdown.Both);
+                // Aspetto che il thread manageNotifications() finisca
+                Thread.Sleep(200);
+                notificationsThreadsList[currentConnectedServer].Join();
+     
+                waitingManageNotifications.Reset(); // reset del ManualResetEvent per uso futuro
+                manageNotificationsTerminate.Reset(); // reset del ManualResetEvent per uso futuro
+
+                // Ora è possibile disabilitare e chiudere il socket
+                socketsList[currentConnectedServer].Shutdown(SocketShutdown.Both);                
                 socketsList[currentConnectedServer].Close();
 
                 // Aggiorna bottoni
@@ -444,6 +463,9 @@ namespace WpfApplication1
                     listView1Mutex.ReleaseMutex();
                 }
 
+                // Rimuovi il ManualResetEvent
+                pauseThreadsList.Remove(currentConnectedServer);
+
                 // Rimuovi server da serverListComboBox
                 serversListComboBox.Items.Remove(currentConnectedServer);
 
@@ -452,9 +474,6 @@ namespace WpfApplication1
                 
                 // Rimuovi statisticsThread da statisticsThreadsList
                 statisticsThreadsList.Remove(currentConnectedServer);
-
-                // Rimuovi il ManualResetEvent
-                pauseThreadsList.Remove(currentConnectedServer);
 
                 // Rimuovi il socket del server
                 socketsList.Remove(currentConnectedServer);
@@ -518,7 +537,7 @@ namespace WpfApplication1
                 }
                 sb.Append("\0");
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
-
+                
                 // Invia messaggio
                 int NumDiBytesInviati = socketsList[currentConnectedServer].Send(messaggio);
 
@@ -534,7 +553,7 @@ namespace WpfApplication1
 
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
                 this.KeyDown -= new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
-
+                
             }
             catch (Exception exc)
             {

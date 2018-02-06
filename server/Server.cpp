@@ -576,12 +576,12 @@ void Server::receiveCommands() {
 
 		// TODO: reimuovere dopo debug (?)
 		// Stampa codici virtual-key ricevute
-		std::cout << "Virtual-key ricevute da inviare alla finestra in focus:" << std::endl;
-		for each(UINT i in vKeysList)
-			std::cout << "- " << i << std::endl;
+		std::cout << "Virtual-key ricevute da inviare alla finestra in focus: " << stringaRicevuta << std::endl;
+		//for each(UINT i in vKeysList)
+//			std::cout << "- " << i << std::endl;
 
 		// Invia keystrokes all'applicazione in focus
-		sendKeystrokesToProgram(vKeysList);
+		//sendKeystrokesToProgram(vKeysList);
 
 	} while (iResult > 0);
 
