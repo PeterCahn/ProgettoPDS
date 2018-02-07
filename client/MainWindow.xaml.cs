@@ -17,8 +17,11 @@ using System.Runtime.InteropServices;
 using client;
 using System.Data;
 
+using System.Windows.Forms;
+
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
+ * - Main thread si sblocca e mostra che si è disconnesso solo quando si clicca fuori dalla finestra (dopo aver premuto su "Disconnetti")
  */
 
 /* DA CHIARIRE:
@@ -36,19 +39,16 @@ namespace WpfApplication1
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
         private Server currentConnectedServer;
-        private Dictionary<Server, MyTable> tablesMap = new Dictionary<Server, MyTable>();
-        private Dictionary<Server, Thread> notificationsThreadsList = new Dictionary<Server, Thread>();
-        private Dictionary<Server, Thread> statisticsThreadsList = new Dictionary<Server, Thread>();
-        private Dictionary<Server, Socket> socketsList = new Dictionary<Server, Socket>();
+        private Dictionary<Server, ServerInfo> servers = new Dictionary<Server, ServerInfo>();
         
-        private Dictionary<Server, ManualResetEvent> pauseThreadsList = new Dictionary<Server, ManualResetEvent>();
-        
-        private ManualResetEvent waitingManageNotifications = new ManualResetEvent(false);
-        private ManualResetEvent manageNotificationsTerminate= new ManualResetEvent(false);
-
-
-        // Mutex necessario alla gestione delle modifiche nella listView1
-        private static Mutex listView1Mutex = new Mutex();
+        /* Mutex necessario alla gestione delle modifiche nella listView1 perchè i thread statistics and notifications
+         * accedono alla stessa tablesMap[currentConnectedServer]
+         */
+        private static Mutex tablesMapsEntryMutex = new Mutex();
+        /* Mutex necessario affinché non venga chiamata una Invoke mentre il main thread è in attesa sulla Join 
+         * creando una dipendendza ciclica.
+         */
+        private static Mutex invokeMutex = new Mutex();
 
         public MainWindow()
         {
@@ -59,7 +59,6 @@ namespace WpfApplication1
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
-
         }
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
@@ -67,7 +66,7 @@ namespace WpfApplication1
             try
             {
                 // Aggiorna stato
-                textBoxStato.AppendText("\n[" + Thread.CurrentThread.GetHashCode() + "] STATO: In connessione...");
+                textBoxStato.AppendText("\nSTATO: In connessione...");
 
                 // Crea SocketPermission per richiedere l'autorizzazione alla creazione del socket
                 SocketPermission permission = new SocketPermission(NetworkAccess.Connect, TransportType.Tcp, textBoxIpAddress.Text, SocketPermission.AllPorts);
@@ -92,8 +91,10 @@ namespace WpfApplication1
                 // Connettiti
                 sock.Connect(ipEndPoint);
 
+                ServerInfo si = new ServerInfo();
+
                 // Aggiorna stato
-                textBoxStato.AppendText("\n[" + Thread.CurrentThread.ManagedThreadId + "] STATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
+                textBoxStato.AppendText("\nSTATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
                 textBoxStato.ScrollToEnd();
 
                 // Aggiorna bottoni
@@ -105,38 +106,50 @@ namespace WpfApplication1
                 // Permetti di connettere un altro server
                 buttonAltroServer.Visibility = Visibility.Visible;
 
-                // Crea tavola per il nuovo server
+                // Crea il nuovo server 
                 Server addedServer = new Server { Name = "IP " + fields[0] + " - Porta " + fields[1], Address = ipAddr };
-                tablesMap.Add(addedServer, new MyTable());
+                // Aggiungi Server, MyTable vuota e il Socket in ServerInfo
+                si.server = addedServer;
+                si.table = new MyTable();
+                si.socket = sock;
 
                 // Mostra la nuova tavola
-                listView1.ItemsSource = tablesMap[addedServer].rowsList.DefaultView;
-
-                // Salva il socket relativo al nuovo server
-                socketsList.Add(addedServer, sock);
-
-                // Aggiungi il nuovo server alla lista di server
-                int index = serversListComboBox.Items.Add(addedServer);
-                serversListComboBox.SelectedIndex = index;
-                currentConnectedServer = serversListComboBox.Items[index] as Server;
+                listView1.ItemsSource = si.table.rowsList.DefaultView;
 
                 // Avvia thread per notifiche
                 notificationsThread = new Thread(() => manageNotifications(addedServer));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
                 notificationsThread.Name = "notif_thread_" + addedServer.ToString();
                 notificationsThread.Start();
-                notificationsThreadsList.Add(addedServer, notificationsThread);
+                si.notificationsTread = notificationsThread;
 
                 // Avvia thread per statistiche live
                 statisticsThread = new Thread(() => manageStatistics(addedServer));
                 statisticsThread.IsBackground = true;
                 statisticsThread.Name = "stats_thread_"+addedServer.ToString();
                 statisticsThread.Start();
-                statisticsThreadsList.Add(addedServer, statisticsThread);
+                si.statisticTread = statisticsThread;
 
                 // ManualResetEvent settato a false perché il thread si blocchi quando chiama WaitOne
-                pauseThreadsList.Add(addedServer, new ManualResetEvent(false));
+                si.disconnectionEvent = new ManualResetEvent(false);
 
+                // Aggiungi il ServerInfo alla lista dei "servers"
+                servers.Add(addedServer, si);
+
+                // Aggiungi il nuovo server alla lista di server nella lista combo box
+                int index = serversListComboBox.Items.Add(addedServer);
+                serversListComboBox.SelectedIndex = index;
+                currentConnectedServer = serversListComboBox.Items[index] as Server;
+            }
+            catch (SocketException)
+            {
+                textBoxStato.AppendText("\nERRORE: Problema riscontrato nella connessione al server. Riprovare.");
+                return;
+            }
+            catch (IOException ioe)
+            {
+                textBoxStato.AppendText("\nECCEZIONE: " + ioe.ToString());
+                return;
             }
             catch (Exception exc)
             {
@@ -148,16 +161,14 @@ namespace WpfApplication1
         void addItemToListView(Server server, string nomeProgramma, BitmapImage bmp)
         {
             // Aggiungi il nuovo elemento alla tabella
-            DataRow newRow = tablesMap[server].rowsList.NewRow();
+            DataRow newRow = servers[server].table.rowsList.NewRow();
             newRow["Nome applicazione"] = nomeProgramma;
             newRow["Stato finestra"] = "Background";
             newRow["Tempo in focus (%)"] = 0;
             newRow["Tempo in focus"] = 0;
             newRow["Icona"] = bmp;
-            tablesMap[server].rowsList.Rows.Add(newRow);            
-
-            //var imageConverter = new ImageConverter();
-            //newRow["Icona"] = imageConverter.ConvertTo(bmp, System.Type.GetType("System.Byte[]"));
+            servers[server].table.rowsList.Rows.Add(newRow);            
+            
         }
 
         /* Viene eseguito in un thread a parte.
@@ -176,14 +187,14 @@ namespace WpfApplication1
                 //      Piero: senza sleep (dopo aver messo l'icona), non viene mostrato nessun NaN
                 // Thread.Sleep(1);
                 while (true)
-                {                    
-                    bool isSignaled = pauseThreadsList[server].WaitOne(500);
+                {
+                    // il MutualResetEvent disconnectionEvent è usato anche per far attendere il thread nell'aggiornare le statistiche
+                    bool isSignaled = servers[server].disconnectionEvent.WaitOne(500);
                     if (isSignaled) break;
 
-                    
-                    foreach (DataRow item in tablesMap[server].rowsList.Rows)
+                    tablesMapsEntryMutex.WaitOne();
+                    foreach (DataRow item in servers[server].table.rowsList.Rows)
                     {
-
                         if (item["Stato finestra"].Equals("Focus"))
                         {
                             item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
@@ -192,7 +203,9 @@ namespace WpfApplication1
 
                         // Calcola la percentuale
                         item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
-                    }                    
+                    }
+                    
+                    tablesMapsEntryMutex.ReleaseMutex();
 
                     // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                     // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
@@ -200,6 +213,7 @@ namespace WpfApplication1
                     {
                         listView1.Items.Refresh();
                     }));
+
                 }
             }
             catch (ThreadInterruptedException exception)
@@ -226,7 +240,7 @@ namespace WpfApplication1
         {
             byte[] buf = new byte[1024];
             StringBuilder completeMessage = new StringBuilder();
-            NetworkStream networkStream = new NetworkStream(socketsList[server]);
+            NetworkStream networkStream = new NetworkStream(servers[server].socket);
 
             // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
             // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
@@ -235,16 +249,12 @@ namespace WpfApplication1
             
             try
             {
-                while (networkStream.CanRead && socketsList[server].Connected)
+                //while (networkStream.CanRead && servers[server].socket.Connected)
+                while(!((servers[server].socket.Poll(1000, SelectMode.SelectRead) && (servers[server].socket.Available == 0)) || !servers[server].socket.Connected))
                 {
-                    /* TODO: a volte (?) non trova la Key è scatena un'eccezione */
-                    bool isSignaled = manageNotificationsTerminate.WaitOne(1);
-                    if (isSignaled)
-                    {
-                        // Sblocca il main thread che aspetta che questo thread finisca per chiudere la connessione
-                        waitingManageNotifications.Set();
-                        break;
-                    }                        
+                    /* TODO: a volte (?) non trova la Key e scatena un'eccezione */
+                    bool isSignaled = servers[server].disconnectionEvent.WaitOne(1);
+                    if (isSignaled) break;                        
 
                     int i = 0;
                     int progNameLength = 0;
@@ -252,7 +262,6 @@ namespace WpfApplication1
                     string operation = null;
                     StringBuilder sb = new StringBuilder();
                     Array.Clear(buf, 0, buf.Length);
-
 
                     /* Leggi e salva il tipo di operazione */
                     char c;
@@ -292,29 +301,30 @@ namespace WpfApplication1
                     {
                         case "--FOCUS-":
                             // Cambia programma col focus
-                            foreach (DataRow item in tablesMap[server].rowsList.Rows)
+                            tablesMapsEntryMutex.WaitOne();
+                            foreach (DataRow item in servers[server].table.rowsList.Rows)
                             {
                                 if (item["Nome applicazione"].Equals(progName))
                                     item["Stato finestra"] = "Focus";
                                 else if (item["Stato finestra"].Equals("Focus"))
                                     item["Stato finestra"] = "Background";
                             }
-                           
+                            tablesMapsEntryMutex.ReleaseMutex();
+
                             break;
                         case "--CLOSE-":
                             // Rimuovi programma dalla listView
-                            //Dispatcher.Invoke((Action)(() =>
-                            //{
-                                foreach (DataRow item in tablesMap[server].rowsList.Rows)
+                            tablesMapsEntryMutex.WaitOne();
+                            foreach (DataRow item in servers[server].table.rowsList.Rows)
+                            {
+                                if (item["Nome applicazione"].Equals(progName))
                                 {
-                                    if (item["Nome applicazione"].Equals(progName))
-                                    {
-                                        tablesMap[server].rowsList.Rows.Remove(item);
-                                        break;
-                                    }
+                                    servers[server].table.rowsList.Rows.Remove(item);
+                                    break;
                                 }
-                            //}));
-                            
+                            }
+                            tablesMapsEntryMutex.ReleaseMutex();
+
                             break;
                         case "--OPENP-":
                             /* Ricevi icona processo */
@@ -363,7 +373,10 @@ namespace WpfApplication1
                                 bmpImage = result;
                             }
 
+                            tablesMapsEntryMutex.WaitOne();
                             addItemToListView(server, progName, bmpImage);
+                            tablesMapsEntryMutex.ReleaseMutex();
+
                             break;
                         
                     }
@@ -383,15 +396,19 @@ namespace WpfApplication1
             }
             catch (IOException ioe)
             {
-                listView1.Dispatcher.Invoke(delegate
+                Dispatcher.Invoke(delegate
                 {
-                    textBoxStato.AppendText("\nECCEZIONE: " + ioe.ToString());
+                    textBoxStato.AppendText("\nERRORE: Si è verificato un problema nella connessione al server.");
                     textBoxStato.ScrollToEnd();
+                    //disconnettiDalServer();
                 });
+                
             }
             catch (Exception exc)
             {
                 System.Windows.MessageBox.Show("manageNotifications(): " + exc.ToString());
+
+                return;
             }
         }
 
@@ -415,34 +432,26 @@ namespace WpfApplication1
             return bmp;
         }
 
-        private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
+        private void disconnettiDalServer()
         {
             try
             {
-                textBoxStato.AppendText("\nSTATO: Disconnessione da "+currentConnectedServer+" in corso...");
+                textBoxStato.AppendText("\nSTATO: Disconnessione da " + currentConnectedServer + " in corso...");
 
-                // Set del ManualResetEvent "manageNotificationsTerminate" per uscire dal loop in manageNotifications()
-                manageNotificationsTerminate.Set();
+                // Set del ManualResetEvent "disconnectionEvent" per uscire dal loop in manageNotifications() e manageStatistics()
+                servers[currentConnectedServer].disconnectionEvent.Set();
 
-                // Set del ManualResetEvent "pauseThreadsList[currentConnectedServer]" per uscire dal loop in manageStatistics()
-                pauseThreadsList[currentConnectedServer].Set();
                 // Aspetto che il thread manageStatistics() finisca
-                statisticsThreadsList[currentConnectedServer].Join();
-
-                // Il main thread aspetta che manageNotifications setti waitingManageNotifications. 
-                // Il main thread è svegliato quando "manageNotificationsTerminate" verrà settato (fine ciclo while).
-                waitingManageNotifications.WaitOne();           
+                servers[currentConnectedServer].statisticTread.Join();
 
                 // Aspetto che il thread manageNotifications() finisca
-                Thread.Sleep(200);
-                notificationsThreadsList[currentConnectedServer].Join();
-     
-                waitingManageNotifications.Reset(); // reset del ManualResetEvent per uso futuro
-                manageNotificationsTerminate.Reset(); // reset del ManualResetEvent per uso futuro
+                servers[currentConnectedServer].notificationsTread.Join();
+
+                servers[currentConnectedServer].disconnectionEvent.Reset(); // reset del ManualResetEvent
 
                 // Ora è possibile disabilitare e chiudere il socket
-                socketsList[currentConnectedServer].Shutdown(SocketShutdown.Both);                
-                socketsList[currentConnectedServer].Close();
+                servers[currentConnectedServer].socket.Shutdown(SocketShutdown.Both);
+                servers[currentConnectedServer].socket.Close();
 
                 // Aggiorna bottoni
                 buttonDisconnetti.Visibility = Visibility.Hidden;
@@ -457,36 +466,22 @@ namespace WpfApplication1
                 textBoxStato.ScrollToEnd();
 
                 // Svuota listView
-                if (listView1Mutex.WaitOne(500))
-                {
-                    listView1.ItemsSource = null;
-                    listView1Mutex.ReleaseMutex();
-                }
-
-                // Rimuovi il ManualResetEvent
-                pauseThreadsList.Remove(currentConnectedServer);
-
+                tablesMapsEntryMutex.WaitOne();
+                listView1.ItemsSource = null;
+                tablesMapsEntryMutex.ReleaseMutex();
+                
                 // Rimuovi server da serverListComboBox
                 serversListComboBox.Items.Remove(currentConnectedServer);
-
-                // Rimuovi notificationsThread da notificationsThreadsList
-                notificationsThreadsList.Remove(currentConnectedServer);
                 
-                // Rimuovi statisticsThread da statisticsThreadsList
-                statisticsThreadsList.Remove(currentConnectedServer);
+                // Rimuovi currencConnectedServer da servers
+                servers.Remove(currentConnectedServer);
 
-                // Rimuovi il socket del server
-                socketsList.Remove(currentConnectedServer);
-
-                // Rimuovi server da tablesMap
-                tablesMap.Remove(currentConnectedServer);                                
-                
                 // Ripristina cattura comando
                 textBoxComando.Text = "";
                 buttonCattura.Visibility = Visibility.Visible;
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
-                
+
             }
             catch (Exception exc)
             {
@@ -494,11 +489,18 @@ namespace WpfApplication1
             }
         }
 
+        private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
+        {
+            disconnettiDalServer();
+        }
+
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
         {
             buttonCattura.IsEnabled = false;
             buttonCattura.Visibility = Visibility.Hidden;
             buttonAnnullaCattura.Visibility = Visibility.Visible;
+
+            //_hookID = SetHook(_proc);
 
             // Crea event handler per scrivere i tasti premuti
             this.KeyDown += new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
@@ -534,12 +536,13 @@ namespace WpfApplication1
                     if (sb.Length != 0)
                         sb.Append("+");
                     sb.Append(virtualKey.ToString());
+                    System.Windows.MessageBox.Show(virtualKey.ToString());
                 }
                 sb.Append("\0");
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
                 
                 // Invia messaggio
-                int NumDiBytesInviati = socketsList[currentConnectedServer].Send(messaggio);
+                int NumDiBytesInviati = servers[currentConnectedServer].socket.Send(messaggio);
 
                 // Aggiorna bottoni e textBox
                 textBoxComando.Text = "";
@@ -567,6 +570,8 @@ namespace WpfApplication1
             // Svuota la lista di keystroke da inviare
             comandoDaInviare.Clear();
 
+            //UnhookWindowsHookEx(_hookID);
+
             // Aggiorna bottoni e textBox
             textBoxComando.Text = "";
             buttonInvia.IsEnabled = false;
@@ -581,7 +586,7 @@ namespace WpfApplication1
             if (selectedServer != null)
             {
                 currentConnectedServer = selectedServer;
-                listView1.ItemsSource = tablesMap[currentConnectedServer].rowsList.DefaultView;
+                listView1.ItemsSource = servers[currentConnectedServer].table.rowsList.DefaultView;
 
                 // Aggiorna bottoni
                 buttonDisconnetti.Visibility = Visibility.Visible;
@@ -591,7 +596,7 @@ namespace WpfApplication1
 
                 // Permetti di connettere un altro server
                 buttonAltroServer.Visibility = Visibility.Visible;
-            }
+            }            
         }
 
         private void buttonAltroServer_Click(object sender, RoutedEventArgs e)
@@ -607,13 +612,54 @@ namespace WpfApplication1
             buttonAltroServer.Visibility = Visibility.Hidden;
 
             // Svuota listView
-            if (listView1Mutex.WaitOne(1000))
-            {
-                listView1.ItemsSource = null;
-                listView1Mutex.ReleaseMutex();
-            }
-
+            tablesMapsEntryMutex.WaitOne();
+            listView1.ItemsSource = null;
+            tablesMapsEntryMutex.ReleaseMutex();
+            
             serversListComboBox.SelectedValue = 0;
         }
+
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private static LowLevelKeyboardProc _proc = HookCallback;
+        private static IntPtr _hookID = IntPtr.Zero;
+
+        private static IntPtr SetHook(LowLevelKeyboardProc proc)
+        {
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule)
+            {
+                return SetWindowsHookEx(WH_KEYBOARD_LL, proc,
+                    GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
+            {
+                int vkCode = Marshal.ReadInt32(lParam);
+                Console.WriteLine((Keys)vkCode);
+                System.Windows.MessageBox.Show(vkCode.ToString());
+            }
+
+            return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);   
+
     }
 }

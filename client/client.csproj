@@ -66,6 +66,7 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="ServerInfo.cs" />
     <Compile Include="MyTable.cs" />
     <Compile Include="Server.cs" />
     <Compile Include="MainWindow.xaml.cs">

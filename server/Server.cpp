@@ -1,11 +1,13 @@
 /* TODO:
 - Deallocazione risorse
-- Quando il client si chiude o si chiude anche il server (e non dovrebbe farlo) o se sopravvive alla prossima apertura di un client non funziona bene
-perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
+- Verificare se il thread muore davvero in ogni situazione critica
 - Se due finestre hanno lo stesso nome ed una delle due è in focus, vengono entrambe segnate come in focus perchè non sa distinguere quale lo sia veramente, ma poi
 solo la prima nella lista del client ha la percentuale che aumenta
 - Gestire caso in cui finestra cambia nome (es: "Telegram" con 1 notifica diventa "Telegram(1)") (hint: gestire le app per un ID e non per il loro nome)
 - Caso Google Chrome: mostra solo il tab che era aperto al momento dell'avvio del server. Se si cambia tab, rimane il titolo della finestra iniziale.
+	=> Provare con EnumChildWindows quando c'è il cambio di focus
+- Gestione eccezioni
+- Gestione connessione con il client tramite classi C++11
 
 RISOLTI:
 - Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
@@ -18,8 +20,10 @@ RISOLTI:
 	=> Aggiunto "[thread_id] " prima di ogni stampa per mostrare che i thread sono diversi.
 - Cos'è la finestra "Program Manager"? - Gestione finestra senza nome (Desktop)
 	=> Risolto con "IsAltTabWindow". Mostra solo le finestre veramente visibili, non come "IsWindowVisible"
+- Quando il client si chiude o si chiude anche il server (e non dovrebbe farlo) o se sopravvive alla prossima apertura di un client non funziona bene
+perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
+	=> Risolto tramite il join dei thread
 */
-
 #define WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
@@ -65,8 +69,7 @@ Server::Server()
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
 
-	stopNotificationsThread = promise<bool>();
-	this->start();
+	stopNotificationsThread = promise<bool>();	
 }
 
 Server::~Server()
@@ -136,7 +139,7 @@ BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
 	if (IsAltTabWindow(hWnd) )
 	//if (IsWindowVisible(hWnd))
-		(*progNames).push_back(hWnd);
+		progNames->push_back(hWnd);
 
 	return TRUE;
 }
@@ -205,10 +208,6 @@ DWORD WINAPI Server::notificationsManagement()
 		while (f.wait_for(chrono::seconds(0)) != future_status::ready) {
 			// Esegui ogni mezzo secondo
 			this_thread::sleep_for(chrono::milliseconds(500));
-
-			
-		//this_thread::sleep_for(chrono::milliseconds(7000));
-		//throw runtime_error("Catch me in MAIN");
 
 			/* Variazioni lista programmi */
 			vector<HWND> tempProgs;
@@ -344,8 +343,6 @@ string Server::getTitleFromHwnd(HWND hwnd) {
 	GetWindowText(hwnd, title, sizeof(title));
 	return string(title);
 }
-
-/* TODO: inviare anche l'icona (in progress) */
 
 /* Invia il nome della finestra e l'informazione ad esso associata al client
 * Il formato del messaggio per le operazioni CLOSE e FOCUS è :
@@ -547,7 +544,7 @@ PBITMAPINFO Server::CreateBitmapInfoStruct(HBITMAP hBmp)
 
 void Server::receiveCommands() {
 	// Ricevi finchè il client non chiude la connessione
-	char* recvbuf = (char*)malloc(sizeof(char)*DEFAULT_BUFLEN);
+	char* recvbuf = (char*)malloc(sizeof(char)*DEFAULT_BUFLEN); // TODO: evitare malloc?
 	int iResult;
 	do {
 		iResult = recv(clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
@@ -577,11 +574,11 @@ void Server::receiveCommands() {
 		// TODO: reimuovere dopo debug (?)
 		// Stampa codici virtual-key ricevute
 		std::cout << "Virtual-key ricevute da inviare alla finestra in focus: " << stringaRicevuta << std::endl;
-		//for each(UINT i in vKeysList)
-//			std::cout << "- " << i << std::endl;
+		for each(UINT i in vKeysList)
+			std::cout << "- " << i << std::endl;
 
 		// Invia keystrokes all'applicazione in focus
-		//sendKeystrokesToProgram(vKeysList);
+		sendKeystrokesToProgram(vKeysList);
 
 	} while (iResult > 0);
 
