@@ -11,12 +11,10 @@ namespace client
 {
     class ServerInfo
     {
-        public Server server { get; set; }
         public MyTable table { get; set; }
         public Thread statisticTread { get; set; }
         public Thread notificationsTread { get; set; }
-        public Socket socket { get; set; }
-        public ManualResetEvent disconnectionEvent { get; set; }
-
+        public ManualResetEvent disconnectionEvent { get; set; }        
+        public TcpClient server { get; set; }
     }
 }

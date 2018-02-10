@@ -192,14 +192,14 @@ DWORD WINAPI Server::notificationsManagement()
 			else if (windowTitle.length() == 0 && desktopAlreadySent)
 				continue;
 
-			cout << "- " << windowTitle << endl;
-			sendApplicationToClient(&clientSocket, hwnd, OPEN);
+			cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+			sendApplicationToClient2(&clientSocket, hwnd, OPEN);
 		}
 
 		/* Stampa ed invia finestra col focus */
 		HWND currentForegroundHwnd = GetForegroundWindow();
 		cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
-		sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
+		sendApplicationToClient2(&clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 
@@ -221,7 +221,7 @@ DWORD WINAPI Server::notificationsManagement()
 					if (windowTitle.length() != 0) {
 						currentProgs.push_back(currentHwnd);
 						cout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl << "- " << windowTitle << endl;
-						sendApplicationToClient(&clientSocket, currentHwnd, OPEN);
+						sendApplicationToClient2(&clientSocket, currentHwnd, OPEN);
 					}
 				}
 			}
@@ -233,7 +233,7 @@ DWORD WINAPI Server::notificationsManagement()
 					// tempProgs non contiene più currentHwnd
 					string windowTitle = getTitleFromHwnd(currentHwnd);
 					if (windowTitle.length() != 0) {
-						cout << "Finestra chiusa!" << endl << "- " << windowTitle << endl;
+						cout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl << "- " << windowTitle << endl;
 						sendApplicationToClient(&clientSocket, currentHwnd, CLOSE);
 						toBeDeleted.push_back(currentHwnd);
 					}
@@ -254,7 +254,7 @@ DWORD WINAPI Server::notificationsManagement()
 				if (windowTitle.length() == 0)
 					windowTitle = "Desktop";
 				cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl << "- " << windowTitle << endl;
-				sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
+				sendApplicationToClient2(&clientSocket, currentForegroundHwnd, FOCUS);
 			}
 		}
 	}
@@ -331,7 +331,7 @@ SOCKET Server::acceptConnection(void)
 	int port = ntohs(clientSockAddr.sin_port);
 	char ipstr[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
-	std::cout << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
+	std::cout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
 	closesocket(listenSocket);
 
@@ -432,6 +432,178 @@ void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation 
 		send(*clientSocket, buf, bufLen, 0);
 
 	return;
+}
+
+void Server::sendApplicationToClient2(SOCKET* clientSocket, HWND hwnd, operation op) {
+
+	string progNameStr(getTitleFromHwnd(hwnd));
+	char progName[MAX_PATH];
+	u_long progNameLength = progNameStr.length();
+
+	strcpy_s(progName, progNameStr.c_str());
+
+	int i = 0;
+	char msgLengthChars[4];
+	u_long msgLength = 0;
+
+	char dimension[7];	// 2 trattini, 4 byte per la dimensione e trattino
+	char operation[6];	// 5 byte per l'operazione e trattino + 1
+	BYTE* lpPixels = NULL;
+	BYTE *finalBuffer = NULL;
+	
+	if (op == OPEN) {
+
+		/* Ottieni l'icona */
+		HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));
+		PBITMAPINFO pbi = CreateBitmapInfoStruct(hSource);
+		HDC hdc = GetDC(NULL);
+		HDC hdcSource = CreateCompatibleDC(hdc);
+
+		BITMAPINFO MyBMInfo = { 0 };
+		MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
+
+		// Get the BITMAPINFO structure from the bitmap
+		int res;
+		if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+		{
+			BitmapInfoErrorExit("GetDIBits1()");
+		}
+
+		// create the pixel buffer
+		long iconLength = MyBMInfo.bmiHeader.biSizeImage;
+		lpPixels = new BYTE[iconLength];
+
+		MyBMInfo.bmiHeader.biCompression = BI_RGB;
+
+		// Call GetDIBits a second time, this time to (format and) store the actual
+		// bitmap data (the "pixels") in the buffer lpPixels		
+		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+		{
+			BitmapInfoErrorExit("GetDIBits2()");
+		}
+
+		DeleteObject(hSource);
+		ReleaseDC(NULL, hdcSource);
+
+		/* iconLength è la dimensione dell'icona */
+		/* Calcola lunghezza totale messaggio e salvala */
+		msgLength = 6 + 4 + 1 + 4 + 1 + progNameLength + 1 + 4 + 1 + iconLength;
+		u_long netMsgLength = htonl(msgLength);
+
+		memcpy(dimension, "--", 2);
+		memcpy(dimension + 2, (void*) &netMsgLength, 4);
+		memcpy(dimension + 6, "-", 1);
+
+		/* Salva l'operazione */
+		memcpy(operation, "OPENP-", 6);
+				
+		/* Crea buffer da inviare */
+		finalBuffer = new BYTE[7 + msgLength];
+
+		memcpy(finalBuffer, dimension, 7);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+
+		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
+
+		memcpy(finalBuffer + 7 + 6, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength + 1 , &iconLength, 4);	// Aggiungi dimensione icona (4 byte)
+		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength + 1 + 4 + 1 , lpPixels, iconLength);	// Invia icona
+	}
+	else if (op == CLOSE) {
+
+		/* Calcola lunghezza totale messaggio e salvala */
+		msgLength = 6 + 4 + 1 + 4 + 1 + progNameLength + 1;
+		u_long netMsgLength = htonl(msgLength);
+
+		memcpy(dimension, "--", 2);
+		memcpy(dimension + 2, (void*) &netMsgLength, 4);
+		memcpy(dimension + 6, "-", 1);
+
+		/* Crea operation */
+		memcpy(operation, "CLOSE-", 6);
+
+		/* Crea buffer da inviare */
+		finalBuffer = new BYTE[7 + msgLength];
+		memcpy(finalBuffer, dimension, 7);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+
+		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
+
+		memcpy(finalBuffer + 7 + 6, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+	}
+	else {
+
+		/* Calcola lunghezza totale messaggio e salvala */
+		msgLength = 6 + 4 + 1 + 4 + 1 + progNameLength + 1;
+		u_long netMsgLength = htonl(msgLength);
+
+		memcpy(dimension, "--", 2);
+		memcpy(dimension + 2, (void*) &netMsgLength, 4);
+		memcpy(dimension + 6, "-", 1);
+
+		memcpy(operation, "FOCUS-", 6);
+
+		/* Crea buffer da inviare */
+		finalBuffer = new BYTE[7 + msgLength];
+		memcpy(finalBuffer, dimension, 7);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+
+		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
+
+		memcpy(finalBuffer + 7 + 6, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+	}
+
+	int bytesSent = 0;
+	//while (bytesSent < msgLength + 7) {
+		bytesSent += send(*clientSocket, (char*)finalBuffer + bytesSent, 7 + msgLength - bytesSent, 0);
+	//}
+	
+	return;
+}
+
+long Server::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
+
+	/* Ottieni l'icona */
+	HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));
+	PBITMAPINFO pbi = CreateBitmapInfoStruct(hSource);
+	HDC hdc = GetDC(NULL);
+	HDC hdcSource = CreateCompatibleDC(hdc);
+
+	BITMAPINFO MyBMInfo = { 0 };
+	MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
+
+	// Get the BITMAPINFO structure from the bitmap
+	int res;
+	if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+	{
+		BitmapInfoErrorExit("GetDIBits1()");
+	}
+
+	// create the pixel buffer
+	long iconLength = MyBMInfo.bmiHeader.biSizeImage;
+	lpPixels = new BYTE[iconLength];
+
+	MyBMInfo.bmiHeader.biCompression = BI_RGB;
+
+	// Call GetDIBits a second time, this time to (format and) store the actual
+	// bitmap data (the "pixels") in the buffer lpPixels		
+	if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+	{
+		BitmapInfoErrorExit("GetDIBits2()");
+	}
+
+	DeleteObject(hSource);
+	ReleaseDC(NULL, hdcSource);
+
+	return iconLength;
 }
 
 HICON Server::getHICONfromHWND(HWND hwnd) {
@@ -549,7 +721,7 @@ void Server::receiveCommands() {
 	do {
 		iResult = recv(clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
 		if (iResult == 0)
-			std::cout << "Chiusura connessione...\n" << std::endl << std::endl;
+			std::cout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione...\n" << std::endl << std::endl;
 		else if (iResult < 0) {
 			std::cout << "recv() fallita con errore: " << WSAGetLastError() << std::endl;;
 			closesocket(clientSocket);

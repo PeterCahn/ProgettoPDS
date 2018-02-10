@@ -31,6 +31,8 @@ private:
 	static BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam);
 
 	void sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op);
+	void sendApplicationToClient2(SOCKET* clientSocket, HWND hwnd, operation op);
+	long ottieniIcona(BYTE* lpPixels, HWND hwnd);
 	void receiveCommands();
 	void sendKeystrokesToProgram(vector<UINT> vKeysList);
 	

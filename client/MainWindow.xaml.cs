@@ -16,6 +16,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using client;
 using System.Data;
+using System.ComponentModel;
+
 
 using System.Windows.Forms;
 
@@ -38,8 +40,18 @@ namespace WpfApplication1
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
-        private Server currentConnectedServer;
-        private Dictionary<Server, ServerInfo> servers = new Dictionary<Server, ServerInfo>();
+        private string currentConnectedServer;
+        private string _textBoxString = "";
+        public string TextBoxString {
+            get { return _textBoxString; }
+            set {
+                if (value != _textBoxString)
+                {
+                    _textBoxString = value;
+                    OnPropertyChanged("TextBoxString");
+                }
+            } } // stringa su cui fare il bind per cambiare il testo della TextBox
+        private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
         
         /* Mutex necessario alla gestione delle modifiche nella listView1 perchè i thread statistics and notifications
          * accedono alla stessa tablesMap[currentConnectedServer]
@@ -50,6 +62,8 @@ namespace WpfApplication1
          */
         private static Mutex invokeMutex = new Mutex();
 
+        public event PropertyChangedEventHandler PropertyChanged;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -59,6 +73,18 @@ namespace WpfApplication1
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
+
+            TextBoxString = "STATO: Disconnesso.";
+        }
+
+        // Create the OnPropertyChanged method to raise the event
+        protected void OnPropertyChanged(string text)
+        {
+            PropertyChangedEventHandler handler = PropertyChanged;
+            if (handler != null)
+            {
+                handler(this, new PropertyChangedEventArgs(text));
+            }
         }
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
@@ -66,35 +92,21 @@ namespace WpfApplication1
             try
             {
                 // Aggiorna stato
-                textBoxStato.AppendText("\nSTATO: In connessione...");
-
-                // Crea SocketPermission per richiedere l'autorizzazione alla creazione del socket
-                SocketPermission permission = new SocketPermission(NetworkAccess.Connect, TransportType.Tcp, textBoxIpAddress.Text, SocketPermission.AllPorts);
-
-                // Accertati di aver ricevuto il permesso, altrimenti lancia eccezione
-                permission.Demand();
-
-                /* Interrogazione DNS, crea IPHostEntry contenente vettore di IPAddress di risultato          
-                IPHostEntry ipHost = Dns.GetHostEntry(textIpAddress.Text); */
-
+                textBoxStato.AppendText("STATO: In connessione...");
+                
                 // Ricava IPAddress da risultati interrogazione DNS
                 string[] fields = textBoxIpAddress.Text.Split(':');
-                IPAddress ipAddr = IPAddress.Parse(fields[0]);
                 Int32 port = Int32.Parse(fields[1]);
-
-                // Crea endpoint a cui connettersi
-                IPEndPoint ipEndPoint = new IPEndPoint(ipAddr, port);
-
-                // Crea socket
-                Socket sock = new Socket(ipAddr.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-
-                // Connettiti
-                sock.Connect(ipEndPoint);
+                TcpClient server = new TcpClient(fields[0], port);                
 
                 ServerInfo si = new ServerInfo();
+                si.server = server;
+
+                // string serverEndpoint = ((IPEndPoint)server.Client.RemoteEndPoint).Address.ToString();
+                string serverName = fields[0] + ":" + fields[1];
 
                 // Aggiorna stato
-                textBoxStato.AppendText("\nSTATO: Connesso a " + sock.RemoteEndPoint.ToString() + ".");
+                textBoxStato.AppendText("STATO: Connesso a " + fields[0] + ":" + fields[1]);
                 textBoxStato.ScrollToEnd();
 
                 // Aggiorna bottoni
@@ -106,27 +118,23 @@ namespace WpfApplication1
                 // Permetti di connettere un altro server
                 buttonAltroServer.Visibility = Visibility.Visible;
 
-                // Crea il nuovo server 
-                Server addedServer = new Server { Name = "IP " + fields[0] + " - Porta " + fields[1], Address = ipAddr };
-                // Aggiungi Server, MyTable vuota e il Socket in ServerInfo
-                si.server = addedServer;
+                // Aggiungi MyTable vuota in ServerInfo
                 si.table = new MyTable();
-                si.socket = sock;
 
                 // Mostra la nuova tavola
                 listView1.ItemsSource = si.table.rowsList.DefaultView;
 
                 // Avvia thread per notifiche
-                notificationsThread = new Thread(() => manageNotifications(addedServer));      // lambda perchè è necessario anche passare il parametro
+                notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
-                notificationsThread.Name = "notif_thread_" + addedServer.ToString();
+                notificationsThread.Name = "notif_thread_" + serverName;
                 notificationsThread.Start();
                 si.notificationsTread = notificationsThread;
 
                 // Avvia thread per statistiche live
-                statisticsThread = new Thread(() => manageStatistics(addedServer));
+                statisticsThread = new Thread(() => manageStatistics(serverName));
                 statisticsThread.IsBackground = true;
-                statisticsThread.Name = "stats_thread_"+addedServer.ToString();
+                statisticsThread.Name = "stats_thread_"+ serverName;
                 statisticsThread.Start();
                 si.statisticTread = statisticsThread;
 
@@ -134,31 +142,31 @@ namespace WpfApplication1
                 si.disconnectionEvent = new ManualResetEvent(false);
 
                 // Aggiungi il ServerInfo alla lista dei "servers"
-                servers.Add(addedServer, si);
+                servers.Add(serverName, si);
 
                 // Aggiungi il nuovo server alla lista di server nella lista combo box
-                int index = serversListComboBox.Items.Add(addedServer);
+                int index = serversListComboBox.Items.Add(serverName);
                 serversListComboBox.SelectedIndex = index;
-                currentConnectedServer = serversListComboBox.Items[index] as Server;
+                currentConnectedServer = serversListComboBox.Items[index] as string;
             }
             catch (SocketException)
             {
-                textBoxStato.AppendText("\nERRORE: Problema riscontrato nella connessione al server. Riprovare.");
+                textBoxStato.AppendText("ERRORE: Problema riscontrato nella connessione al server. Riprovare.\n");
                 return;
             }
             catch (IOException ioe)
             {
-                textBoxStato.AppendText("\nECCEZIONE: " + ioe.ToString());
+                textBoxStato.AppendText("ECCEZIONE: " + ioe.ToString() + "\n");
                 return;
             }
             catch (Exception exc)
             {
-                textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
+                textBoxStato.AppendText("ECCEZIONE: " + exc.ToString() + "\n");
                 textBoxStato.ScrollToEnd();
             }
         }
 
-        void addItemToListView(Server server, string nomeProgramma, BitmapImage bmp)
+        void addItemToListView(string server, string nomeProgramma, BitmapImage bmp)
         {
             // Aggiungi il nuovo elemento alla tabella
             DataRow newRow = servers[server].table.rowsList.NewRow();
@@ -175,7 +183,7 @@ namespace WpfApplication1
          * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
          * In questo modo abbiamo statistiche "live"
          */
-        private void manageStatistics(Server server)
+        private void manageStatistics(string serverName)
         {
             // Imposta tempo connessione
             DateTime connectionTime = DateTime.Now;
@@ -189,11 +197,11 @@ namespace WpfApplication1
                 while (true)
                 {
                     // il MutualResetEvent disconnectionEvent è usato anche per far attendere il thread nell'aggiornare le statistiche
-                    bool isSignaled = servers[server].disconnectionEvent.WaitOne(500);
+                    bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(500);
                     if (isSignaled) break;
 
                     tablesMapsEntryMutex.WaitOne();
-                    foreach (DataRow item in servers[server].table.rowsList.Rows)
+                    foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                     {
                         if (item["Stato finestra"].Equals("Focus"))
                         {
@@ -236,73 +244,79 @@ namespace WpfApplication1
         /* Viene eseguito in un thread a parte.
          * Si occupa della ricezione e gestione delle notifiche.
          */
-        private void manageNotifications(Server server)
+        private void manageNotifications(string serverName)
         {
-            byte[] buf = new byte[1024];
-            StringBuilder completeMessage = new StringBuilder();
-            NetworkStream networkStream = new NetworkStream(servers[server].socket);
+            NetworkStream serverStream;
+            int bytesRead = 0;
+            int bytesReceived = 0;
+            byte[] buffer = new byte[7];
+
+            TcpClient server = servers[serverName].server;
+            serverStream = server.GetStream();
+
+            string operation = null;
+            string progName = null;                        
 
             // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
             // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
             // Available() ritorna il numero di dati da leggere
             // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
-            
+
             try
             {
                 //while (networkStream.CanRead && servers[server].socket.Connected)
-                while(!((servers[server].socket.Poll(1000, SelectMode.SelectRead) && (servers[server].socket.Available == 0)) || !servers[server].socket.Connected))
+                //while(!((servers[serverName].socket.Poll(1000, SelectMode.SelectRead) && (servers[serverName].socket.Available == 0)) || !servers[serverName].socket.Connected))
+                while(serverStream.CanRead && server.Connected)
                 {
-                    /* TODO: a volte (?) non trova la Key e scatena un'eccezione */
-                    bool isSignaled = servers[server].disconnectionEvent.WaitOne(1);
-                    if (isSignaled) break;                        
+                    bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(1);
+                    if (isSignaled) break;
 
-                    int i = 0;
-                    int progNameLength = 0;
-                    string progName = null;
-                    string operation = null;
-                    StringBuilder sb = new StringBuilder();
-                    Array.Clear(buf, 0, buf.Length);
-
-                    /* Leggi e salva il tipo di operazione */
-                    char c;
-                    sb.Append((char)networkStream.ReadByte());
-                    sb.Append((char)networkStream.ReadByte());
-                    do
-                    {
-                        c = (char)networkStream.ReadByte();
-                        sb.Append(c);
-
-                    } while (c != '-');
-                    operation = sb.ToString();
-                    sb.Clear();
-
-                    /* Leggi e salva lunghezza nome programma */
-                    i = 0;
-                    do
-                    {
-                        c = (char)networkStream.ReadByte();
-                        buf[i++] = (byte)c;
+                    // Leggi inizio e dimensione messaggio "--<4 byte int>-" = 7 byte in "buffer"
+                    int offset = 0;
+                    int remaining = 7;
+                    while (remaining > 0){
+                        int read = serverStream.Read(buffer, offset, remaining);
+                        remaining -= read;
+                        offset += read;
                     }
-                    while (networkStream.DataAvailable && c != '-');
-                    progNameLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
 
-                    /* Leggi e salva nome programma */
-                    byte[] buffer = new byte[progNameLength];
-                    networkStream.Read(buffer, 0, progNameLength);
-                    progName = Encoding.ASCII.GetString(buffer, 0, progNameLength);
+                    // Leggi la dimensione del messaggio dal buffer
+                    Int32 msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
+                    
+                    // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
+                    byte[] msg = new byte[msgSize];
+                    offset = 0;
+                    remaining = msgSize;
+                    while (remaining > 0){
+                        int read = serverStream.Read(msg, offset, remaining);
+                        remaining -= read;
+                        offset += read;
+                    }
+                                                            
+                    // Estrai operazione => primi 5 byte
+                    byte[] op = new byte[5];
+                    Array.Copy(msg, 0, op, 0, 5);
+                    operation = Encoding.ASCII.GetString(op);
+                    
+                    // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                    int progNameLength = BitConverter.ToInt32(msg, 6);
+                    // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                    byte[] pN = new byte[progNameLength];
+                    Array.Copy(msg, 5 + 6, pN, 0, progNameLength);
+                    progName = Encoding.ASCII.GetString(pN);
 
                     /* Possibili valori ricevuti:
-                        * --FOCUS-<lunghezza_nome>-<nome_nuova_app_focus>
-                        * --CLOSE-<lunghezza_nome>-<nome_app_chiusa>
-                        * --OPENP-<lunghezza_nome>-<nome_nuova_app_aperta>-<dimensione_bitmap>-<bitmap>
+                        * --<4 bytes di dimensione messaggio>-FOCUS-<4B per dimensione nome programma>-<nome_nuova_app_focus>
+                        * --<4 bytes di dimensione messaggio>-CLOSE-<4B per dimensione nome programma>-<nome_app_chiusa>
+                        * --<4 bytes di dimensione messaggio>-OPENP-<4B per dimensione nome programma>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<bitmap>
                         */
 
                     switch (operation)
                     {
-                        case "--FOCUS-":
+                        case "FOCUS":
                             // Cambia programma col focus
                             tablesMapsEntryMutex.WaitOne();
-                            foreach (DataRow item in servers[server].table.rowsList.Rows)
+                            foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                             {
                                 if (item["Nome applicazione"].Equals(progName))
                                     item["Stato finestra"] = "Focus";
@@ -312,45 +326,37 @@ namespace WpfApplication1
                             tablesMapsEntryMutex.ReleaseMutex();
 
                             break;
-                        case "--CLOSE-":
+                        case "CLOSE":
                             // Rimuovi programma dalla listView
                             tablesMapsEntryMutex.WaitOne();
-                            foreach (DataRow item in servers[server].table.rowsList.Rows)
+                            foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                             {
                                 if (item["Nome applicazione"].Equals(progName))
                                 {
-                                    servers[server].table.rowsList.Rows.Remove(item);
+                                    servers[serverName].table.rowsList.Rows.Remove(item);
                                     break;
                                 }
                             }
                             tablesMapsEntryMutex.ReleaseMutex();
 
                             break;
-                        case "--OPENP-":
+                        case "OPENP":
                             /* Ricevi icona processo */
                             Bitmap bitmap = new Bitmap(64, 64);
                             bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                            Array.Clear(buf, 0, buf.Length);
+                            Array.Clear(buffer, 0, buffer.Length);
 
-                            /* Leggi e salva la lunghezza dell'icona leggendo i successivi byte fino a '-' (escludendo il primo) */
-                            i = 0;
-                            c = (char)networkStream.ReadByte(); // leggi il primo trattino
-                            do
-                            {
-                                c = (char)networkStream.ReadByte();
-                                buf[i++] = (byte)c;
-
-                            } while (networkStream.DataAvailable && c != '-');
-                            int bmpLength = Int32.Parse(Encoding.ASCII.GetString(buf, 0, i - 1));
-
+                            // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
+                            // 4 byte di dimensione icona e il trattino
+                            int notBmpData = 11 + progName.Length + 1 + 4 + 1;                            
+                            int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
 
                             /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
                             byte[] bmpData = new byte[bmpLength];
-                            int received = 0;
-                            while (received < bmpLength)
-                            {
-                                received += networkStream.Read(bmpData, received, bmpLength - received);
-                            }
+
+                            // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
+                            // partendo dal source offset "notBmpData"
+                            Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
 
                             /* Crea la bitmap a partire dal byte array */
                             bitmap = CopyDataToBitmap(bmpData);
@@ -374,12 +380,14 @@ namespace WpfApplication1
                             }
 
                             tablesMapsEntryMutex.WaitOne();
-                            addItemToListView(server, progName, bmpImage);
+                            addItemToListView(serverName, progName, bmpImage);
                             tablesMapsEntryMutex.ReleaseMutex();
 
                             break;
-                        
                     }
+
+                    bytesRead = 0;
+                    bytesReceived = 0;
                 }
             }
             catch (ThreadInterruptedException exception)
@@ -398,7 +406,7 @@ namespace WpfApplication1
             {
                 Dispatcher.Invoke(delegate
                 {
-                    textBoxStato.AppendText("\nERRORE: Si è verificato un problema nella connessione al server.");
+                    textBoxStato.AppendText("ERRORE: Si è verificato un problema nella connessione al server.\n");
                     textBoxStato.ScrollToEnd();
                     //disconnettiDalServer();
                 });
@@ -407,8 +415,11 @@ namespace WpfApplication1
             catch (Exception exc)
             {
                 System.Windows.MessageBox.Show("manageNotifications(): " + exc.ToString());
-
                 return;
+            }
+            finally
+            {
+                serverStream.Close();
             }
         }
 
@@ -436,7 +447,7 @@ namespace WpfApplication1
         {
             try
             {
-                textBoxStato.AppendText("\nSTATO: Disconnessione da " + currentConnectedServer + " in corso...");
+                textBoxStato.AppendText("STATO: Disconnessione da " + currentConnectedServer + " in corso...\n");
 
                 // Set del ManualResetEvent "disconnectionEvent" per uscire dal loop in manageNotifications() e manageStatistics()
                 servers[currentConnectedServer].disconnectionEvent.Set();
@@ -450,8 +461,7 @@ namespace WpfApplication1
                 servers[currentConnectedServer].disconnectionEvent.Reset(); // reset del ManualResetEvent
 
                 // Ora è possibile disabilitare e chiudere il socket
-                servers[currentConnectedServer].socket.Shutdown(SocketShutdown.Both);
-                servers[currentConnectedServer].socket.Close();
+                servers[currentConnectedServer].server.Close();
 
                 // Aggiorna bottoni
                 buttonDisconnetti.Visibility = Visibility.Hidden;
@@ -462,7 +472,7 @@ namespace WpfApplication1
                 buttonAltroServer.Visibility = Visibility.Hidden;
 
                 // Aggiorna stato
-                textBoxStato.AppendText("\nSTATO: Disconnesso da " + currentConnectedServer + "...");
+                textBoxStato.AppendText("STATO: Disconnesso da " + currentConnectedServer + "\n");
                 textBoxStato.ScrollToEnd();
 
                 // Svuota listView
@@ -542,7 +552,7 @@ namespace WpfApplication1
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
                 
                 // Invia messaggio
-                int NumDiBytesInviati = servers[currentConnectedServer].socket.Send(messaggio);
+                //int NumDiBytesInviati = servers[currentConnectedServer].server.Send(messaggio);
 
                 // Aggiorna bottoni e textBox
                 textBoxComando.Text = "";
@@ -560,7 +570,7 @@ namespace WpfApplication1
             }
             catch (Exception exc)
             {
-                textBoxStato.AppendText("\nECCEZIONE: " + exc.ToString());
+                textBoxStato.AppendText("ECCEZIONE: " + exc.ToString() + "\n");
                 textBoxStato.ScrollToEnd();
             }
         }
@@ -582,7 +592,7 @@ namespace WpfApplication1
 
         private void serversListComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            Server selectedServer = ((sender as System.Windows.Controls.ComboBox).SelectedItem as Server);
+            string selectedServer = ((sender as System.Windows.Controls.ComboBox).SelectedItem as string);
             if (selectedServer != null)
             {
                 currentConnectedServer = selectedServer;
