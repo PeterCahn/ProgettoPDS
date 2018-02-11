@@ -439,8 +439,10 @@ void Server::sendApplicationToClient2(SOCKET* clientSocket, HWND hwnd, operation
 	string progNameStr(getTitleFromHwnd(hwnd));
 	char progName[MAX_PATH];
 	u_long progNameLength = progNameStr.length();
-
-	strcpy_s(progName, progNameStr.c_str());
+	if (progNameLength == 0)
+		strcpy_s(progName, "Desktop");
+	else
+		strcpy_s(progName, progNameStr.c_str());
 
 	int i = 0;
 	char msgLengthChars[4];

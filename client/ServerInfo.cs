@@ -10,11 +10,13 @@ using System.Net.Sockets;
 namespace client
 {
     class ServerInfo
-    {
+    {       
+        public TcpClient server { get; set; }
         public MyTable table { get; set; }
         public Thread statisticTread { get; set; }
         public Thread notificationsTread { get; set; }
-        public ManualResetEvent disconnectionEvent { get; set; }        
-        public TcpClient server { get; set; }
+        public ManualResetEvent disconnectionEvent { get; set; } 
+        public Mutex tableModificationsMutex { get; set; }
+        
     }
 }

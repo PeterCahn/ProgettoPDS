@@ -17,20 +17,14 @@ using System.Runtime.InteropServices;
 using client;
 using System.Data;
 using System.ComponentModel;
-
-
 using System.Windows.Forms;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Main thread si sblocca e mostra che si è disconnesso solo quando si clicca fuori dalla finestra (dopo aver premuto su "Disconnetti")
+ *      perché il manageNotificationsThread si blocca sulla read e si sblocca successivamente
  */
 
-/* DA CHIARIRE:
- * - Quando chiudo una finestra, se questa ha una percentuale != 0, siccome la sua riga viene eliminata dalla listView le percentuali non raggiungono più il 100%:
- *   siccome c'è scritto di mostrare la percentuale di tempo in cui una finstra è stata in focus dal momento della connessione, a me questo comportamento anche se
- *   strano sembra corretto. Boh, vedere un po' di chiarire. 
- */
 
 namespace WpfApplication1
 {
@@ -41,7 +35,7 @@ namespace WpfApplication1
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
         private string currentConnectedServer;
-        private string _textBoxString = "";
+        private string _textBoxString = "STATO: Disconnesso\n";
         public string TextBoxString {
             get { return _textBoxString; }
             set {
@@ -57,11 +51,12 @@ namespace WpfApplication1
          * accedono alla stessa tablesMap[currentConnectedServer]
          */
         private static Mutex tablesMapsEntryMutex = new Mutex();
+
         /* Mutex necessario affinché non venga chiamata una Invoke mentre il main thread è in attesa sulla Join 
          * creando una dipendendza ciclica.
          */
-        private static Mutex invokeMutex = new Mutex();
-
+        //private static Mutex invokeMutex = new Mutex();
+        
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MainWindow()
@@ -74,7 +69,7 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
 
-            TextBoxString = "STATO: Disconnesso.";
+            //_textBoxString = "STATO: Disconnesso.";
         }
 
         // Create the OnPropertyChanged method to raise the event
@@ -92,7 +87,7 @@ namespace WpfApplication1
             try
             {
                 // Aggiorna stato
-                textBoxStato.AppendText("STATO: In connessione...");
+                textBoxStato.AppendText("STATO: In connessione...\n");
                 
                 // Ricava IPAddress da risultati interrogazione DNS
                 string[] fields = textBoxIpAddress.Text.Split(':');
@@ -106,7 +101,7 @@ namespace WpfApplication1
                 string serverName = fields[0] + ":" + fields[1];
 
                 // Aggiorna stato
-                textBoxStato.AppendText("STATO: Connesso a " + fields[0] + ":" + fields[1]);
+                textBoxStato.AppendText("STATO: Connesso a " + fields[0] + ":" + fields[1] + "\n");
                 textBoxStato.ScrollToEnd();
 
                 // Aggiorna bottoni
@@ -123,7 +118,7 @@ namespace WpfApplication1
 
                 // Mostra la nuova tavola
                 listView1.ItemsSource = si.table.rowsList.DefaultView;
-
+                
                 // Avvia thread per notifiche
                 notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
@@ -140,6 +135,9 @@ namespace WpfApplication1
 
                 // ManualResetEvent settato a false perché il thread si blocchi quando chiama WaitOne
                 si.disconnectionEvent = new ManualResetEvent(false);
+
+                // Inizializzazione mutex per proteggere modifiche alla table
+                si.tableModificationsMutex = new Mutex();
 
                 // Aggiungi il ServerInfo alla lista dei "servers"
                 servers.Add(serverName, si);
@@ -190,17 +188,14 @@ namespace WpfApplication1
             try
             {
                 DateTime lastUpdate = DateTime.Now;
-
-                // Sleep() necessario per evitare divisione per 0 alla prima iterazione e mostrare NaN per il primo mezzo secondo nelle statistiche
-                //      Piero: senza sleep (dopo aver messo l'icona), non viene mostrato nessun NaN
-                // Thread.Sleep(1);
+                                
                 while (true)
                 {
                     // il MutualResetEvent disconnectionEvent è usato anche per far attendere il thread nell'aggiornare le statistiche
                     bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(500);
                     if (isSignaled) break;
 
-                    tablesMapsEntryMutex.WaitOne();
+                    servers[serverName].tableModificationsMutex.WaitOne();
                     foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                     {
                         if (item["Stato finestra"].Equals("Focus"))
@@ -212,8 +207,8 @@ namespace WpfApplication1
                         // Calcola la percentuale
                         item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
                     }
-                    
-                    tablesMapsEntryMutex.ReleaseMutex();
+
+                    servers[serverName].tableModificationsMutex.ReleaseMutex();
 
                     // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
                     // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
@@ -229,10 +224,9 @@ namespace WpfApplication1
                 // TODO: c'è qualcosa da fare?
                 // TODO: check se il thread muore davvero
                 Dispatcher.Invoke(delegate
-                {
+                {                
                     textBoxStato.AppendText("Thread che riceve aggiornamenti dal server interrotto.\n");
                     textBoxStato.ScrollToEnd();
-                    return;
                 });
             }
             catch (Exception exc)
@@ -247,11 +241,9 @@ namespace WpfApplication1
         private void manageNotifications(string serverName)
         {
             NetworkStream serverStream;
-            int bytesRead = 0;
-            int bytesReceived = 0;
-            byte[] buffer = new byte[7];
-
+            byte[] buffer = new byte[7];            
             TcpClient server = servers[serverName].server;
+            
             serverStream = server.GetStream();
 
             string operation = null;
@@ -264,157 +256,147 @@ namespace WpfApplication1
 
             try
             {
-                //while (networkStream.CanRead && servers[server].socket.Connected)
                 //while(!((servers[serverName].socket.Poll(1000, SelectMode.SelectRead) && (servers[serverName].socket.Available == 0)) || !servers[serverName].socket.Connected))
                 while(serverStream.CanRead && server.Connected)
                 {
+                    // Aspetto sul mutex se ci si vuole disconnettere
+                    //networkConflictMutex.WaitOne();
+
+                    // Aspetto se si sta settando il disconnectionEvent, altrimenti leggo i dati ricevuti.                     
                     bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(1);
-                    if (isSignaled) break;
-
-                    // Leggi inizio e dimensione messaggio "--<4 byte int>-" = 7 byte in "buffer"
-                    int offset = 0;
-                    int remaining = 7;
-                    while (remaining > 0){
-                        int read = serverStream.Read(buffer, offset, remaining);
-                        remaining -= read;
-                        offset += read;
-                    }
-
-                    // Leggi la dimensione del messaggio dal buffer
-                    Int32 msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
-                    
-                    // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
-                    byte[] msg = new byte[msgSize];
-                    offset = 0;
-                    remaining = msgSize;
-                    while (remaining > 0){
-                        int read = serverStream.Read(msg, offset, remaining);
-                        remaining -= read;
-                        offset += read;
-                    }
-                                                            
-                    // Estrai operazione => primi 5 byte
-                    byte[] op = new byte[5];
-                    Array.Copy(msg, 0, op, 0, 5);
-                    operation = Encoding.ASCII.GetString(op);
-                    
-                    // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                    int progNameLength = BitConverter.ToInt32(msg, 6);
-                    // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                    byte[] pN = new byte[progNameLength];
-                    Array.Copy(msg, 5 + 6, pN, 0, progNameLength);
-                    progName = Encoding.ASCII.GetString(pN);
-
-                    /* Possibili valori ricevuti:
-                        * --<4 bytes di dimensione messaggio>-FOCUS-<4B per dimensione nome programma>-<nome_nuova_app_focus>
-                        * --<4 bytes di dimensione messaggio>-CLOSE-<4B per dimensione nome programma>-<nome_app_chiusa>
-                        * --<4 bytes di dimensione messaggio>-OPENP-<4B per dimensione nome programma>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<bitmap>
-                        */
-
-                    switch (operation)
+                    if (!isSignaled)
                     {
-                        case "FOCUS":
-                            // Cambia programma col focus
-                            tablesMapsEntryMutex.WaitOne();
-                            foreach (DataRow item in servers[serverName].table.rowsList.Rows)
-                            {
-                                if (item["Nome applicazione"].Equals(progName))
-                                    item["Stato finestra"] = "Focus";
-                                else if (item["Stato finestra"].Equals("Focus"))
-                                    item["Stato finestra"] = "Background";
-                            }
-                            tablesMapsEntryMutex.ReleaseMutex();
+                        // Leggi inizio e dimensione messaggio "--<4 byte int>-" = 7 byte in "buffer"
+                        int offset = 0;
+                        int remaining = 7;
+                        while (remaining > 0){
+                            int read = serverStream.Read(buffer, offset, remaining);
+                            remaining -= read;
+                            offset += read;
+                        }
 
-                            break;
-                        case "CLOSE":
-                            // Rimuovi programma dalla listView
-                            tablesMapsEntryMutex.WaitOne();
-                            foreach (DataRow item in servers[serverName].table.rowsList.Rows)
-                            {
-                                if (item["Nome applicazione"].Equals(progName))
+                        // Leggi la dimensione del messaggio dal buffer
+                        Int32 msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
+
+                        // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
+                        byte[] msg = new byte[msgSize];
+                        offset = 0;
+                        remaining = msgSize;
+                        while (remaining > 0){
+                            int read = serverStream.Read(msg, offset, remaining);
+                            remaining -= read;
+                            offset += read;
+                        }
+
+                        // Estrai operazione => primi 5 byte
+                        byte[] op = new byte[5];
+                        Array.Copy(msg, 0, op, 0, 5);
+                        operation = Encoding.ASCII.GetString(op);
+
+                        // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                        int progNameLength = BitConverter.ToInt32(msg, 6);
+                        // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                        byte[] pN = new byte[progNameLength];
+                        Array.Copy(msg, 5 + 6, pN, 0, progNameLength);
+                        progName = Encoding.ASCII.GetString(pN);
+
+                        /* Possibili valori ricevuti:
+                            * --<4 bytes di dimensione messaggio>-FOCUS-<4B per dimensione nome programma>-<nome_nuova_app_focus>
+                            * --<4 bytes di dimensione messaggio>-CLOSE-<4B per dimensione nome programma>-<nome_app_chiusa>
+                            * --<4 bytes di dimensione messaggio>-OPENP-<4B per dimensione nome programma>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<bitmap>
+                            */
+
+                        switch (operation)
+                        {
+                            case "FOCUS":
+                                // Cambia programma col focus
+                                servers[serverName].tableModificationsMutex.WaitOne();
+                                foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                                 {
-                                    servers[serverName].table.rowsList.Rows.Remove(item);
-                                    break;
+                                    if (item["Nome applicazione"].Equals(progName))
+                                        item["Stato finestra"] = "Focus";
+                                    else if (item["Stato finestra"].Equals("Focus"))
+                                        item["Stato finestra"] = "Background";
                                 }
-                            }
-                            tablesMapsEntryMutex.ReleaseMutex();
+                                servers[serverName].tableModificationsMutex.ReleaseMutex();
 
-                            break;
-                        case "OPENP":
-                            /* Ricevi icona processo */
-                            Bitmap bitmap = new Bitmap(64, 64);
-                            bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                            Array.Clear(buffer, 0, buffer.Length);
+                                break;
+                            case "CLOSE":
+                                // Rimuovi programma dalla listView
+                                servers[serverName].tableModificationsMutex.WaitOne();
+                                foreach (DataRow item in servers[serverName].table.rowsList.Rows)
+                                {
+                                    if (item["Nome applicazione"].Equals(progName))
+                                    {
+                                        servers[serverName].table.rowsList.Rows.Remove(item);
+                                        break;
+                                    }
+                                }
+                                servers[serverName].tableModificationsMutex.ReleaseMutex();
 
-                            // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
-                            // 4 byte di dimensione icona e il trattino
-                            int notBmpData = 11 + progName.Length + 1 + 4 + 1;                            
-                            int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
+                                break;
+                            case "OPENP":
+                                /* Ricevi icona processo */
+                                Bitmap bitmap = new Bitmap(64, 64);
+                                bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                                Array.Clear(buffer, 0, buffer.Length);
 
-                            /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
-                            byte[] bmpData = new byte[bmpLength];
+                                // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
+                                // 4 byte di dimensione icona e il trattino
+                                int notBmpData = 11 + progName.Length + 1 + 4 + 1;
+                                int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
 
-                            // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
-                            // partendo dal source offset "notBmpData"
-                            Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
+                                /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
+                                byte[] bmpData = new byte[bmpLength];
 
-                            /* Crea la bitmap a partire dal byte array */
-                            bitmap = CopyDataToBitmap(bmpData);
-                            /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
-                            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+                                // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
+                                // partendo dal source offset "notBmpData"
+                                Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
 
-                            BitmapImage bmpImage;
-                            using (MemoryStream stream = new MemoryStream())
-                            {
-                                bitmap.Save(stream, ImageFormat.Bmp);
-                                stream.Position = 0;
-                                BitmapImage result = new BitmapImage();
-                                result.BeginInit();
-                                // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
-                                // Force the bitmap to load right now so we can dispose the stream.
-                                result.CacheOption = BitmapCacheOption.OnLoad;
-                                result.StreamSource = stream;
-                                result.EndInit();
-                                result.Freeze();
-                                bmpImage = result;
-                            }
+                                /* Crea la bitmap a partire dal byte array */
+                                bitmap = CopyDataToBitmap(bmpData);
+                                /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+                                bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
-                            tablesMapsEntryMutex.WaitOne();
-                            addItemToListView(serverName, progName, bmpImage);
-                            tablesMapsEntryMutex.ReleaseMutex();
+                                BitmapImage bmpImage;
+                                using (MemoryStream stream = new MemoryStream())
+                                {
+                                    bitmap.Save(stream, ImageFormat.Bmp);
+                                    stream.Position = 0;
+                                    BitmapImage result = new BitmapImage();
+                                    result.BeginInit();
+                                    // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
+                                    // Force the bitmap to load right now so we can dispose the stream.
+                                    result.CacheOption = BitmapCacheOption.OnLoad;
+                                    result.StreamSource = stream;
+                                    result.EndInit();
+                                    result.Freeze();
+                                    bmpImage = result;
+                                }
 
-                            break;
+                                servers[serverName].tableModificationsMutex.WaitOne();
+                                addItemToListView(serverName, progName, bmpImage);
+                                servers[serverName].tableModificationsMutex.ReleaseMutex();
+
+                                break;
+                        }
+                        //networkConflictMutex.ReleaseMutex();
+                    }
+                    else
+                    {
+                        //networkConflictMutex.ReleaseMutex();
+                        break;
                     }
 
-                    bytesRead = 0;
-                    bytesReceived = 0;
                 }
-            }
-            catch (ThreadInterruptedException exception)
-            {
-                // TODO: c'è qualcosa da fare?
-                // TODO: check che il thread muoia davvero
-                listView1.Dispatcher.Invoke(delegate
-                {
-                    textBoxStato.AppendText("Thread che riceve aggiornamenti dal server interrotto.\n");
-                    textBoxStato.ScrollToEnd();
-                });
-                
-                return;
             }
             catch (IOException ioe)
             {
-                Dispatcher.Invoke(delegate
-                {
-                    textBoxStato.AppendText("ERRORE: Si è verificato un problema nella connessione al server.\n");
-                    textBoxStato.ScrollToEnd();
-                    //disconnettiDalServer();
-                });
                 
             }
             catch (Exception exc)
             {
-                System.Windows.MessageBox.Show("manageNotifications(): " + exc.ToString());
+                System.Windows.MessageBox.Show("in manageNotifications(): " + exc.ToString());
                 return;
             }
             finally
@@ -448,20 +430,21 @@ namespace WpfApplication1
             try
             {
                 textBoxStato.AppendText("STATO: Disconnessione da " + currentConnectedServer + " in corso...\n");
+                
+                // Ora è possibile disabilitare e chiudere il socket.
+                // La chiamata a Close() sblocca il thread eventualmente bloccato sulla Read() in attesa di dati.
+                servers[currentConnectedServer].server.Close();
 
                 // Set del ManualResetEvent "disconnectionEvent" per uscire dal loop in manageNotifications() e manageStatistics()
                 servers[currentConnectedServer].disconnectionEvent.Set();
+                
+                // Aspetto che il thread manageNotifications() finisca
+                servers[currentConnectedServer].notificationsTread.Join();
 
                 // Aspetto che il thread manageStatistics() finisca
                 servers[currentConnectedServer].statisticTread.Join();
 
-                // Aspetto che il thread manageNotifications() finisca
-                servers[currentConnectedServer].notificationsTread.Join();
-
                 servers[currentConnectedServer].disconnectionEvent.Reset(); // reset del ManualResetEvent
-
-                // Ora è possibile disabilitare e chiudere il socket
-                servers[currentConnectedServer].server.Close();
 
                 // Aggiorna bottoni
                 buttonDisconnetti.Visibility = Visibility.Hidden;
@@ -479,7 +462,7 @@ namespace WpfApplication1
                 tablesMapsEntryMutex.WaitOne();
                 listView1.ItemsSource = null;
                 tablesMapsEntryMutex.ReleaseMutex();
-                
+
                 // Rimuovi server da serverListComboBox
                 serversListComboBox.Items.Remove(currentConnectedServer);
                 
@@ -491,7 +474,7 @@ namespace WpfApplication1
                 buttonCattura.Visibility = Visibility.Visible;
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
-
+                
             }
             catch (Exception exc)
             {
