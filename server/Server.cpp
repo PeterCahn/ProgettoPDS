@@ -7,22 +7,9 @@ solo la prima nella lista del client ha la percentuale che aumenta
 - Caso Google Chrome: mostra solo il tab che era aperto al momento dell'avvio del server. Se si cambia tab, rimane il titolo della finestra iniziale.
 	=> Provare con EnumChildWindows quando c'è il cambio di focus
 - Gestione eccezioni
-- Gestione connessione con il client tramite classi C++11
+- Invio stringhe UNICODE
+- Identificare le finestre tramite un ID in modo che, se cambia il titolo, si possa inviare un'apposita notifica al client
 
-RISOLTI:
-- Il reinterpret_cast è corretto? Cioè, è giusto usarlo dov'è usato?
-	=> Eliminato perchè le variabili sono ora variabili privte di classe, quindi accessibili senza che vengano passate.
-- std::promise globale va bene?
-	=> E' una variabile privata della classe Server.
-- PASSARE DA THREAD NATIVI WINDOWS A THREAD C++11.
-	=> Erano già usati i thread C++11.
-- Questione lista applicazioni ed app multithread: a Jure hanno detto che avrebbe dovuto mostrare i thread
-	=> Aggiunto "[thread_id] " prima di ogni stampa per mostrare che i thread sono diversi.
-- Cos'è la finestra "Program Manager"? - Gestione finestra senza nome (Desktop)
-	=> Risolto con "IsAltTabWindow". Mostra solo le finestre veramente visibili, non come "IsWindowVisible"
-- Quando il client si chiude o si chiude anche il server (e non dovrebbe farlo) o se sopravvive alla prossima apertura di un client non funziona bene
-perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
-	=> Risolto tramite il join dei thread
 */
 #define WIN32_LEAN_AND_MEAN
 
@@ -41,6 +28,7 @@ perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
 #include <strsafe.h>
 #include <Wingdi.h>
 #include <future>
+#include <regex>
 
 #include <exception>
 #include <typeinfo>
@@ -53,7 +41,6 @@ perchè avvia un nuovo thread notificationsThread senza uccidere il precedente
 // #pragma comment (lib, "Mswsock.lib")
 
 #define DEFAULT_BUFLEN 1024
-#define DEFAULT_PORT  "27015"
 
 using namespace std;
 
@@ -80,11 +67,19 @@ Server::~Server()
 void Server::start()
 {
 	/* Ottieni porta su cui ascoltare */
-	cout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
-	cin >> listeningPort;
-	while (!cin.good()) {
-		cout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura della porta da ascoltare, reinserirne il valore" << endl;
+	regex port("10[2-9][4-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
+	while (true)
+	{
+		cout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";		
 		cin >> listeningPort;
+
+		if (!cin.good())
+			cout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
+		
+		else if (!regex_match(listeningPort, port))
+			cout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
+		else
+			break;
 	}
 
 	while (true) {		
@@ -193,14 +188,14 @@ DWORD WINAPI Server::notificationsManagement()
 				continue;
 
 			cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-			sendApplicationToClient2(&clientSocket, hwnd, OPEN);
+			sendApplicationToClient(&clientSocket, hwnd, OPEN);
 		}
 
 		/* Stampa ed invia finestra col focus */
 		HWND currentForegroundHwnd = GetForegroundWindow();
 		cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
 		cout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
-		sendApplicationToClient2(&clientSocket, currentForegroundHwnd, FOCUS);
+		sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 
@@ -223,7 +218,7 @@ DWORD WINAPI Server::notificationsManagement()
 						currentProgs.push_back(currentHwnd);
 						cout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
 						cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-						sendApplicationToClient2(&clientSocket, currentHwnd, OPEN);
+						sendApplicationToClient(&clientSocket, currentHwnd, OPEN);
 					}
 				}
 			}
@@ -258,7 +253,7 @@ DWORD WINAPI Server::notificationsManagement()
 					windowTitle = "Desktop";
 				cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
 				cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-				sendApplicationToClient2(&clientSocket, currentForegroundHwnd, FOCUS);
+				sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
 			}
 		}
 	}
@@ -361,85 +356,6 @@ string Server::getTitleFromHwnd(HWND hwnd) {
 */
 void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 
-	int moreChars = 20;		// 20 sono i caratteri aggiuntivi alla lunghezza massima del nome di una finestra, dati dal formato del messaggio
-	string progName(getTitleFromHwnd(hwnd));
-	if (progName.length() == 0)
-		progName = "Desktop";
-
-	int bufLen = 0;
-
-	char buf[MAX_PATH + 1000];	
-	if (op == OPEN) {
-		strcpy_s(buf, MAX_PATH + moreChars, "--OPENP-");
-	}
-	else if (op == CLOSE) {
-		strcpy_s(buf, MAX_PATH + moreChars, "--CLOSE-");
-	}
-	else {
-		strcpy_s(buf, MAX_PATH + moreChars, "--FOCUS-");
-	}
-	strcat_s(buf, MAX_PATH + moreChars, to_string(progName.length()).c_str());
-	strcat_s(buf, MAX_PATH + moreChars, "-");
-	strcat_s(buf, MAX_PATH + moreChars, progName.c_str());
-
-	bufLen = strlen(buf);
-	//bufLen = sizeof(buf);
-	BYTE* lpPixels;
-
-	/* Se è una nuova finestra aggiungere in coda lunghezza file icona e file icona stesso  */
-	if (op == OPEN) {
-		HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));
-		PBITMAPINFO pbi = CreateBitmapInfoStruct(hSource);
-		HDC hdc = GetDC(NULL);
-		HDC hdcSource = CreateCompatibleDC(hdc);
-
-		BITMAPINFO MyBMInfo = { 0 };
-		MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
-
-		// Get the BITMAPINFO structure from the bitmap
-		int res;
-		if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
-		{
-			BitmapInfoErrorExit("GetDIBits1()");
-		}
-
-		// create the pixel buffer
-		lpPixels = new BYTE[MyBMInfo.bmiHeader.biSizeImage];
-
-		MyBMInfo.bmiHeader.biCompression = BI_RGB;
-
-		// Call GetDIBits a second time, this time to (format and) store the actual
-		// bitmap data (the "pixels") in the buffer lpPixels		
-		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
-		{
-			BitmapInfoErrorExit("GetDIBits2()");
-		}
-
-		int len = MyBMInfo.bmiHeader.biSizeImage;
-		strcat_s(buf, MAX_PATH, "-");
-		strcat_s(buf, MAX_PATH, to_string(len).c_str());
-		strcat_s(buf, MAX_PATH, "-");
-
-		/* Prepara un nuovo buffer con le ulteriori informazioni da inviare */
-		BYTE *buffer = new BYTE[bufLen + to_string(len).length() + 2 + len];
-		memcpy(buffer, buf, bufLen + to_string(len).length() + 2);
-		memcpy(buffer + bufLen + to_string(len).length() + 2, lpPixels, len);
-
-		send(*clientSocket, (char*)buffer, bufLen + to_string(len).length() + 2 + len, 0);
-
-		DeleteObject(hSource);
-		ReleaseDC(NULL, hdcSource);
-		delete[] lpPixels;
-		delete[] buffer;
-		return;
-	} else
-		send(*clientSocket, buf, bufLen, 0);
-
-	return;
-}
-
-void Server::sendApplicationToClient2(SOCKET* clientSocket, HWND hwnd, operation op) {
-
 	string progNameStr(getTitleFromHwnd(hwnd));
 	char progName[MAX_PATH];
 	u_long progNameLength = progNameStr.length();
@@ -455,7 +371,7 @@ void Server::sendApplicationToClient2(SOCKET* clientSocket, HWND hwnd, operation
 	char dimension[7];	// 2 trattini, 4 byte per la dimensione e trattino
 	char operation[6];	// 5 byte per l'operazione e trattino + 1
 	BYTE* lpPixels = NULL;
-	BYTE *finalBuffer = NULL;
+	BYTE* finalBuffer = NULL;
 	
 	if (op == OPEN) {
 

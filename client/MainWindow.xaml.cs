@@ -21,9 +21,9 @@ using System.Windows.Forms;
 using System.Text.RegularExpressions;
 
 /* TODO:
- * - Distruttore (utile ad esempio per fare Mutex.Dispose()) 
+ * - Distruttore (utile ad esempio per fare Mutex.Dispose())
+ * - Icona con sfondo nero
  */
-
 
 namespace WpfApplication1
 {
@@ -379,7 +379,9 @@ namespace WpfApplication1
                             case "OPENP":
                                 /* Ricevi icona processo */
                                 Bitmap bitmap = new Bitmap(64, 64);
-                                bitmap.MakeTransparent();               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                                bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                                //bitmap.SetTransparencyKey(Color.White);
+                                
                                 Array.Clear(buffer, 0, buffer.Length);
 
                                 // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
@@ -400,35 +402,44 @@ namespace WpfApplication1
                                 bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
                                 BitmapImage bmpImage;
-                                using (MemoryStream stream = new MemoryStream())
+                                using (var b = new Bitmap(bitmap.Width, bitmap.Height))
                                 {
-                                    bitmap.Save(stream, ImageFormat.Bmp);
-                                    stream.Position = 0;
-                                    BitmapImage result = new BitmapImage();
-                                    result.BeginInit();
-                                    // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
-                                    // Force the bitmap to load right now so we can dispose the stream.
-                                    result.CacheOption = BitmapCacheOption.OnLoad;
-                                    result.StreamSource = stream;
-                                    result.EndInit();
-                                    result.Freeze();
-                                    bmpImage = result;
-                                }
+                                    b.SetResolution(bitmap.HorizontalResolution, bitmap.VerticalResolution);
 
-                                servers[serverName].tableModificationsMutex.WaitOne();
-                                addItemToListView(serverName, progName, bmpImage);
-                                servers[serverName].tableModificationsMutex.ReleaseMutex();
+                                    using (var g = Graphics.FromImage(b))
+                                    {
+                                        // Clears the entire drawing surface and fills it with the specified background color
+                                        g.Clear(Color.White);
+                                        // Draws the specified image using its original physical size at the location specified by a coordinate pair
+                                        g.DrawImageUnscaled(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+                                    }
+
+                                    // Now save b like you normally would
+                                    using (MemoryStream stream = new MemoryStream())
+                                    {
+                                        b.Save(stream, ImageFormat.Bmp);
+                                        stream.Position = 0;
+                                        bmpImage = new BitmapImage();
+                                        bmpImage.BeginInit();
+                                        // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
+                                        // Force the bitmap to load right now so we can dispose the stream.
+                                        bmpImage.CacheOption = BitmapCacheOption.OnLoad;
+                                        bmpImage.StreamSource = stream;
+                                        bmpImage.EndInit();
+                                        bmpImage.Freeze();                                        
+                                    }
+
+                                    servers[serverName].tableModificationsMutex.WaitOne();
+                                    addItemToListView(serverName, progName, bmpImage);
+                                    servers[serverName].tableModificationsMutex.ReleaseMutex();
+                                }
 
                                 break;
                         }
-                        //networkConflictMutex.ReleaseMutex();
                     }
                     else
-                    {
-                        //networkConflictMutex.ReleaseMutex();
                         break;
-                    }
-
+                    
                 }
             }
             catch (IOException ioe)
@@ -449,7 +460,7 @@ namespace WpfApplication1
         public Bitmap CopyDataToBitmap(byte[] data)
         {
             // Here create the Bitmap to the know height, width and format
-            Bitmap bmp = new Bitmap(256, 256, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+            Bitmap bmp = new Bitmap(256, 256, PixelFormat.Format32bppRgb);
 
             // Create a BitmapData and Lock all pixels to be written 
             BitmapData bmpData = bmp.LockBits(
