@@ -26,7 +26,7 @@
         </Grid.ColumnDefinitions>
         <Label x:Name="labelIP" Content="Indirizzo IP" HorizontalAlignment="Left" Margin="43,23,0,0" VerticalAlignment="Top" Width="80" Height="23" Foreground="White" Grid.ColumnSpan="2"/>
         <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click" Grid.Column="1"/>
-        <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click" Grid.Column="1" Panel.ZIndex="-1"/>
+        <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconnetti_Click" Grid.Column="1" Panel.ZIndex="-1"/>
         <TextBox x:Name="textBoxStato"  ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="392,25,0,0" TextWrapping="Wrap" Text="{Binding Path=TextBoxString}" VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
         <Label x:Name="labelApplciazioni" Content="Applicazioni server selezionato" HorizontalAlignment="Left"  Margin="43,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.ColumnSpan="2"/>
         <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="43,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Foreground="Black">
@@ -64,7 +64,7 @@
         <Button x:Name="buttonCattura" Content="Cattura Comando" HorizontalAlignment="Left" Margin="43,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click" Grid.ColumnSpan="2" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
         <TextBox x:Name="textBoxComando" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="112,502,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="270" Grid.Column="1" IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"/>
         <Button x:Name="buttonInvia" Content="Invia" HorizontalAlignment="Left" Margin="387,502,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonInvia_Click" Grid.Column="1"/>
-        <TextBox x:Name="textBoxIpAddress" HorizontalAlignment="Left" Height="23" Margin="78,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" Grid.Column="1" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+        <TextBox x:Name="textBoxIpAddress" KeyDown="OnKeyDownHandler" HorizontalAlignment="Left" Height="23" Margin="78,25,0,0" VerticalAlignment="Top" Width="230" TextAlignment="Center" MaxLines="1" Grid.Column="1" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
         <Button x:Name="buttonAnnullaCattura" Content="Annulla Cattura" HorizontalAlignment="Left" Margin="43,502,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonAnnullaCattura_Click" Panel.ZIndex="-1" Grid.ColumnSpan="2"/>
         <ComboBox x:Name="serversListComboBox" Grid.Column="1" HorizontalAlignment="Left" Margin="78,96,0,0" VerticalAlignment="Top" Width="230" IsReadOnly="True" SelectionChanged="serversListComboBox_SelectionChanged"/>
         <Label x:Name="labelServers" Content="Servers" HorizontalAlignment="Left" Margin="44,96,0,0" VerticalAlignment="Top" Width="80" Height="23" Foreground="White" VerticalContentAlignment="Center" Grid.ColumnSpan="2"/>

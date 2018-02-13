@@ -18,6 +18,7 @@ using client;
 using System.Data;
 using System.ComponentModel;
 using System.Windows.Forms;
+using System.Text.RegularExpressions;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose()) 
@@ -28,7 +29,6 @@ namespace WpfApplication1
 {
     public partial class MainWindow : Window
     {
-        private byte[] buffer = new byte[1024];
         private Thread statisticsThread;
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
@@ -67,7 +67,7 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
 
-            textBoxIpAddress.Focus();
+            textBoxIpAddress.Focus();            
 
             TextBoxString = "STATO: Disconnesso.";
         }
@@ -82,27 +82,52 @@ namespace WpfApplication1
             }
         }
 
-        private void buttonConnetti_Click(object sender, RoutedEventArgs e)
+        private void OnKeyDownHandler(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                connettiAlServer();
+            }
+        }
+
+        //private static Regex hostPortMatch = new Regex(@"^(?<ip>(?:\[[\da-fA-F:]+\])|(?:\d{1,3}\.){3}\d{1,3})(?::(?<port>\d+))?$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        public IPEndPoint parseHostPort(string hostPort)
+        {
+            /* Match di indirizzi ip:porta del tipo: [0-255].[0-255].[0-255].[0.255]:[1024-65535] */
+            Regex hostPortMatch = new Regex(@"^(?<ip>([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])):(?<port>10[2-9][4-9]|[2-9]\d\d\d|[1-5]\d\d\d\d|6[0-4]\d\d\d|65[0-5]\d\d|655[0-3]\d|6553[0-5])$", RegexOptions.Compiled);
+            Match match = hostPortMatch.Match(hostPort);
+            if (!match.Success)
+                return null;
+
+            return new IPEndPoint(IPAddress.Parse(match.Groups["ip"].Value), int.Parse(match.Groups["port"].Value));
+        }
+
+        private void connettiAlServer()
         {
             try
             {
                 // Aggiorna stato
                 textBoxStato.AppendText("STATO: In connessione...\n");
-                
+
                 // Ricava IPAddress da risultati interrogazione DNS
-                string[] fields = textBoxIpAddress.Text.Split(':');
-                //bool isIpAddress = IPAddress.TryParse(fields[0], new IPAddress(fields[0]));
-                Int32 port = Int32.Parse(fields[1]);
-                TcpClient server = new TcpClient(fields[0], port);                
+                IPEndPoint ipPort = parseHostPort(textBoxIpAddress.Text);
+                if(ipPort == null)
+                {
+                    textBoxStato.AppendText("ERRORE: Formato ip ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]\n");
+                    return;
+                }
+                
+                string ipAddress = ipPort.Address.ToString();
+                Int32 port = ipPort.Port;
+                TcpClient server = new TcpClient(ipAddress, port);
 
                 ServerInfo si = new ServerInfo();
                 si.server = server;
-
-                // string serverEndpoint = ((IPEndPoint)server.Client.RemoteEndPoint).Address.ToString();
-                string serverName = fields[0] + ":" + fields[1];
+                                
+                string serverName = ipAddress + ":" + port;
 
                 // Aggiorna stato
-                textBoxStato.AppendText("STATO: Connesso a " + fields[0] + ":" + fields[1] + "\n");
+                textBoxStato.AppendText("STATO: Connesso a " + serverName + "\n");
                 textBoxStato.ScrollToEnd();
 
                 // Aggiorna bottoni
@@ -119,7 +144,7 @@ namespace WpfApplication1
 
                 // Mostra la nuova tavola
                 listView1.ItemsSource = si.table.rowsList.DefaultView;
-                
+
                 // Avvia thread per notifiche
                 notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
                 notificationsThread.IsBackground = true;
@@ -130,7 +155,7 @@ namespace WpfApplication1
                 // Avvia thread per statistiche live
                 statisticsThread = new Thread(() => manageStatistics(serverName));
                 statisticsThread.IsBackground = true;
-                statisticsThread.Name = "stats_thread_"+ serverName;
+                statisticsThread.Name = "stats_thread_" + serverName;
                 statisticsThread.Start();
                 si.statisticTread = statisticsThread;
 
@@ -158,11 +183,20 @@ namespace WpfApplication1
                 textBoxStato.AppendText("ECCEZIONE: " + ioe.ToString() + "\n");
                 return;
             }
+            catch(ArgumentOutOfRangeException)
+            {
+                textBoxStato.AppendText("ERRORE: Problema nell'indirizzo IP e porta inseriti. Formato corretto: <ip>:<porta>.\nRiprovare.\n");
+            }
             catch (Exception exc)
             {
                 textBoxStato.AppendText("ECCEZIONE: " + exc.ToString() + "\n");
                 textBoxStato.ScrollToEnd();
             }
+        }
+
+        private void buttonConnetti_Click(object sender, RoutedEventArgs e)
+        {
+            connettiAlServer();
         }
 
         void addItemToListView(string server, string nomeProgramma, BitmapImage bmp)
@@ -513,7 +547,7 @@ namespace WpfApplication1
                 
         }
 
-        private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
+        private void buttonDisconnetti_Click(object sender, RoutedEventArgs e)
         {
             disconnettiDalServer();
         }
