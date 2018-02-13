@@ -198,7 +198,8 @@ DWORD WINAPI Server::notificationsManagement()
 
 		/* Stampa ed invia finestra col focus */
 		HWND currentForegroundHwnd = GetForegroundWindow();
-		cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+		cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
+		cout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
 		sendApplicationToClient2(&clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
@@ -220,7 +221,8 @@ DWORD WINAPI Server::notificationsManagement()
 					string windowTitle = getTitleFromHwnd(currentHwnd);
 					if (windowTitle.length() != 0) {
 						currentProgs.push_back(currentHwnd);
-						cout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl << "- " << windowTitle << endl;
+						cout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
+						cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 						sendApplicationToClient2(&clientSocket, currentHwnd, OPEN);
 					}
 				}
@@ -233,7 +235,8 @@ DWORD WINAPI Server::notificationsManagement()
 					// tempProgs non contiene più currentHwnd
 					string windowTitle = getTitleFromHwnd(currentHwnd);
 					if (windowTitle.length() != 0) {
-						cout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl << "- " << windowTitle << endl;
+						cout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
+						cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 						sendApplicationToClient(&clientSocket, currentHwnd, CLOSE);
 						toBeDeleted.push_back(currentHwnd);
 					}
@@ -253,7 +256,8 @@ DWORD WINAPI Server::notificationsManagement()
 				string windowTitle = getTitleFromHwnd(currentForegroundHwnd);
 				if (windowTitle.length() == 0)
 					windowTitle = "Desktop";
-				cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl << "- " << windowTitle << endl;
+				cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
+				cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 				sendApplicationToClient2(&clientSocket, currentForegroundHwnd, FOCUS);
 			}
 		}
@@ -718,41 +722,61 @@ PBITMAPINFO Server::CreateBitmapInfoStruct(HBITMAP hBmp)
 
 void Server::receiveCommands() {
 	// Ricevi finchè il client non chiude la connessione
-	char* recvbuf = (char*)malloc(sizeof(char)*DEFAULT_BUFLEN); // TODO: evitare malloc?
+	char recvbuf[DEFAULT_BUFLEN*sizeof(char)];
+	char sendBuf[DEFAULT_BUFLEN*sizeof(char)];
+
 	int iResult;
 	do {
 		iResult = recv(clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
 		if (iResult == 0)
-			std::cout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione...\n" << std::endl << std::endl;
+			cout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione..." << endl << endl;
 		else if (iResult < 0) {
-			std::cout << "recv() fallita con errore: " << WSAGetLastError() << std::endl;;
+			cout << "[" << GetCurrentThreadId() << "] " << "recv() fallita con errore: " << WSAGetLastError() << endl;;
 			closesocket(clientSocket);
 			WSACleanup();
 			return;
+		} 
+		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
+		else if (strcmp(recvbuf, "--CLOSE-")) {			
+
+			u_long msgLength = 5;
+			u_long netMsgLength = htonl(msgLength);
+
+			memcpy(sendBuf, "--", 2);
+			memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
+			memcpy(sendBuf + 6, "-", 1);
+
+			memcpy(sendBuf + 7, "OKCLO-", 5);
+			
+			send(clientSocket, sendBuf, 12, 0);
+			cout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
+
+			return;
 		}
+		else {
+			// Questa stringa contiene i virtual-keys ricevuti separati da '+'
+			string stringaRicevuta(recvbuf);
 
-		// Questa stringa contiene i virtual-keys ricevuti separati da '+'
-		std::string stringaRicevuta(recvbuf);
+			// Converti la stringa in una lista di virtual-keyes
+			stringstream sstream(stringaRicevuta);
+			string virtualKey;
+			vector<UINT> vKeysList;
+			while (getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'
+			{
+				UINT vKey;
+				sscanf_s(virtualKey.c_str(), "%u", &vKey);
+				vKeysList.push_back(vKey);
+			}
 
-		// Converti la stringa in una lista di virtual-keyes
-		std::stringstream sstream(stringaRicevuta);
-		std::string virtualKey;
-		std::vector<UINT> vKeysList;
-		while (std::getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'
-		{
-			UINT vKey;
-			sscanf_s(virtualKey.c_str(), "%u", &vKey);
-			vKeysList.push_back(vKey);
+			// TODO: rimuovere dopo debug (?)
+			// Stampa codici virtual-key ricevute
+			std::cout << "Virtual-key ricevute da inviare alla finestra in focus: " << stringaRicevuta << std::endl;
+			for each(UINT i in vKeysList)
+				std::cout << "- " << i << std::endl;
+
+			// Invia keystrokes all'applicazione in focus
+			sendKeystrokesToProgram(vKeysList);
 		}
-
-		// TODO: reimuovere dopo debug (?)
-		// Stampa codici virtual-key ricevute
-		std::cout << "Virtual-key ricevute da inviare alla finestra in focus: " << stringaRicevuta << std::endl;
-		for each(UINT i in vKeysList)
-			std::cout << "- " << i << std::endl;
-
-		// Invia keystrokes all'applicazione in focus
-		sendKeystrokesToProgram(vKeysList);
 
 	} while (iResult > 0);
 

@@ -20,9 +20,7 @@ using System.ComponentModel;
 using System.Windows.Forms;
 
 /* TODO:
- * - Distruttore (utile ad esempio per fare Mutex.Dispose())
- * - Main thread si sblocca e mostra che si è disconnesso solo quando si clicca fuori dalla finestra (dopo aver premuto su "Disconnetti")
- *      perché il manageNotificationsThread si blocca sulla read e si sblocca successivamente
+ * - Distruttore (utile ad esempio per fare Mutex.Dispose()) 
  */
 
 
@@ -69,7 +67,9 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = false;
             buttonCattura.IsEnabled = false;
 
-            //_textBoxString = "STATO: Disconnesso.";
+            textBoxIpAddress.Focus();
+
+            TextBoxString = "STATO: Disconnesso.";
         }
 
         // Create the OnPropertyChanged method to raise the event
@@ -91,6 +91,7 @@ namespace WpfApplication1
                 
                 // Ricava IPAddress da risultati interrogazione DNS
                 string[] fields = textBoxIpAddress.Text.Split(':');
+                //bool isIpAddress = IPAddress.TryParse(fields[0], new IPAddress(fields[0]));
                 Int32 port = Int32.Parse(fields[1]);
                 TcpClient server = new TcpClient(fields[0], port);                
 
@@ -293,6 +294,12 @@ namespace WpfApplication1
                         Array.Copy(msg, 0, op, 0, 5);
                         operation = Encoding.ASCII.GetString(op);
 
+                        if(operation == "OKCLO")
+                        {
+                            servers[serverName].disconnectionEvent.Set();
+                            continue;
+                        }
+
                         // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
                         int progNameLength = BitConverter.ToInt32(msg, 6);
                         // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
@@ -427,22 +434,34 @@ namespace WpfApplication1
 
         private void disconnettiDalServer()
         {
+            NetworkStream serverStream = null;
+            byte[] buffer = new byte[8];
+            TcpClient server = null;
+
             try
             {
                 textBoxStato.AppendText("STATO: Disconnessione da " + currentConnectedServer + " in corso...\n");
-                
-                // Ora è possibile disabilitare e chiudere il socket.
-                // La chiamata a Close() sblocca il thread eventualmente bloccato sulla Read() in attesa di dati.
-                servers[currentConnectedServer].server.Close();
 
-                // Set del ManualResetEvent "disconnectionEvent" per uscire dal loop in manageNotifications() e manageStatistics()
-                servers[currentConnectedServer].disconnectionEvent.Set();
-                
+                server = servers[currentConnectedServer].server;
+                serverStream = server.GetStream();
+
+                // Prepara messaggio da inviare
+                StringBuilder sb = new StringBuilder();
+                sb.Append("--CLOSE-");                
+                buffer = Encoding.ASCII.GetBytes(sb.ToString());
+
+                // Invia richiesta chiusura
+                serverStream.Write(buffer, 0, 8);
+                                
                 // Aspetto che il thread manageNotifications() finisca
                 servers[currentConnectedServer].notificationsTread.Join();
 
                 // Aspetto che il thread manageStatistics() finisca
                 servers[currentConnectedServer].statisticTread.Join();
+
+                // Ora è possibile disabilitare e chiudere il socket.
+                // La chiamata a Close() sblocca il thread eventualmente bloccato sulla Read() in attesa di dati.
+                server.Close();
 
                 servers[currentConnectedServer].disconnectionEvent.Reset(); // reset del ManualResetEvent
 
@@ -476,10 +495,22 @@ namespace WpfApplication1
                 comandoDaInviare.Clear();
                 
             }
-            catch (Exception exc)
+            catch (SocketException exc)
             {
-                System.Windows.MessageBox.Show("BUTTON DISCONNETTI: " + exc.ToString());
+                System.Windows.MessageBox.Show(exc.ToString());
             }
+            catch (IOException ioexc)
+            {
+
+            }
+            finally{
+                if(serverStream != null )
+                    serverStream.Close();
+                if (server != null)
+                    server.Close();
+                
+            }
+                
         }
 
         private void buttonDisconentti_Click(object sender, RoutedEventArgs e)
@@ -603,6 +634,7 @@ namespace WpfApplication1
             textBoxIpAddress.Text = "";
             buttonCattura.IsEnabled = false;
             buttonAltroServer.Visibility = Visibility.Hidden;
+            textBoxIpAddress.Focus();
 
             // Svuota listView
             tablesMapsEntryMutex.WaitOne();

@@ -17,6 +17,5 @@ namespace client
         public Thread notificationsTread { get; set; }
         public ManualResetEvent disconnectionEvent { get; set; } 
         public Mutex tableModificationsMutex { get; set; }
-        
     }
 }

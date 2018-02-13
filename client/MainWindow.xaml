@@ -27,7 +27,7 @@
         <Label x:Name="labelIP" Content="Indirizzo IP" HorizontalAlignment="Left" Margin="43,23,0,0" VerticalAlignment="Top" Width="80" Height="23" Foreground="White" Grid.ColumnSpan="2"/>
         <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click" Grid.Column="1"/>
         <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconentti_Click" Grid.Column="1" Panel.ZIndex="-1"/>
-        <TextBox x:Name="textBoxStato"  IsReadOnly="True" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="392,25,0,0" TextWrapping="Wrap" Text="{Binding Path=TextBoxString}" VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
+        <TextBox x:Name="textBoxStato"  ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="392,25,0,0" TextWrapping="Wrap" Text="{Binding Path=TextBoxString}" VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
         <Label x:Name="labelApplciazioni" Content="Applicazioni server selezionato" HorizontalAlignment="Left"  Margin="43,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.ColumnSpan="2"/>
         <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="43,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Foreground="Black">
             <ListView.View>
