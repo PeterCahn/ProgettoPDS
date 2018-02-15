@@ -5,7 +5,8 @@
 solo la prima nella lista del client ha la percentuale che aumenta
 - Gestire caso in cui finestra cambia nome (es: "Telegram" con 1 notifica diventa "Telegram(1)") (hint: gestire le app per un ID e non per il loro nome)
 - Caso Google Chrome: mostra solo il tab che era aperto al momento dell'avvio del server. Se si cambia tab, rimane il titolo della finestra iniziale.
-	=> Provare con EnumChildWindows quando c'è il cambio di focus
+	=> elenco dei programmi aperti "progNames" contiene anche il titolo della window. Un thread (o quello che già c'è, da vedere) controlla se il 
+	titolo di quella handle cambia
 - Gestione eccezioni
 - Identificare le finestre tramite un ID in modo che, se cambia il titolo, si possa inviare un'apposita notifica al client
 
@@ -32,6 +33,13 @@ solo la prima nella lista del client ha la percentuale che aumenta
 #include <io.h>
 #include <fcntl.h>
 
+#include <process.h>
+
+#include <oleacc.h>
+#pragma comment (lib, "oleacc.lib")
+
+#include <cstdio>
+
 #include <exception>
 #include <typeinfo>
 #include <stdexcept>
@@ -53,12 +61,16 @@ enum operation {
 	FOCUS
 };
 
+typedef std::map<HWND, wstring> WinStringMap;
+
 Server::Server()
 {
 	_setmode(_fileno(stdout), _O_U16TEXT);
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
 
+	windows = map<HWND, wstring>();
+	
 	stopNotificationsThread = promise<bool>();	
 }
 
@@ -84,6 +96,9 @@ void Server::start()
 		else
 			break;
 	}
+
+	// Tentativo di sganciare un thread e settare una hook function al focus, nome cambiato, etc.
+	//thread t(hook, this);
 
 	while (true) {		
 
@@ -131,15 +146,85 @@ void Server::start()
 
 BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 {
+	map<HWND, wstring>* windows2 = reinterpret_cast< map<HWND, wstring>* > (lParam);
+
+	DWORD process, thread;
+	thread = GetWindowThreadProcessId(hWnd, &process);
+
+	TCHAR title[MAX_PATH];
+	GetWindowTextW(hWnd, title, sizeof(title));
+
+	wstring windowTitle = wstring(title);
+
 	// Reinterpreta LPARAM lParam come puntatore alla lista dei nomi 
-	vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
+	//vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
 
 	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
-	if (IsAltTabWindow(hWnd) )
-	//if (IsWindowVisible(hWnd))
-		progNames->push_back(hWnd);
+	//if (IsAltTabWindow(hWnd))
+//		progNames->push_back(hWnd);
+
+	// Proteggere accesso a variabile condivisa "windows"
+	if (IsAltTabWindow(hWnd))
+		windows2->insert(pair<HWND,wstring>(hWnd, windowTitle));
 
 	return TRUE;
+}
+
+void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
+{
+	TCHAR title[MAX_PATH];
+	GetWindowTextW(hwnd, title, sizeof(title));
+
+	wstring t = wstring(title);
+
+	vector<HWND> currentProgs;
+	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
+	
+	if (find(currentProgs.begin(), currentProgs.end(), hwnd) != currentProgs.end()) {
+		// la finestra c'è
+		if (event == EVENT_OBJECT_FOCUS)
+			wcout << "Focus on: " << hwnd << " " << t << endl;
+		else if (event == EVENT_OBJECT_NAMECHANGE)
+			wcout << "Name changed: " << hwnd << " " << t << endl;
+	}
+
+}
+
+unsigned __stdcall Server::hook(void* args)
+{
+	HWINEVENTHOOK hHook = NULL;
+	vector<HWND> currentProgs;
+	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
+
+	for each (HWND currentHwnd in currentProgs) {
+		if (find(currentProgs.begin(), currentProgs.end(), currentHwnd) != currentProgs.end()) {
+			// tempProgs non contiene più currentHwnd
+			DWORD ProcessId, ThreadId;
+			ThreadId = GetWindowThreadProcessId(currentHwnd, &ProcessId);
+
+			TCHAR title[MAX_PATH];
+			GetWindowTextW(currentHwnd, title, sizeof(title));
+
+			wstring t = wstring(title);
+
+			//hHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_NAMECHANGE, NULL, HandleWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+			//UnhookWinEvent(hHook);
+			//CoUninitialize();
+		}
+	}
+
+	CoInitialize(NULL);
+	hHook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_NAMECHANGE, NULL, HandleWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+	MSG msg;
+	// Secondo parametro può essere la hwnd della window da cui ricevere i messaggi
+	while (GetMessage(&msg, NULL, 0, 0) > 0);
+
+	UnhookWinEvent(hHook);
+	CoUninitialize();
+
+	return 0;
 }
 
 BOOL Server::IsAltTabWindow(HWND hwnd)
@@ -178,11 +263,12 @@ DWORD WINAPI Server::notificationsManagement()
 		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazioni attive:" << endl;
 		vector<HWND> currentProgs;
 
-		::EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
+		::EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
 		wcout << "[" << GetCurrentThreadId() << "] " << "Programmi aperti: " << endl;
 		bool desktopAlreadySent = FALSE;
-		for each (HWND hwnd in currentProgs) {
-			wstring windowTitle = getTitleFromHwnd(hwnd);
+		for each (pair<HWND, wstring> pair in windows) {
+			wstring windowTitle = pair.second;
+			//wstring windowTitle = getTitleFromHwnd(hwnd);
 			if (windowTitle.length() == 0 && !desktopAlreadySent) {
 				desktopAlreadySent = TRUE;
 				windowTitle = L"Desktop";
@@ -191,14 +277,14 @@ DWORD WINAPI Server::notificationsManagement()
 				continue;
 
 			wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-			sendApplicationToClient(&clientSocket, hwnd, OPEN);
+			sendApplicationToClient(clientSocket, pair.first, OPEN);
 		}
 
 		/* Stampa ed invia finestra col focus */
 		HWND currentForegroundHwnd = GetForegroundWindow();
 		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
 		wcout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
-		sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
+		sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 
@@ -209,41 +295,40 @@ DWORD WINAPI Server::notificationsManagement()
 			this_thread::sleep_for(chrono::milliseconds(500));
 
 			/* Variazioni lista programmi */
-			vector<HWND> tempProgs;
-			::EnumWindows(&Server::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempProgs));
+			map<HWND, wstring> tempWindows;
+			::EnumWindows(&Server::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
 
 			// Check nuova finestra
-			for each(HWND currentHwnd in tempProgs) {
-				if (find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
-					// currentProgs non contiene questo programma (quindi è stato aperto ora)
-					wstring windowTitle = getTitleFromHwnd(currentHwnd);
+			for each (pair<HWND, wstring> pair in tempWindows) {
+				if (windows.find(pair.first) == windows.end()) {
+					// 'windows' non contiene questo programma (quindi è stato aperto ora)
+					wstring windowTitle = getTitleFromHwnd(pair.first);
 					if (windowTitle.length() != 0) {
-						currentProgs.push_back(currentHwnd);
+						// Devo aggiungere la finestra a 'windows'
+						windows[pair.first] = windowTitle;						
 						wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
 						wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-						sendApplicationToClient(&clientSocket, currentHwnd, OPEN);
+						sendApplicationToClient(clientSocket, pair.first, OPEN);
 					}
 				}
 			}
 
 			// Check chiusura finestra
 			vector<HWND> toBeDeleted;
-			for each (HWND currentHwnd in currentProgs) {
-				if (find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end()) {
-					// tempProgs non contiene più currentHwnd
-					wstring windowTitle = getTitleFromHwnd(currentHwnd);
+			for each (pair<HWND, wstring> pair in windows) {
+				if (tempWindows.find(pair.first) == tempWindows.end()) {
+					// tempWindows non contiene più pair.first (quindi è stato chiusa)
+					wstring windowTitle = getTitleFromHwnd(pair.first);
 					if (windowTitle.length() != 0) {
 						wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
 						wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-						sendApplicationToClient(&clientSocket, currentHwnd, CLOSE);
-						toBeDeleted.push_back(currentHwnd);
+						sendApplicationToClient(clientSocket, pair.first, CLOSE);
+						toBeDeleted.push_back(pair.first);
 					}
 				}
 			}
-			for each (HWND deleteThis in toBeDeleted) {
-				// Ricava index di deleteThis in currentProgNames per cancellarlo
-				auto index = find(currentProgs.begin(), currentProgs.end(), deleteThis);
-				currentProgs.erase(index);
+			for each(HWND hwnd in toBeDeleted) {
+				windows.erase(hwnd);
 			}
 
 			/* Variazioni focus */
@@ -256,7 +341,7 @@ DWORD WINAPI Server::notificationsManagement()
 					windowTitle = L"Desktop";
 				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
 				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-				sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
+				sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 			}
 		}
 	}
@@ -347,7 +432,8 @@ wstring Server::getTitleFromHwnd(HWND hwnd) {
 	return wstring(title);
 }
 
-/* Invia il nome della finestra e l'informazione ad esso associata al client
+/* 
+* Invia il nome della finestra e l'informazione ad esso associata al client
 * Il formato del messaggio per le operazioni CLOSE e FOCUS è :
 *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
 *
@@ -358,7 +444,7 @@ wstring Server::getTitleFromHwnd(HWND hwnd) {
 * NB: in notificationsManagement il primo check è quello di nuove finestre (operazione OPEN), i successivi check (FOCUS/CLOSE)
 *	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
 */
-void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
+void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation op) {
 
 	wstring progNameStr(getTitleFromHwnd(hwnd));
 	TCHAR progName[MAX_PATH];
@@ -393,7 +479,7 @@ void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation 
 		int res;
 		if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			//BitmapInfoErrorExit(("GetDIBits1()"));
+			BitmapInfoErrorExit(L"GetDIBits1()");
 		}
 
 		// create the pixel buffer
@@ -406,7 +492,7 @@ void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation 
 		// bitmap data (the "pixels") in the buffer lpPixels		
 		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			//BitmapInfoErrorExit("GetDIBits2()");
+			BitmapInfoErrorExit(L"GetDIBits2()");
 		}
 
 		DeleteObject(hSource);
@@ -490,7 +576,7 @@ void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation 
 
 	int bytesSent = 0;
 	//while (bytesSent < msgLength + 7) {
-		bytesSent += send(*clientSocket, (char*)finalBuffer + bytesSent, 7 + msgLength - bytesSent, 0);
+		bytesSent += send(clientSocket, (char*)finalBuffer + bytesSent, 7 + msgLength - bytesSent, 0);
 	//}
 	
 	return;
@@ -511,7 +597,7 @@ long Server::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	int res;
 	if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
-		//BitmapInfoErrorExit("GetDIBits1()");
+		BitmapInfoErrorExit(L"GetDIBits1()");
 	}
 
 	// create the pixel buffer
@@ -524,7 +610,7 @@ long Server::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	// bitmap data (the "pixels") in the buffer lpPixels		
 	if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
-		//BitmapInfoErrorExit("GetDIBits2()");
+		BitmapInfoErrorExit(L"GetDIBits2()");
 	}
 
 	DeleteObject(hSource);

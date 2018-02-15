@@ -369,7 +369,9 @@ namespace WpfApplication1
                                 {
                                     if (item["Nome applicazione"].Equals(progName))
                                     {
-                                        servers[serverName].table.rowsList.Rows.Remove(item);
+                                        // TODO: se % è zero elimina dalla lista, altrimenti setta "Stato finestra" a "Closed"
+                                        item["Stato finestra"] = "Closed";
+                                        //servers[serverName].table.rowsList.Rows.Remove(item);
                                         break;
                                     }
                                 }
