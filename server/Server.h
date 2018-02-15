@@ -36,7 +36,7 @@ private:
 	void sendKeystrokesToProgram(vector<UINT> vKeysList);
 	
 	static BOOL IsAltTabWindow(HWND hwnd);
-	string getTitleFromHwnd(HWND hwnd);
+	wstring getTitleFromHwnd(HWND hwnd);
 	void BitmapInfoErrorExit(LPTSTR lpszFunction);
 	HICON getHICONfromHWND(HWND hwnd);
 	HBITMAP getHBITMAPfromHICON(HICON hIcon);

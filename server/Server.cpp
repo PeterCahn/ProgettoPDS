@@ -7,11 +7,11 @@ solo la prima nella lista del client ha la percentuale che aumenta
 - Caso Google Chrome: mostra solo il tab che era aperto al momento dell'avvio del server. Se si cambia tab, rimane il titolo della finestra iniziale.
 	=> Provare con EnumChildWindows quando c'è il cambio di focus
 - Gestione eccezioni
-- Invio stringhe UNICODE
 - Identificare le finestre tramite un ID in modo che, se cambia il titolo, si possa inviare un'apposita notifica al client
 
 */
 #define WIN32_LEAN_AND_MEAN
+#define UNICODE
 
 #include <Windows.h>
 #include <Winsock2.h>
@@ -29,6 +29,8 @@ solo la prima nella lista del client ha la percentuale che aumenta
 #include <Wingdi.h>
 #include <future>
 #include <regex>
+#include <io.h>
+#include <fcntl.h>
 
 #include <exception>
 #include <typeinfo>
@@ -53,6 +55,7 @@ enum operation {
 
 Server::Server()
 {
+	_setmode(_fileno(stdout), _O_U16TEXT);
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
 
@@ -70,21 +73,21 @@ void Server::start()
 	regex port("10[2-9][4-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
 	while (true)
 	{
-		cout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";		
+		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";		
 		cin >> listeningPort;
 
 		if (!cin.good())
-			cout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
+			wcout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
 		
 		else if (!regex_match(listeningPort, port))
-			cout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
 		else
 			break;
 	}
 
 	while (true) {		
 
-		cout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
 		clientSocket = acceptConnection();
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
@@ -104,11 +107,11 @@ void Server::start()
 			if (globalExceptionPtr) rethrow_exception(globalExceptionPtr);
 		}
 		catch (system_error se) {
-			cout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
 		}
 		catch (const exception &ex)
 		{
-			cout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
 			/* Riprova a lanciare il thread (?) */
 			//thread notificationsThread(&Server::notificationsManagement, this, reinterpret_cast<LPVOID>(&clientSocket));
 		}
@@ -116,7 +119,7 @@ void Server::start()
 		/* Chiudi la connessione */
 		int iResult = shutdown(clientSocket, SD_SEND);
 		if (iResult == SOCKET_ERROR) {
-			cout << "[" << GetCurrentThreadId() << "] " << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Chiusura della connessione fallita con errore: " << WSAGetLastError() << endl;
 		}
 		
 		/* Cleanup */
@@ -172,29 +175,29 @@ DWORD WINAPI Server::notificationsManagement()
 	try {
 
 		/* Stampa ed invia tutte le finestre */
-		cout << "[" << GetCurrentThreadId() << "] " << "Applicazioni attive:" << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazioni attive:" << endl;
 		vector<HWND> currentProgs;
 
 		::EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&currentProgs));
-		cout << "[" << GetCurrentThreadId() << "] " << "Programmi aperti: " << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "Programmi aperti: " << endl;
 		bool desktopAlreadySent = FALSE;
 		for each (HWND hwnd in currentProgs) {
-			string windowTitle = getTitleFromHwnd(hwnd);
+			wstring windowTitle = getTitleFromHwnd(hwnd);
 			if (windowTitle.length() == 0 && !desktopAlreadySent) {
 				desktopAlreadySent = TRUE;
-				windowTitle = "Desktop";
+				windowTitle = L"Desktop";
 			}
 			else if (windowTitle.length() == 0 && desktopAlreadySent)
 				continue;
 
-			cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 			sendApplicationToClient(&clientSocket, hwnd, OPEN);
 		}
 
 		/* Stampa ed invia finestra col focus */
 		HWND currentForegroundHwnd = GetForegroundWindow();
-		cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
-		cout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
 		sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
@@ -213,11 +216,11 @@ DWORD WINAPI Server::notificationsManagement()
 			for each(HWND currentHwnd in tempProgs) {
 				if (find(currentProgs.begin(), currentProgs.end(), currentHwnd) == currentProgs.end()) {
 					// currentProgs non contiene questo programma (quindi è stato aperto ora)
-					string windowTitle = getTitleFromHwnd(currentHwnd);
+					wstring windowTitle = getTitleFromHwnd(currentHwnd);
 					if (windowTitle.length() != 0) {
 						currentProgs.push_back(currentHwnd);
-						cout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
-						cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 						sendApplicationToClient(&clientSocket, currentHwnd, OPEN);
 					}
 				}
@@ -228,10 +231,10 @@ DWORD WINAPI Server::notificationsManagement()
 			for each (HWND currentHwnd in currentProgs) {
 				if (find(tempProgs.begin(), tempProgs.end(), currentHwnd) == tempProgs.end()) {
 					// tempProgs non contiene più currentHwnd
-					string windowTitle = getTitleFromHwnd(currentHwnd);
+					wstring windowTitle = getTitleFromHwnd(currentHwnd);
 					if (windowTitle.length() != 0) {
-						cout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
-						cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 						sendApplicationToClient(&clientSocket, currentHwnd, CLOSE);
 						toBeDeleted.push_back(currentHwnd);
 					}
@@ -248,11 +251,11 @@ DWORD WINAPI Server::notificationsManagement()
 			if (tempForeground != currentForegroundHwnd) {
 				// Allora il programma che ha il focus è cambiato
 				currentForegroundHwnd = tempForeground;
-				string windowTitle = getTitleFromHwnd(currentForegroundHwnd);
+				wstring windowTitle = getTitleFromHwnd(currentForegroundHwnd);
 				if (windowTitle.length() == 0)
-					windowTitle = "Desktop";
-				cout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
-				cout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+					windowTitle = L"Desktop";
+				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
+				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 				sendApplicationToClient(&clientSocket, currentForegroundHwnd, FOCUS);
 			}
 		}
@@ -279,14 +282,14 @@ SOCKET Server::acceptConnection(void)
 	// Inizializza Winsock
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
-		std::cout << "WSAStartup() fallita con errore: " << iResult << std::endl;
+		wcout << "WSAStartup() fallita con errore: " << iResult << std::endl;
 		return 1;
 	}
 
 	// Creazione socket
 	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (listenSocket == INVALID_SOCKET) {
-		std::cout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
+		wcout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
 		WSACleanup();
 		return 1;
 	}
@@ -300,7 +303,7 @@ SOCKET Server::acceptConnection(void)
 	// Associa socket a indirizzo locale
 	iResult = ::bind(listenSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
 	if (iResult == SOCKET_ERROR) {
-		std::cout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
+		wcout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -309,7 +312,7 @@ SOCKET Server::acceptConnection(void)
 	// Ascolta per richieste di connessione
 	iResult = listen(listenSocket, SOMAXCONN);
 	if (iResult == SOCKET_ERROR) {
-		std::cout << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
+		wcout << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -318,7 +321,7 @@ SOCKET Server::acceptConnection(void)
 	// Accetta la connessione
 	clientSocket = accept(listenSocket, NULL, NULL);
 	if (clientSocket == INVALID_SOCKET) {
-		std::cout << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
+		wcout << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
 		closesocket(listenSocket);
 		WSACleanup();
 		return 1;
@@ -330,17 +333,18 @@ SOCKET Server::acceptConnection(void)
 	int port = ntohs(clientSockAddr.sin_port);
 	char ipstr[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
-	std::cout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
+	wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
 	closesocket(listenSocket);
 
 	return clientSocket;
 }
 
-string Server::getTitleFromHwnd(HWND hwnd) {
-	char title[MAX_PATH];
-	GetWindowText(hwnd, title, sizeof(title));
-	return string(title);
+wstring Server::getTitleFromHwnd(HWND hwnd) {
+	TCHAR title[MAX_PATH];
+	GetWindowTextW(hwnd, title, sizeof(title));
+
+	return wstring(title);
 }
 
 /* Invia il nome della finestra e l'informazione ad esso associata al client
@@ -356,13 +360,14 @@ string Server::getTitleFromHwnd(HWND hwnd) {
 */
 void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation op) {
 
-	string progNameStr(getTitleFromHwnd(hwnd));
-	char progName[MAX_PATH];
-	u_long progNameLength = progNameStr.length();
+	wstring progNameStr(getTitleFromHwnd(hwnd));
+	TCHAR progName[MAX_PATH];
+	u_long progNameLength = progNameStr.size() * sizeof(wchar_t);
 	if (progNameLength == 0)
-		strcpy_s(progName, "Desktop");
+		//progNameStr = L"Desktop";
+		wcscpy_s(progName, L"Desktop");
 	else
-		strcpy_s(progName, progNameStr.c_str());
+		wcscpy_s(progName, progNameStr.c_str());
 
 	int i = 0;
 	char msgLengthChars[4];
@@ -386,9 +391,9 @@ void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation 
 
 		// Get the BITMAPINFO structure from the bitmap
 		int res;
-		if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+		if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			BitmapInfoErrorExit("GetDIBits1()");
+			//BitmapInfoErrorExit(("GetDIBits1()"));
 		}
 
 		// create the pixel buffer
@@ -401,7 +406,7 @@ void Server::sendApplicationToClient(SOCKET* clientSocket, HWND hwnd, operation 
 		// bitmap data (the "pixels") in the buffer lpPixels		
 		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			BitmapInfoErrorExit("GetDIBits2()");
+			//BitmapInfoErrorExit("GetDIBits2()");
 		}
 
 		DeleteObject(hSource);
@@ -506,7 +511,7 @@ long Server::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	int res;
 	if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
-		BitmapInfoErrorExit("GetDIBits1()");
+		//BitmapInfoErrorExit("GetDIBits1()");
 	}
 
 	// create the pixel buffer
@@ -519,7 +524,7 @@ long Server::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	// bitmap data (the "pixels") in the buffer lpPixels		
 	if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
-		BitmapInfoErrorExit("GetDIBits2()");
+		//BitmapInfoErrorExit("GetDIBits2()");
 	}
 
 	DeleteObject(hSource);
@@ -578,7 +583,7 @@ PBITMAPINFO Server::CreateBitmapInfoStruct(HBITMAP hBmp)
 
 	// Retrieve the bitmap color format, width, and height.  
 	if (!GetObject(hBmp, sizeof(BITMAP), (LPVOID*)&bmp)) {
-		std::cout << "Impossibile ottenere la PBITMAPINFO" << std::endl;
+		wcout << "Impossibile ottenere la PBITMAPINFO" << std::endl;
 		return nullptr;
 	}
 
@@ -645,9 +650,9 @@ void Server::receiveCommands() {
 	do {
 		iResult = recv(clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
 		if (iResult == 0)
-			cout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione..." << endl << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione..." << endl << endl;
 		else if (iResult < 0) {
-			cout << "[" << GetCurrentThreadId() << "] " << "recv() fallita con errore: " << WSAGetLastError() << endl;;
+			wcout << "[" << GetCurrentThreadId() << "] " << "recv() fallita con errore: " << WSAGetLastError() << endl;;
 			closesocket(clientSocket);
 			WSACleanup();
 			return;
@@ -665,7 +670,7 @@ void Server::receiveCommands() {
 			memcpy(sendBuf + 7, "OKCLO-", 5);
 			
 			send(clientSocket, sendBuf, 12, 0);
-			cout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
 
 			return;
 		}
@@ -686,9 +691,9 @@ void Server::receiveCommands() {
 
 			// TODO: rimuovere dopo debug (?)
 			// Stampa codici virtual-key ricevute
-			std::cout << "Virtual-key ricevute da inviare alla finestra in focus: " << stringaRicevuta << std::endl;
+			wcout << "Virtual-key ricevute da inviare alla finestra in focus: " << endl; // << stringaRicevuta << std::endl;
 			for each(UINT i in vKeysList)
-				std::cout << "- " << i << std::endl;
+				wcout << "- " << i << std::endl;
 
 			// Invia keystrokes all'applicazione in focus
 			sendKeystrokesToProgram(vKeysList);
@@ -769,8 +774,8 @@ void Server::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	keystrokes_sent = SendInput((UINT)keystrokes_lenght, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
 
-	std::cout << "# of keystrokes to send: " << keystrokes_lenght << std::endl;
-	std::cout << "# of keystrokes sent: " << keystrokes_sent << std::endl;
+	wcout << "# of keystrokes to send: " << keystrokes_lenght << std::endl;
+	wcout << "# of keystrokes sent: " << keystrokes_sent << std::endl;
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys

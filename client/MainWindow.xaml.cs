@@ -339,7 +339,7 @@ namespace WpfApplication1
                         // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
                         byte[] pN = new byte[progNameLength];
                         Array.Copy(msg, 5 + 6, pN, 0, progNameLength);
-                        progName = Encoding.ASCII.GetString(pN);
+                        progName = Encoding.Unicode.GetString(pN);
 
                         /* Possibili valori ricevuti:
                             * --<4 bytes di dimensione messaggio>-FOCUS-<4B per dimensione nome programma>-<nome_nuova_app_focus>
@@ -386,7 +386,7 @@ namespace WpfApplication1
 
                                 // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
                                 // 4 byte di dimensione icona e il trattino
-                                int notBmpData = 11 + progName.Length + 1 + 4 + 1;
+                                int notBmpData = 11 + progNameLength + 1 + 4 + 1;
                                 int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
 
                                 /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
