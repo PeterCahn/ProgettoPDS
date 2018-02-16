@@ -23,6 +23,7 @@ using System.Text.RegularExpressions;
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Icona con sfondo nero
+ * - Crash per l'incoerenza del numero di elementi nell'interfaccia (all'incirca): mettere mutex e controlli per la modifica dela listview
  */
 
 namespace WpfApplication1
@@ -341,7 +342,7 @@ namespace WpfApplication1
                         Int32 hwnd = BitConverter.ToInt32(msg, 6);
 
                         // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                        int progNameLength = BitConverter.ToInt32(msg, 11);
+                        int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
                         // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
                         byte[] pN = new byte[progNameLength];
                         Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
@@ -360,7 +361,7 @@ namespace WpfApplication1
                                 servers[serverName].tableModificationsMutex.WaitOne();
                                 foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                                 {
-                                    if (item["Nome applicazione"].Equals(progName))
+                                    if (item["HWND"].Equals(hwnd))
                                         item["Stato finestra"] = "Focus";
                                     else if (item["Stato finestra"].Equals("Focus"))
                                         item["Stato finestra"] = "Background";
@@ -388,8 +389,12 @@ namespace WpfApplication1
                                 servers[serverName].tableModificationsMutex.WaitOne();
                                 foreach (DataRow item in servers[serverName].table.rowsList.Rows)
                                 {
-                                    if(item["HWND"].Equals(hwnd))
+                                    if (item["HWND"].Equals(hwnd))
+                                    {
+                                        // TODO: ricezione icona nel caso la finestra aggiornata abbia un'icona diversa
                                         item["Nome applicazione"] = progName;
+                                        break;
+                                    }
                                 }
                                 servers[serverName].tableModificationsMutex.ReleaseMutex();
                                 break;
