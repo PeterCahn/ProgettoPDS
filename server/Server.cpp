@@ -58,7 +58,8 @@ using namespace std;
 enum operation {
 	OPEN,
 	CLOSE,
-	FOCUS
+	FOCUS,
+	TITLE_CHANGED
 };
 
 typedef std::map<HWND, wstring> WinStringMap;
@@ -331,7 +332,26 @@ DWORD WINAPI Server::notificationsManagement()
 				windows.erase(hwnd);
 			}
 
-			/* Variazioni focus */
+			/* Check variazione titolo finestre */
+			for each (pair<HWND, wstring> pair in windows) {
+				if (tempWindows.find(pair.first) != tempWindows.end()) {
+					// E' stata trovata la finestra: controlla ora se il titolo è diverso
+					wstring previousTitle = windows[pair.first];
+					wstring newTitle = tempWindows[pair.first];
+
+					if (previousTitle != newTitle) {
+						// Devo aggiungere la finestra a 'windows'
+						windows[pair.first] = newTitle;
+						wcout << "[" << GetCurrentThreadId() << "] " << "Cambio nome per la finestra: " << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "\t- " << previousTitle << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "Ora è: " << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "- " << newTitle << endl;
+						sendApplicationToClient(clientSocket, pair.first, TITLE_CHANGED);
+					}
+				}
+			}
+
+			/* Check variazione focus */
 			HWND tempForeground = GetForegroundWindow();
 			if (tempForeground != currentForegroundHwnd) {
 				// Allora il programma che ha il focus è cambiato
@@ -456,7 +476,6 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 		wcscpy_s(progName, progNameStr.c_str());
 
 	int i = 0;
-	char msgLengthChars[4];
 	u_long msgLength = 0;
 
 	char dimension[7];	// 2 trattini, 4 byte per la dimensione e trattino
@@ -500,7 +519,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 
 		/* iconLength è la dimensione dell'icona */
 		/* Calcola lunghezza totale messaggio e salvala */
-		msgLength = 6 + 4 + 1 + 4 + 1 + progNameLength + 1 + 4 + 1 + iconLength;
+		msgLength = 6 + 4 + 1 + 4 + 1 + 4 + 1 + progNameLength + 1 + 4 + 1 + iconLength;
 		u_long netMsgLength = htonl(msgLength);
 
 		memcpy(dimension, "--", 2);
@@ -517,14 +536,17 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 
 		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
 
-		memcpy(finalBuffer + 7 + 6, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + 7 + 6 + 4, "-", 1);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + 7 + 6 + 4 + 1, progName, progNameLength);	// <progName>
-		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6, &hwnd, sizeof(hwnd));
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd), "-", 1);	// Aggiungi trattino (1 byte)
 
-		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength + 1 , &iconLength, 4);	// Aggiungi dimensione icona (4 byte)
-		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength + 1 + 4 + 1 , lpPixels, iconLength);	// Invia icona
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength + 1 , &iconLength, 4);	// Aggiungi dimensione icona (4 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength + 1 + 4 + 1 , lpPixels, iconLength);	// Invia icona
 	}
 	else if (op == CLOSE) {
 
@@ -545,12 +567,16 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 
 		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
 
-		memcpy(finalBuffer + 7 + 6, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + 7 + 6 + 4, "-", 1);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + 7 + 6 + 4 + 1, progName, progNameLength);	// <progName>
-		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6, &hwnd, sizeof(hwnd));
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd), "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
 	}
-	else {
+	else if(op == FOCUS){
 
 		/* Calcola lunghezza totale messaggio e salvala */
 		msgLength = 6 + 4 + 1 + 4 + 1 + progNameLength + 1;
@@ -568,10 +594,41 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 
 		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
 
-		memcpy(finalBuffer + 7 + 6, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + 7 + 6 + 4, "-", 1);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + 7 + 6 + 4 + 1, progName, progNameLength);	// <progName>
-		memcpy(finalBuffer + 7 + 6 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6, &hwnd, sizeof(hwnd));
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd), "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
+
+	}
+	else if (op == TITLE_CHANGED) {
+		/* Calcola lunghezza totale messaggio e salvala */
+		msgLength = 6 + 4 + 1 + 4 + 1 + progNameLength + 1;
+		u_long netMsgLength = htonl(msgLength);
+
+		memcpy(dimension, "--", 2);
+		memcpy(dimension + 2, (void*)&netMsgLength, 4);
+		memcpy(dimension + 6, "-", 1);
+
+		memcpy(operation, "TTCHA-", 6);
+
+		/* Crea buffer da inviare */
+		finalBuffer = new BYTE[7 + msgLength];
+		memcpy(finalBuffer, dimension, 7);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+
+		memcpy(finalBuffer + 7, operation, 6);	// "<operation>-"	(6 byte)
+
+
+		memcpy(finalBuffer + 7 + 6, &hwnd, sizeof(hwnd));
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd), "-", 1);	// Aggiungi trattino (1 byte)
+
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1, &progNameLength, 4);	// Aggiungi lunghezza progName (4 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4, "-", 1);	// Aggiungi trattino (1 byte)
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1, progName, progNameLength);	// <progName>
+		memcpy(finalBuffer + 7 + 6 + sizeof(hwnd) + 1 + 4 + 1 + progNameLength, "-", 1);	// Aggiungi trattino (1 byte)
 	}
 
 	int bytesSent = 0;

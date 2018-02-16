@@ -199,7 +199,7 @@ namespace WpfApplication1
             connettiAlServer();
         }
 
-        void addItemToListView(string server, string nomeProgramma, BitmapImage bmp)
+        void addItemToListView(long hwnd, string server, string nomeProgramma, BitmapImage bmp)
         {
             // Aggiungi il nuovo elemento alla tabella
             DataRow newRow = servers[server].table.rowsList.NewRow();
@@ -208,6 +208,7 @@ namespace WpfApplication1
             newRow["Tempo in focus (%)"] = 0;
             newRow["Tempo in focus"] = 0;
             newRow["Icona"] = bmp;
+            newRow["HWND"] = hwnd;
             servers[server].table.rowsList.Rows.Add(newRow);            
             
         }
@@ -334,11 +335,16 @@ namespace WpfApplication1
                             continue;
                         }
 
+                        // Estrai hwnd: successivi 5 byte.
+                        byte[] h = new byte[5];
+                        Array.Copy(msg, 6, h, 0, 4);
+                        Int32 hwnd = BitConverter.ToInt32(msg, 6);
+
                         // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                        int progNameLength = BitConverter.ToInt32(msg, 6);
+                        int progNameLength = BitConverter.ToInt32(msg, 11);
                         // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
                         byte[] pN = new byte[progNameLength];
-                        Array.Copy(msg, 5 + 6, pN, 0, progNameLength);
+                        Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
                         progName = Encoding.Unicode.GetString(pN);
 
                         /* Possibili valori ricevuti:
@@ -378,6 +384,15 @@ namespace WpfApplication1
                                 servers[serverName].tableModificationsMutex.ReleaseMutex();
 
                                 break;
+                            case "TTCHA":
+                                servers[serverName].tableModificationsMutex.WaitOne();
+                                foreach (DataRow item in servers[serverName].table.rowsList.Rows)
+                                {
+                                    if(item["HWND"].Equals(hwnd))
+                                        item["Nome applicazione"] = progName;
+                                }
+                                servers[serverName].tableModificationsMutex.ReleaseMutex();
+                                break;
                             case "OPENP":
                                 /* Ricevi icona processo */
                                 Bitmap bitmap = new Bitmap(64, 64);
@@ -388,7 +403,7 @@ namespace WpfApplication1
 
                                 // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
                                 // 4 byte di dimensione icona e il trattino
-                                int notBmpData = 11 + progNameLength + 1 + 4 + 1;
+                                int notBmpData = 16 + progNameLength + 1 + 4 + 1;
                                 int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
 
                                 /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
@@ -432,7 +447,7 @@ namespace WpfApplication1
                                     }
 
                                     servers[serverName].tableModificationsMutex.WaitOne();
-                                    addItemToListView(serverName, progName, bmpImage);
+                                    addItemToListView(hwnd, serverName, progName, bmpImage);
                                     servers[serverName].tableModificationsMutex.ReleaseMutex();
                                 }
 

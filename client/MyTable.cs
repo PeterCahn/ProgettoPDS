@@ -18,12 +18,16 @@ namespace client
         {
             rowsList = new DataTable();
 
-            ImageList imageList = new ImageList();
+            DataColumn hwndColumn = new DataColumn();
+            hwndColumn.DataType = System.Type.GetType("System.Int32");
+            hwndColumn.ColumnName = "HWND";
+            hwndColumn.ReadOnly = false;
+            rowsList.Columns.Add(hwndColumn);
 
             DataColumn nameColumn = new DataColumn();
             nameColumn.DataType = System.Type.GetType("System.String");
             nameColumn.ColumnName = "Nome applicazione";
-            nameColumn.ReadOnly = true;
+            nameColumn.ReadOnly = false;
             rowsList.Columns.Add(nameColumn);
 
             DataColumn statusColumn = new DataColumn();
