@@ -7,53 +7,202 @@ using System.Windows.Media.Imaging;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Data;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Threading;
+using System.Collections.Specialized;
 
 namespace client
 {
-    class MyTable
+    class MyTable : AsyncObservableCollection<Finestra>
     {
-        public DataTable rowsList { get; set; }
+        private ObservableCollection<Finestra> _finestre = new AsyncObservableCollection<Finestra>();
+        public AsyncObservableCollection<Finestra> Finestre {
+            get { return (AsyncObservableCollection<Finestra>) _finestre; }
+            set {
+                if(_finestre != value)
+                {
+                    _finestre = value;
+                    OnPropertyChanged(new PropertyChangedEventArgs("Finestre"));
+                }
+            }
+        }        
 
-        public MyTable()
+        public void addFinestra(Int32 hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
         {
-            rowsList = new DataTable();
+            _finestre.Add(new Finestra(hwnd, nomeFinestra, statoFinestra, tempoFocusPerc, tempoFocus, icona));
+        }
 
-            DataColumn hwndColumn = new DataColumn();
-            hwndColumn.DataType = System.Type.GetType("System.Int32");
-            hwndColumn.ColumnName = "HWND";
-            hwndColumn.ReadOnly = false;
-            rowsList.Columns.Add(hwndColumn);
+        public void changeFocus(Int32 hwnd, string statoFinestra)
+        {
+            var it = _finestre.GetEnumerator();
+            
+        }
 
-            DataColumn nameColumn = new DataColumn();
-            nameColumn.DataType = System.Type.GetType("System.String");
-            nameColumn.ColumnName = "Nome applicazione";
-            nameColumn.ReadOnly = false;
-            rowsList.Columns.Add(nameColumn);
+        public void removeWnd(Int32 hwnd)
+        {
 
-            DataColumn statusColumn = new DataColumn();
-            statusColumn.DataType = System.Type.GetType("System.String");
-            statusColumn.ColumnName = "Stato finestra";
-            statusColumn.ReadOnly = false;
-            rowsList.Columns.Add(statusColumn);
+        }        
+        
+    }
 
-            DataColumn percentualColumn = new DataColumn();
-            percentualColumn.DataType = System.Type.GetType("System.Double");
-            percentualColumn.ColumnName = "Tempo in focus (%)";
-            percentualColumn.ReadOnly = false;
-            rowsList.Columns.Add(percentualColumn);
+    class Finestra : INotifyPropertyChanged
+    {
+        private Int32 _hwnd { get; set; }
+        private string _nomeFinestra { get; set; }
+        private string _statoFinestra { get; set; }
+        private double _tempoFocusPerc { get; set; }
+        private double _tempoFocus { get; set; }
+        private BitmapImage _icona { get; set; }
 
-            DataColumn timeColumn = new DataColumn();
-            timeColumn.DataType = System.Type.GetType("System.Double");
-            timeColumn.ColumnName = "Tempo in focus";
-            timeColumn.ReadOnly = false;
-            rowsList.Columns.Add(timeColumn);
+        public Int32 Hwnd
+        {
+            get { return _hwnd; }
+            set
+            {
+                if (_hwnd != value)
+                {
+                    _hwnd = value;
+                    OnPropertyChanged(this, "Hwnd");
+                }                    
+            }
+        }
+        public string NomeFinestra
+        {
+            get { return _nomeFinestra; }
+            set
+            {
+                if (_nomeFinestra != value)
+                {
+                    _nomeFinestra = value;
+                    OnPropertyChanged(this, "NomeFinestra");
+                }
+            }
+        }
+        public string StatoFinestra
+        {
+            get { return _statoFinestra; }
+            set
+            {
+                if (_statoFinestra != value)
+                {
+                    _statoFinestra = value;
+                    OnPropertyChanged(this, "StatoFinestra");
+                }
+            }
+        }
+        public double TempoFocusPerc
+        {
+            get { return _tempoFocusPerc; }
+            set
+            {
+                if (_tempoFocusPerc != value)
+                {
+                    _tempoFocusPerc = value;
+                    OnPropertyChanged(this, "TempoFocusPerc");
+                }
+            }
+        }
+        public double TempoFocus
+        {
+            get { return _tempoFocus; }
+            set
+            {
+                if (_tempoFocus != value)
+                {
+                    _tempoFocus = value;
+                    OnPropertyChanged(this, "TempoFocus");
+                }
+            }
+        }
+        public BitmapImage Icona
+        {
+            get { return _icona; }
+            set
+            {
+                if (_icona != value)
+                {
+                    _icona = value;
+                    OnPropertyChanged(this, "Icona");
+                }
+            }
+        }
 
-            DataColumn iconColumn = new DataColumn();
-            iconColumn.DataType = typeof(BitmapImage);
-            iconColumn.ColumnName = "Icona";
-            iconColumn.ReadOnly = false;
-            rowsList.Columns.Add(iconColumn);
-                        
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        // OnPropertyChanged will raise the PropertyChanged event passing the
+        // source property that is being updated.
+        private void OnPropertyChanged(object sender, string propertyName)
+        {
+            if (this.PropertyChanged != null)
+            {
+                PropertyChanged(sender, new PropertyChangedEventArgs(propertyName));
+            }
+        }
+
+        public Finestra(Int32 hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
+        {
+            Hwnd = hwnd;
+            NomeFinestra = nomeFinestra;
+            StatoFinestra = statoFinestra;
+            TempoFocusPerc = tempoFocusPerc;
+            TempoFocus = tempoFocus;
+            Icona = icona;
         }
     }
+
+    public class AsyncObservableCollection<T> : ObservableCollection<T>
+    {
+        private SynchronizationContext _synchronizationContext = SynchronizationContext.Current;
+
+        public AsyncObservableCollection()
+        {
+        }
+
+        public AsyncObservableCollection(IEnumerable<T> list)
+            : base(list)
+        {
+        }
+
+        protected override void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
+        {
+            if (SynchronizationContext.Current == _synchronizationContext)
+            {
+                // Execute the CollectionChanged event on the current thread
+                RaiseCollectionChanged(e);
+            }
+            else
+            {
+                // Raises the CollectionChanged event on the creator thread
+                _synchronizationContext.Send(RaiseCollectionChanged, e);
+            }
+        }
+
+        private void RaiseCollectionChanged(object param)
+        {
+            // We are in the creator thread, call the base implementation directly
+            base.OnCollectionChanged((NotifyCollectionChangedEventArgs)param);
+        }
+
+        protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+        {
+            if (SynchronizationContext.Current == _synchronizationContext)
+            {
+                // Execute the PropertyChanged event on the current thread
+                RaisePropertyChanged(e);
+            }
+            else
+            {
+                // Raises the PropertyChanged event on the creator thread
+                _synchronizationContext.Send(RaisePropertyChanged, e);
+            }
+        }
+
+        private void RaisePropertyChanged(object param)
+        {
+            // We are in the creator thread, call the base implementation directly
+            base.OnPropertyChanged((PropertyChangedEventArgs)param);
+        }
+    }
+
 }

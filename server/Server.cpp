@@ -240,6 +240,17 @@ BOOL Server::IsAltTabWindow(HWND hwnd)
 	if(!IsWindowVisible(hwnd))
 		return FALSE;
 
+	/* For each visible window, walk up its owner chain until you find the root owner.
+	 * Then walk back down the visible last active popup chain until you find a visible window.
+	 * If you're back to where you're started, then put the window in the Alt + Tab list.
+	 * 
+	 ** TODO: Prova questo prima o poi
+	 while ((hwndTry = GetLastActivePopup(hwndWalk)) != hwndTry) {
+	 if (IsWindowVisible(hwndTry)) break;
+	 hwndWalk = hwndTry;
+	 }
+	 return hwndWalk == hwnd;
+	 */
 	hwndTry = GetAncestor(hwnd, GA_ROOTOWNER);
 	while(hwndTry != hwndWalk) 
 	{
@@ -472,6 +483,8 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 	
 	wstring progNameStr(getTitleFromHwnd(hwnd));
 	TCHAR progName[MAX_PATH*sizeof(wchar_t)];
+	ZeroMemory(progName, MAX_PATH * sizeof(wchar_t));
+
 	u_long progNameLength = progNameStr.size() * sizeof(wchar_t);
 	u_long netProgNameLength = htonl(progNameLength);
 	if (progNameLength == 0)
@@ -801,9 +814,10 @@ void Server::receiveCommands() {
 			closesocket(clientSocket);
 			WSACleanup();
 			return;
-		} 
+		}
+
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		else if (strcmp(recvbuf, "--CLOSE-")) {			
+		if (strcmp(recvbuf, "--CLOSE-")) {			
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
@@ -919,8 +933,8 @@ void Server::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	keystrokes_sent = SendInput((UINT)keystrokes_lenght, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
 
-	wcout << "# of keystrokes to send: " << keystrokes_lenght << std::endl;
-	wcout << "# of keystrokes sent: " << keystrokes_sent << std::endl;
+	wcout << "# of keystrokes to send to the window: " << keystrokes_lenght << endl;
+	wcout << "# of keystrokes sent to the window: " << keystrokes_sent << endl;
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys

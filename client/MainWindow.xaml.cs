@@ -22,8 +22,9 @@ using System.Text.RegularExpressions;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
- * - Icona con sfondo nero
- * - Crash per l'incoerenza del numero di elementi nell'interfaccia (all'incirca): mettere mutex e controlli per la modifica dela listview
+ * - Icona con sfondo nero 
+ * - InvalidOperationException ancora non identificata
+ * - Quando ci si connette a più server, da aggiustare il riaggiornamento della listview ad uno dei server già connessi e della textBoxIpAddress
  */
 
 namespace WpfApplication1
@@ -34,7 +35,10 @@ namespace WpfApplication1
         private Thread notificationsThread;
         private List<int> comandoDaInviare = new List<int>();
         private string currentConnectedServer;
-        private string _textBoxString = "STATO: Disconnesso\n";
+        private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
+        private MyTable activeList = new MyTable();
+
+        private string _textBoxString = "";
         public string TextBoxString {
             get { return _textBoxString; }
             set {
@@ -44,18 +48,12 @@ namespace WpfApplication1
                     OnPropertyChanged("TextBoxString");
                 }
             } } // stringa su cui fare il bind per cambiare il testo della TextBox
-        private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
         
         /* Mutex necessario alla gestione delle modifiche nella listView1 perchè i thread statistics and notifications
          * accedono alla stessa tablesMap[currentConnectedServer]
          */
         private static Mutex tablesMapsEntryMutex = new Mutex();
-
-        /* Mutex necessario affinché non venga chiamata una Invoke mentre il main thread è in attesa sulla Join 
-         * creando una dipendendza ciclica.
-         */
-        //private static Mutex invokeMutex = new Mutex();
-        
+                
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MainWindow()
@@ -70,10 +68,16 @@ namespace WpfApplication1
 
             textBoxIpAddress.Focus();            
 
-            TextBoxString = "STATO: Disconnesso.";
+            TextBoxString = "STATO: Disconnesso.\n";
         }
 
         // Create the OnPropertyChanged method to raise the event
+        protected void OnPropertyChanged(string propertyName)
+        {
+            if (PropertyChanged != null) // if there is any subscribers 
+                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+        }
+        /*
         protected void OnPropertyChanged(string text)
         {
             PropertyChangedEventHandler handler = PropertyChanged;
@@ -82,6 +86,7 @@ namespace WpfApplication1
                 handler(this, new PropertyChangedEventArgs(text));
             }
         }
+        */
 
         private void OnKeyDownHandler(object sender, System.Windows.Input.KeyEventArgs e)
         {
@@ -91,7 +96,6 @@ namespace WpfApplication1
             }
         }
 
-        //private static Regex hostPortMatch = new Regex(@"^(?<ip>(?:\[[\da-fA-F:]+\])|(?:\d{1,3}\.){3}\d{1,3})(?::(?<port>\d+))?$", System.Text.RegularExpressions.RegexOptions.Compiled);
         public IPEndPoint parseHostPort(string hostPort)
         {
             /* Match di indirizzi ip:porta del tipo: [0-255].[0-255].[0-255].[0.255]:[1024-65535] */
@@ -107,25 +111,35 @@ namespace WpfApplication1
         {
             try
             {
+                tablesMapsEntryMutex.WaitOne();
                 // Aggiorna stato
                 textBoxStato.AppendText("STATO: In connessione...\n");
 
                 // Ricava IPAddress da risultati interrogazione DNS
                 IPEndPoint ipPort = parseHostPort(textBoxIpAddress.Text);
-                if(ipPort == null)
-                {
+                if(ipPort == null){
                     textBoxStato.AppendText("ERRORE: Formato ip ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]\n");
                     return;
                 }
                 
                 string ipAddress = ipPort.Address.ToString();
                 Int32 port = ipPort.Port;
+
+                string serverName = ipAddress + ":" + port;
+
+                tablesMapsEntryMutex.WaitOne();
+                if (servers.ContainsKey(serverName))
+                {
+                    textBoxStato.AppendText("STATO: Già connesso a " + serverName + ".\n");
+                    tablesMapsEntryMutex.ReleaseMutex();
+                    return;
+                }                    
+                tablesMapsEntryMutex.ReleaseMutex();
+
                 TcpClient server = new TcpClient(ipAddress, port);
 
                 ServerInfo si = new ServerInfo();
                 si.server = server;
-                                
-                string serverName = ipAddress + ":" + port;
 
                 // Aggiorna stato
                 textBoxStato.AppendText("STATO: Connesso a " + serverName + "\n");
@@ -142,9 +156,6 @@ namespace WpfApplication1
 
                 // Aggiungi MyTable vuota in ServerInfo
                 si.table = new MyTable();
-
-                // Mostra la nuova tavola
-                listView1.ItemsSource = si.table.rowsList.DefaultView;
 
                 // Avvia thread per notifiche
                 notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
@@ -169,10 +180,16 @@ namespace WpfApplication1
                 // Aggiungi il ServerInfo alla lista dei "servers"
                 servers.Add(serverName, si);
 
+                // Mostra la nuova tavola
+                //listView1.ItemsSource = si.table.rowsList.DefaultView;
+                listView1.ItemsSource = si.table.Finestre;
+
                 // Aggiungi il nuovo server alla lista di server nella lista combo box
                 int index = serversListComboBox.Items.Add(serverName);
                 serversListComboBox.SelectedIndex = index;
                 currentConnectedServer = serversListComboBox.Items[index] as string;
+                tablesMapsEntryMutex.ReleaseMutex();
+
             }
             catch (SocketException)
             {
@@ -184,9 +201,9 @@ namespace WpfApplication1
                 textBoxStato.AppendText("ECCEZIONE: " + ioe.ToString() + "\n");
                 return;
             }
-            catch(ArgumentOutOfRangeException)
+            catch (InvalidOperationException e)
             {
-                textBoxStato.AppendText("ERRORE: Problema nell'indirizzo IP e porta inseriti. Formato corretto: <ip>:<porta>.\nRiprovare.\n");
+                System.Windows.MessageBox.Show(e.ToString());
             }
             catch (Exception exc)
             {
@@ -200,18 +217,10 @@ namespace WpfApplication1
             connettiAlServer();
         }
 
-        void addItemToListView(long hwnd, string server, string nomeProgramma, BitmapImage bmp)
+        void addItemToListView(Int32 hwnd, string server, string nomeProgramma, BitmapImage bmp)
         {
-            // Aggiungi il nuovo elemento alla tabella
-            DataRow newRow = servers[server].table.rowsList.NewRow();
-            newRow["Nome applicazione"] = nomeProgramma;
-            newRow["Stato finestra"] = "Background";
-            newRow["Tempo in focus (%)"] = 0;
-            newRow["Tempo in focus"] = 0;
-            newRow["Icona"] = bmp;
-            newRow["HWND"] = hwnd;
-            servers[server].table.rowsList.Rows.Add(newRow);            
-            
+            // Aggiungi il nuovo elemento all'elenco delle tabelle
+            servers[server].table.addFinestra(hwnd, nomeProgramma, "Background", 0, 0, bmp);
         }
 
         /* Viene eseguito in un thread a parte.
@@ -233,42 +242,41 @@ namespace WpfApplication1
                     if (isSignaled) break;
 
                     servers[serverName].tableModificationsMutex.WaitOne();
-                    foreach (DataRow item in servers[serverName].table.rowsList.Rows)
+                    
+                    foreach (Finestra finestra in servers[serverName].table.Finestre)
                     {
-                        if (item["Stato finestra"].Equals("Focus"))
+                        if (finestra.StatoFinestra.Equals("Focus"))
                         {
-                            item["Tempo in focus"] = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)item["Tempo in focus"];
+                            finestra.TempoFocus = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)finestra.TempoFocus;
                             lastUpdate = DateTime.Now;
                         }
 
                         // Calcola la percentuale
-                        item["Tempo in focus (%)"] = ((double)item["Tempo in focus"] / (DateTime.Now - connectionTime).TotalMilliseconds * 100).ToString("n2");
-                    }
-
+                        double perc = ((double)finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds * 100);
+                        finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
+                    }                    
+                    
                     servers[serverName].tableModificationsMutex.ReleaseMutex();
-
-                    // Delegato necessario per poter aggiornare la listView, dato che operazioni come Refresh() possono essere chiamate
-                    // solo dal thread proprietario, che è quello principale e non quello che esegue manageStatistics()
-                    Dispatcher.BeginInvoke((Action)(() =>
-                    {
-                        listView1.Items.Refresh();
-                    }));
-
+                
                 }
             }
             catch (ThreadInterruptedException exception)
             {
                 // TODO: c'è qualcosa da fare?
                 // TODO: check se il thread muore davvero
-                Dispatcher.Invoke(delegate
-                {                
-                    textBoxStato.AppendText("Thread che riceve aggiornamenti dal server interrotto.\n");
-                    textBoxStato.ScrollToEnd();
-                });
+                
+            }
+            catch (InvalidOperationException e)
+            {
+                System.Windows.MessageBox.Show("manageStatistics() 1: " + e.ToString());
             }
             catch (Exception exc)
             {
-                System.Windows.MessageBox.Show("manageStatistics(): " + exc.ToString());
+                System.Windows.MessageBox.Show("manageStatistics() 2: " + exc.ToString());
+            }
+            finally
+            {
+
             }
         }
 
@@ -278,8 +286,16 @@ namespace WpfApplication1
         private void manageNotifications(string serverName)
         {
             NetworkStream serverStream;
-            byte[] buffer = new byte[7];            
+            byte[] buffer = new byte[7];
+
+            tablesMapsEntryMutex.WaitOne();
+            if (!servers.ContainsKey(serverName))
+            {
+                tablesMapsEntryMutex.ReleaseMutex();
+                return;
+            }
             TcpClient server = servers[serverName].server;
+            tablesMapsEntryMutex.ReleaseMutex();
             
             serverStream = server.GetStream();
 
@@ -359,12 +375,12 @@ namespace WpfApplication1
                             case "FOCUS":
                                 // Cambia programma col focus
                                 servers[serverName].tableModificationsMutex.WaitOne();
-                                foreach (DataRow item in servers[serverName].table.rowsList.Rows)
+                                foreach (Finestra finestra in servers[serverName].table.Finestre)
                                 {
-                                    if (item["HWND"].Equals(hwnd))
-                                        item["Stato finestra"] = "Focus";
-                                    else if (item["Stato finestra"].Equals("Focus"))
-                                        item["Stato finestra"] = "Background";
+                                    if (finestra.Hwnd.Equals(hwnd))
+                                        finestra.StatoFinestra = "Focus";
+                                    else if (finestra.StatoFinestra.Equals("Focus"))
+                                        finestra.StatoFinestra = "Background";
                                 }
                                 servers[serverName].tableModificationsMutex.ReleaseMutex();
 
@@ -372,12 +388,12 @@ namespace WpfApplication1
                             case "CLOSE":
                                 // Rimuovi programma dalla listView
                                 servers[serverName].tableModificationsMutex.WaitOne();
-                                foreach (DataRow item in servers[serverName].table.rowsList.Rows)
+                                foreach (Finestra finestra in servers[serverName].table.Finestre)
                                 {
-                                    if (item["Nome applicazione"].Equals(progName))
+                                    if (finestra.Hwnd.Equals(hwnd))
                                     {
                                         // TODO: se % è zero elimina dalla lista, altrimenti setta "Stato finestra" a "Closed"
-                                        item["Stato finestra"] = "Closed";
+                                        finestra.StatoFinestra = "Closed";
                                         //servers[serverName].table.rowsList.Rows.Remove(item);
                                         break;
                                     }
@@ -387,12 +403,12 @@ namespace WpfApplication1
                                 break;
                             case "TTCHA":
                                 servers[serverName].tableModificationsMutex.WaitOne();
-                                foreach (DataRow item in servers[serverName].table.rowsList.Rows)
+                                foreach (Finestra finestra in servers[serverName].table.Finestre)
                                 {
-                                    if (item["HWND"].Equals(hwnd))
+                                    if (finestra.Hwnd.Equals(hwnd))
                                     {
                                         // TODO: ricezione icona nel caso la finestra aggiornata abbia un'icona diversa
-                                        item["Nome applicazione"] = progName;
+                                        finestra.NomeFinestra = progName;
                                         break;
                                     }
                                 }
@@ -468,14 +484,14 @@ namespace WpfApplication1
             {
                 
             }
+            catch (InvalidOperationException e)
+            {
+                System.Windows.MessageBox.Show(e.ToString());
+            }
             catch (Exception exc)
             {
                 System.Windows.MessageBox.Show("in manageNotifications(): " + exc.ToString());
                 return;
-            }
-            finally
-            {
-                serverStream.Close();
             }
         }
 
@@ -532,6 +548,8 @@ namespace WpfApplication1
 
                 servers[currentConnectedServer].disconnectionEvent.Reset(); // reset del ManualResetEvent
 
+                tablesMapsEntryMutex.WaitOne();
+
                 // Aggiorna bottoni
                 buttonDisconnetti.Visibility = Visibility.Hidden;
                 buttonConnetti.Visibility = Visibility.Visible;
@@ -544,10 +562,8 @@ namespace WpfApplication1
                 textBoxStato.AppendText("STATO: Disconnesso da " + currentConnectedServer + "\n");
                 textBoxStato.ScrollToEnd();
 
-                // Svuota listView
-                tablesMapsEntryMutex.WaitOne();
+                // Svuota listView                
                 listView1.ItemsSource = null;
-                tablesMapsEntryMutex.ReleaseMutex();
 
                 // Rimuovi server da serverListComboBox
                 serversListComboBox.Items.Remove(currentConnectedServer);
@@ -560,11 +576,17 @@ namespace WpfApplication1
                 buttonCattura.Visibility = Visibility.Visible;
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
-                
+
+                tablesMapsEntryMutex.ReleaseMutex();
+
             }
             catch (SocketException exc)
             {
                 System.Windows.MessageBox.Show(exc.ToString());
+            }
+            catch (InvalidOperationException e)
+            {
+                System.Windows.MessageBox.Show(e.ToString());
             }
             catch (IOException ioexc)
             {
@@ -574,8 +596,7 @@ namespace WpfApplication1
                 if(serverStream != null )
                     serverStream.Close();
                 if (server != null)
-                    server.Close();
-                
+                    server.Close();                
             }
                 
         }
@@ -621,7 +642,7 @@ namespace WpfApplication1
                 byte[] messaggio;
 
                 // Serializza messaggio da inviare
-                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                System.Text.StringBuilder sb = new StringBuilder();
                 foreach (int virtualKey in comandoDaInviare)
                 {
                     if (sb.Length != 0)
@@ -631,9 +652,20 @@ namespace WpfApplication1
                 }
                 sb.Append("\0");
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
+
+                /* Prepara l'invio del messaggio */
+                NetworkStream serverStream = null;
+                
+                TcpClient server = null;
+                server = servers[currentConnectedServer].server;
+                serverStream = server.GetStream();                
                 
                 // Invia messaggio
-                //int NumDiBytesInviati = servers[currentConnectedServer].server.Send(messaggio);
+                serverStream.Write(messaggio, 0, messaggio.Length);
+
+
+                // Invia messaggio
+                //int NumDiBytesInviati = servers[currentConnectedServer].server. (messaggio);
 
                 // Aggiorna bottoni e textBox
                 textBoxComando.Text = "";
@@ -673,42 +705,58 @@ namespace WpfApplication1
 
         private void serversListComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            string selectedServer = ((sender as System.Windows.Controls.ComboBox).SelectedItem as string);
-            if (selectedServer != null)
+            try
             {
-                currentConnectedServer = selectedServer;
-                listView1.ItemsSource = servers[currentConnectedServer].table.rowsList.DefaultView;
+                string selectedServer = ((sender as System.Windows.Controls.ComboBox).SelectedItem as string);
+                if (selectedServer != null)
+                {
+                    currentConnectedServer = selectedServer;
+                    //listView1.ItemsSource = servers[currentConnectedServer].table.rowsList.DefaultView;
+                    listView1.ItemsSource = servers[currentConnectedServer].table.Finestre;
 
-                // Aggiorna bottoni
-                buttonDisconnetti.Visibility = Visibility.Visible;
-                buttonConnetti.Visibility = Visibility.Hidden;
-                buttonCattura.IsEnabled = true;
-                textBoxIpAddress.IsEnabled = false;
+                    // Aggiorna bottoni
+                    buttonDisconnetti.Visibility = Visibility.Visible;
+                    buttonConnetti.Visibility = Visibility.Hidden;
+                    buttonCattura.IsEnabled = true;
+                    textBoxIpAddress.IsEnabled = false;
 
-                // Permetti di connettere un altro server
-                buttonAltroServer.Visibility = Visibility.Visible;
-            }            
+                    // Permetti di connettere un altro server
+                    buttonAltroServer.Visibility = Visibility.Visible;
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                System.Windows.MessageBox.Show(ex.ToString());
+            }
+
         }
 
         private void buttonAltroServer_Click(object sender, RoutedEventArgs e)
         {
-            // Pulizia interfaccia
-            buttonAnnullaCattura_Click(null, null);
-            buttonDisconnetti.Visibility = Visibility.Hidden;
-            buttonConnetti.Visibility = Visibility.Visible;
-            buttonInvia.IsEnabled = false;
-            textBoxIpAddress.IsEnabled = true;
-            textBoxIpAddress.Text = "";
-            buttonCattura.IsEnabled = false;
-            buttonAltroServer.Visibility = Visibility.Hidden;
-            textBoxIpAddress.Focus();
+            try
+            {
+                // Pulizia interfaccia
+                buttonAnnullaCattura_Click(null, null);
+                buttonDisconnetti.Visibility = Visibility.Hidden;
+                buttonConnetti.Visibility = Visibility.Visible;
+                buttonInvia.IsEnabled = false;
+                textBoxIpAddress.IsEnabled = true;
+                textBoxIpAddress.Text = "";
+                buttonCattura.IsEnabled = false;
+                buttonAltroServer.Visibility = Visibility.Hidden;
+                textBoxIpAddress.Focus();
 
-            // Svuota listView
-            tablesMapsEntryMutex.WaitOne();
-            listView1.ItemsSource = null;
-            tablesMapsEntryMutex.ReleaseMutex();
-            
-            serversListComboBox.SelectedValue = 0;
+                // Svuota listView
+                tablesMapsEntryMutex.WaitOne();
+                listView1.ItemsSource = null;
+                tablesMapsEntryMutex.ReleaseMutex();
+
+                serversListComboBox.SelectedValue = 0;
+            }
+            catch (InvalidOperationException ex)
+            {
+                System.Windows.MessageBox.Show(ex.ToString());
+            }            
         }
 
         private const int WH_KEYBOARD_LL = 13;

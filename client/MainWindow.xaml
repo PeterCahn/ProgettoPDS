@@ -28,8 +28,8 @@
         <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonConnetti_Click" Grid.Column="1"/>
         <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="232,57,0,0" VerticalAlignment="Top" Width="75" Height="23" Click="buttonDisconnetti_Click" Grid.Column="1" Panel.ZIndex="-1"/>
         <TextBox x:Name="textBoxStato"  ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" Height="110" Margin="392,25,0,0" TextWrapping="Wrap" Text="{Binding Path=TextBoxString}" VerticalAlignment="Top" Width="305" Grid.ColumnSpan="3" Background="White" Grid.Column="1"/>
-        <Label x:Name="labelApplciazioni" Content="Applicazioni server selezionato" HorizontalAlignment="Left"  Margin="43,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.ColumnSpan="2"/>
-        <ListView x:Name="listView1" HorizontalAlignment="Left" Height="300" Width="700" Margin="43,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Foreground="Black">
+        <Label x:Name="labelApplciazioni" Content="Finestre disponibili" HorizontalAlignment="Left"  Margin="43,140,0,0" VerticalAlignment="Top" Background="#00000000" Foreground="White" Grid.ColumnSpan="2"/>
+        <ListView x:Name="listView1" ItemsSource="{Binding}" HorizontalAlignment="Left" Height="300" Width="700" Margin="43,169,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Foreground="Black">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Width="Auto" Header="Icona">
@@ -43,15 +43,15 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='Nome applicazione'}" Width="370"/>
-                    <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path='Stato finestra'}" Width="150"/>
-                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='Tempo in focus (%)'}" Width="110" />
+                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="370"/>
+                    <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path='StatoFinestra'}" Width="150"/>
+                    <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='TempoFocusPerc'}" Width="110" />
                 </GridView>
             </ListView.View>
             <ListView.Resources>                
                 <Style TargetType="{x:Type ListViewItem}">
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding 'Stato finestra'}" Value="Focus">
+                        <DataTrigger Binding="{Binding 'StatoFinestra'}" Value="Focus">
                             <Setter Property="Background" Value="LightBlue"/>
                             <Setter Property="Height" Value="40" />
                         </DataTrigger>
