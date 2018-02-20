@@ -41,13 +41,7 @@ namespace WpfApplication1
         public MainWindow()
         {
             InitializeComponent();
-
-            // Inizialmente imposta bottoni come inutilizzabili senza connessione
-            buttonDisconnetti.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.Visibility = Visibility.Hidden;
-            buttonInvia.IsEnabled = false;
-            buttonCattura.IsEnabled = false;
-
+            
             // Aggiungi elemento vuoto alla serversListBox
             int index = serversListBox.Items.Add("Nessun server connesso");
             serversListBox.SelectedIndex = index;
@@ -89,9 +83,8 @@ namespace WpfApplication1
 
                 // Ricava IPAddress da risultati interrogazione DNS
                 IPEndPoint ipPort = parseHostPort(textBoxIpAddress.Text);
-                if(ipPort == null){
-                    // TODO: Mostra messaggio sul formato da immettere (tipo pop-up)
-                    //textBoxStato.AppendText("ERRORE: Formato ip ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]\n");
+                if(ipPort == null){                    
+                    System.Windows.MessageBox.Show("Formato ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]");
                     return;
                 }
                 
@@ -166,6 +159,7 @@ namespace WpfApplication1
 
                 // Cambia la label per mostrare qual è server appena connesso
                 indirizzoServerConnesso.Content = serverName;
+                listView1.Focus();
 
             }
             catch (SocketException)

@@ -1,16 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
-using System.Windows.Forms;
-using System.Drawing;
-using System.Data;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading;
 using System.Collections.Specialized;
+
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Drawing;
+using System.Data;
 
 namespace client
 {
@@ -35,8 +36,7 @@ namespace client
 
         public void changeFocus(Int32 hwnd, string statoFinestra)
         {
-            var it = _finestre.GetEnumerator();
-            
+            var it = _finestre.GetEnumerator();            
         }
 
         public void removeWnd(Int32 hwnd)

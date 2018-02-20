@@ -17,44 +17,181 @@
         </DataGridTemplateColumn>
         <SolidColorBrush x:Key="SelectedBackgroundBrush" Color="#FF4B4B4B" />
         <SolidColorBrush x:Key="DisabledForegroundBrush" Color="#888" />
+
+        <SolidColorBrush x:Key="BackgroundWindowColor" Color="#FF2E2E2E" />
+        <SolidColorBrush x:Key="LeftMenuBackgroundColor" Color="#FF3E3D3D" />
+
+        <SolidColorBrush x:Key="TextLabelColor" Color="#FFECECEC" />
+
+        <Style x:Key="ButtonFocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="2" SnapsToDevicePixels="true" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" StrokeThickness="1" StrokeDashArray="1 2" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="MetroButton" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ButtonFocusVisual}"/>
+            <Setter Property="Background" Value="#EEEEEEEE"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="10 5"/>
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <Border x:Name="Border" Background="{TemplateBinding Background}" 
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" />
+                            <ContentPresenter
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                Margin="{TemplateBinding Padding}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="OpacityMask" Value="#AA888888"/>                                
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        
+        <Style x:Key="ButtonConnettiExtension" TargetType="{x:Type Button}">
+
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ButtonFocusVisual}"/>
+            <Setter Property="Background" Value="#EEEEEEEE"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="10 5"/>
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <Border x:Name="Border" Background="{TemplateBinding Background}" 
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" />
+                            <ContentPresenter
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                Margin="{TemplateBinding Padding}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding ElementName=textBoxIpAddress, Path=Text.IsEmpty}" Value="False"/>
+                                    <Condition Binding="{Binding ElementName=buttonConnetti, Path=IsMouseOver}" Value="True"/>
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.Setters>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                </MultiDataTrigger.Setters>
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding ElementName=textBoxIpAddress, Path=Text.IsEmpty}" Value="False"/>
+                                    <Condition Binding="{Binding ElementName=buttonConnetti, Path=IsMouseOver}" Value="True"/>
+                                    <Condition Binding="{Binding ElementName=buttonConnetti, Path=IsPressed}" Value="True"/>
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.Setters>
+                                    <Setter Property="OpacityMask" Value="#AA888888"/>
+                                </MultiDataTrigger.Setters>                                
+                            </MultiDataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>            
+        </Style>
+
     </Window.Resources>
 
-    <Grid Background="#FF2E2E2E" Margin="0,0,0,0">
+    <Grid Background="{StaticResource BackgroundWindowColor}" Margin="0,0,0,0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="200" />
             <!-- Or Auto -->
             <ColumnDefinition Width="600" />
         </Grid.ColumnDefinitions>
 
-        <ListBox x:Name="serversListBox" BorderThickness="0" Background="#FF2E2E2E" Margin="0,170,574,0" Grid.ColumnSpan="2" SelectionChanged="serversListBox_SelectionChanged">
-            <ListBox.Resources>
-                <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
-                    <Setter Property="SnapsToDevicePixels" Value="true"/>
-                    <Setter Property="OverridesDefaultStyle" Value="true"/>
-                    <Setter Property="FontSize" Value="20"/>
-                    <Setter Property="Foreground" Value="White"></Setter>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ListBoxItem">
-                                <Border Name="Border" Padding="7" SnapsToDevicePixels="true"  >
-                                    <ContentPresenter />
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsSelected" Value="true">
-                                        <Setter TargetName="Border" Property="Background" Value="{StaticResource SelectedBackgroundBrush}"/>
-                                    </Trigger>
-                                    <Trigger Property="IsEnabled" Value="false">
-                                        <Setter Property="Foreground" Value="{StaticResource DisabledForegroundBrush}"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ListBox.Resources>
-        </ListBox>
+        <!-- StackPanel per contenere gli oggetti nella colonna 0 della Grid -->
+        <StackPanel Grid.Column="0" Height="571" VerticalAlignment="Top" Background="{StaticResource LeftMenuBackgroundColor}" Panel.ZIndex="-1">
+            <Label x:Name="labelConnettiAlServer" Content="Connetti a un server" Margin="6,10,6,0" HorizontalAlignment="Center" 
+                   Foreground="{StaticResource TextLabelColor}" FontSize="18" FontWeight="Bold" Height="auto" Width="auto" Panel.ZIndex="0"/>
+            <TextBox x:Name="textBoxIpAddress" Margin="6,5,6,6" KeyDown="OnKeyDownHandler" HorizontalAlignment="Center" 
+                      VerticalAlignment="Top" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                     Height="23" Width="175" TextAlignment="Center" MaxLines="1" Panel.ZIndex="0"/>
+            <Button x:Name="buttonConnetti" Content="Connetti" Style="{StaticResource ButtonConnettiExtension}" HorizontalAlignment="Center" VerticalAlignment="Top" 
+                    Width="175" Height="auto" Click="buttonConnetti_Click" Foreground="#FF252525" Panel.ZIndex="0"/>
 
-        <ListView x:Name="listView1" Grid.Column="1" ItemsSource="{Binding}" HorizontalAlignment="Left" Height="366" Width="540" Margin="26,111,0,0" VerticalAlignment="Top" Foreground="Black">
+            <Separator Margin="10,20,10,0" ></Separator>
+
+            <Label x:Name="labelServerConnessi" Content="Server connessi" HorizontalAlignment="Center" Margin="0,0,0,0" 
+                   VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="0" FontSize="20" FontWeight="Bold"/>
+            <ListBox x:Name="serversListBox" BorderThickness="0" Background="{StaticResource LeftMenuBackgroundColor}" 
+                     SelectionChanged="serversListBox_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden">
+                <ListBox.Resources>
+                    <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
+                        <Setter Property="SnapsToDevicePixels" Value="true"/>
+                        <Setter Property="OverridesDefaultStyle" Value="true"/>
+                        <Setter Property="FontSize" Value="16"/>
+                        <Setter Property="Foreground" Value="{StaticResource TextLabelColor}"></Setter>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border Name="Border" Padding="7" SnapsToDevicePixels="true"  >
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="true">
+                                            <Setter TargetName="Border" Property="Background" Value="{StaticResource SelectedBackgroundBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="false">
+                                            <Setter Property="Foreground" Value="{StaticResource DisabledForegroundBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.Resources>
+            </ListBox>
+        </StackPanel>
+        <!-- TextBlock per realizzare il watermark nella 'textBoxIpAddress" -->
+        <TextBlock IsHitTestVisible="False" Text="&lt;indirizzo ip&gt;:&lt;porta&gt;" HorizontalAlignment="Center" Height="22" Margin="13,53,15,0" VerticalAlignment="Top" Width="172" TextAlignment="Center" Panel.ZIndex="5">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding ElementName=textBoxIpAddress, Path=Text.IsEmpty}" Value="True"/>
+                                <Condition Binding="{Binding ElementName=textBoxIpAddress, Path=IsKeyboardFocused}" Value="False" />
+                            </MultiDataTrigger.Conditions>
+                            <MultiDataTrigger.Setters>
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Setter Property="Text" Value="Ex.: 130.192.167.73:5417"/>
+                                <Setter Property="Foreground" Value="Gray"></Setter>
+                            </MultiDataTrigger.Setters>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <ListView x:Name="listView1" Grid.Column="1" ItemsSource="{Binding}" HorizontalAlignment="Left" Height="366" Width="540"
+                  Margin="26,111,0,0" VerticalAlignment="Top" Foreground="Black" ScrollViewer.HorizontalScrollBarVisibility="Hidden">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Width="40" Header="Icona">
@@ -68,7 +205,7 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="260"/>
+                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="280"/>
                     <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path='StatoFinestra'}" Width="90"/>
                     <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='TempoFocusPerc'}" Width="130" />
                 </GridView>
@@ -84,36 +221,16 @@
                 </Style>
             </ListView.Resources>
         </ListView>
-<!--
-        <TextBlock HorizontalAlignment="Left" Height="23" Margin="22,61,0,0" VerticalAlignment="Top" Width="183" TextAlignment="Center" Grid.ColumnSpan="2" Panel.ZIndex="5">
-            <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding ElementName=textBoxIpAddress, Path=Text.IsEmpty}" Value="True">
-                            <Setter Property="Text" Value="Ex.: 130.192.167.73:5417"/>
-                            <Setter Property="Foreground" Value="Gray"></Setter>                            
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </TextBlock.Style>
-        </TextBlock>
--->
-        <Label x:Name="labelConnettiAlServer" Content="Connetti a un server" HorizontalAlignment="Center" Margin="15,0,574,517" Foreground="White" FontSize="20" FontWeight="Bold" Height="auto" VerticalAlignment="Bottom" Width="211" Grid.ColumnSpan="2"/>
-        <TextBox x:Name="textBoxIpAddress" KeyDown="OnKeyDownHandler" HorizontalAlignment="Left" Height="23" Margin="22,57,0,0" VerticalAlignment="Top" Width="183" TextAlignment="Center" MaxLines="1" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Grid.ColumnSpan="2" RenderTransformOrigin="0.503,0.935" ToolTip="" Panel.ZIndex="2"/>
-        <Button x:Name="buttonConnetti" Content="Connetti" HorizontalAlignment="Left" Margin="22,85,0,0" VerticalAlignment="Top" Width="183" Height="22" Click="buttonConnetti_Click" Grid.ColumnSpan="2" FontSize="14"/>
 
-        <Label x:Name="labelServerConnessi" Content="Server connessi" HorizontalAlignment="Left" Margin="34,128,0,0" VerticalAlignment="Top" Foreground="White" Panel.ZIndex="1" FontSize="20" FontWeight="Bold"/>
+        <Label x:Name="labelComando" Grid.Column="1" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="26,481,0,0" VerticalAlignment="Top" Foreground="#FFECECEC"/>
+        <Button x:Name="buttonCattura" Style="{StaticResource MetroButton}" IsEnabled="False" Grid.Column="1" Content="Cattura Comando" HorizontalAlignment="Left" Margin="26,512,0,0" VerticalAlignment="Top" Width="auto" Height="auto" Click="buttonCattura_Click"  VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Foreground="#FF2E2E2E"/>
+        <Button x:Name="buttonAnnullaCattura" Style="{StaticResource MetroButton}" Visibility="Hidden" Content="Annulla Cattura" HorizontalAlignment="Left" Margin="26,512,0,0" VerticalAlignment="Top" Width="auto" Height="auto" Click="buttonAnnullaCattura_Click" Panel.ZIndex="-1" Grid.Column="1"/>
+        <TextBox x:Name="textBoxComando" Grid.Column="1" IsReadOnly="True" HorizontalAlignment="Left" Height="29" Margin="169,512,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="307" IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"/>
+        <Button x:Name="buttonInvia" Style="{StaticResource MetroButton}" IsEnabled="False" Grid.Column="1" Content="Invia" Margin="490,512,34,0" VerticalAlignment="Top" Height="auto" Click="buttonInvia_Click" Foreground="{StaticResource BackgroundWindowColor}"/>
 
-        <Label x:Name="labelComando" Grid.Column="1" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="26,481,0,0" VerticalAlignment="Top" Foreground="White"/>
-        <Button x:Name="buttonCattura" Grid.Column="1" Content="Cattura Comando" HorizontalAlignment="Left" Margin="26,512,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonCattura_Click"  VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
-        <Button x:Name="buttonAnnullaCattura" Content="Annulla Cattura" HorizontalAlignment="Left" Margin="26,512,0,0" VerticalAlignment="Top" Width="110" Height="23" Click="buttonAnnullaCattura_Click" Panel.ZIndex="-1" Grid.Column="1"/>
-        <TextBox x:Name="textBoxComando" Grid.Column="1" IsReadOnly="True" HorizontalAlignment="Left" Height="23" Margin="150,512,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="326" IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"/>
-        <Button x:Name="buttonInvia" Grid.Column="1" Content="Invia" Margin="490,512,34,0" VerticalAlignment="Top" Height="23" Click="buttonInvia_Click"/>
+        <Button x:Name="buttonDisconnetti" Style="{StaticResource MetroButton}" Content="Disconnetti" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonDisconnetti_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
 
-        <Button x:Name="buttonDisconnetti" Content="Disconnetti" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonDisconnetti_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>        
-
-        <Label x:Name="indirizzoServerConnesso" Content="Nessun server connesso." Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="White" Panel.ZIndex="1" FontWeight="Bold" Height="57" Width="auto" FontSize="34" Margin="26,44,0,0"/>
-
+        <Label x:Name="indirizzoServerConnesso" Content="Nessun server connesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" FontWeight="Bold" Height="57" Width="auto" FontSize="34" Margin="26,44,0,0"/>
 
     </Grid>
 
