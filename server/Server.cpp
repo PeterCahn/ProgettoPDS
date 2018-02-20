@@ -2,6 +2,9 @@
 - Deallocazione risorse
 - Verificare se il thread muore davvero in ogni situazione critica
 - Gestione eccezioni
+- Raramente (in condizioni non ben specificate) il server moriva. Non è chiaro se dopo aver definito il
+	server da cui disconnettersi e su cui inviare e ricevere il segnale di close, il problema non si ripete più.
+	(NB: Rientra nella verifica delle eccezioni, se succede qualcosa, reagisci in modo che il client non si blocchi)
 */
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
