@@ -23,9 +23,6 @@ using System.Text.RegularExpressions;
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Icona con sfondo nero 
- * - CASO: client connesso a due server.
- *      Se chiudo (cliccando sulla X) uno dei due server, elimino la table corrispondente.
- *      Potremmo lasciarla? Cosa succede se mi riconnetto a quel server? Dovrei riazzerare tutto. Si riazzerano le statistiche ora?
  */
 
 namespace WpfApplication1
@@ -118,9 +115,19 @@ namespace WpfApplication1
                 tablesMapsEntryMutex.WaitOne();
                 if (servers.ContainsKey(serverName))
                 {
-                    System.Windows.MessageBox.Show("Già connessi al server "+serverName);
-                    tablesMapsEntryMutex.ReleaseMutex();
-                    return;
+                    if (servers[serverName].isOnline)
+                    {
+                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
+                        tablesMapsEntryMutex.ReleaseMutex();
+                        return;
+                    }
+                    /*
+                    else
+                    {
+                        servers.Remove(serverName);
+                        serversListBox.Items.Remove(serverName);
+                    }
+                    */
                 }
                 tablesMapsEntryMutex.ReleaseMutex();
             }
@@ -141,10 +148,23 @@ namespace WpfApplication1
                 server = new TcpClient(ipAddress, port);
                 /* ArgumentNullException: hostname is null
                  * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
+
+                // Se già è presente una connessione a quel server ma era offline, rimuovi i suoi riferimenti
+                // che erano già stati precedentemente invalidati, in modo da poterlo riaggiungere alla lista
+                if (servers.ContainsKey(serverName) && !servers[serverName].isOnline)
+                {
+                    servers.Remove(serverName);
+                    serversListBox.Items.Remove(serverName);
+                }
             }
-            catch (SocketException)
+            catch (SocketException se)
             {
-                // se.ErrorCode contiene info sull'errore
+                int errorCode = se.ErrorCode;
+                if(errorCode.Equals(SocketError.TimedOut))
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + serverName + " scaduto.");
+                else
+                    System.Windows.MessageBox.Show("Connessione al server " + serverName + " fallita.");
+
                 return; // Usciamo perché l'operazione non è andata a buon fine. Nuovo tentativo manuale.
             }
 
@@ -714,11 +734,13 @@ namespace WpfApplication1
                 // Rimuovi disconnectingServer da servers
                 servers.Remove(disconnectingServer);
 
+                /*
                 // Ripristina cattura comando
                 textBoxComando.Text = "";
                 buttonCattura.Visibility = Visibility.Visible;
                 buttonAnnullaCattura.Visibility = Visibility.Hidden;
                 comandoDaInviare.Clear();
+                */
             }
             else
             {
@@ -726,39 +748,95 @@ namespace WpfApplication1
                 // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
                 // ma continuiamo a mostrare le statistiche all'ultima volta che è stato visto online
                 servers[disconnectingServer].isOnline = false;
-
-                servers[disconnectingServer].serverName = disconnectingServer;
-                if(disconnectingServer.Equals(currentConnectedServer))
+                                
+                if (disconnectingServer.Equals(currentConnectedServer))
+                {
+                    // l'elenco finestre disattivo è quello attivo, 
+                    // quindi mostra la label "Disconnesso", disabilita e nascondi cattura comando e permetti la chiusura dell'elenco finestre
                     labelDisconnesso.Visibility = Visibility.Visible;
+                    disabilitaERimuoviCatturaComando();
 
-                textBoxComando.Text = "";
-                buttonCattura.Visibility = Visibility.Hidden;
-                buttonAnnullaCattura.Visibility = Visibility.Hidden;
-                comandoDaInviare.Clear();
-
-                // Server non online: posso abilitare il pulsante "Chiudi server"
-                buttonChiudiServer.IsEnabled = true;
-                buttonChiudiServer.Visibility = Visibility.Visible;
-                buttonDisconnetti.IsEnabled = false;
-                buttonDisconnetti.Visibility = Visibility.Hidden;
-                
-                // per disabilitare la cattura dei comandi 
-                disabilitaERimuoviCatturaComandi();
-
+                    // Server non online: posso abilitare il pulsante "Chiudi server"
+                    buttonChiudiServer.IsEnabled = true;
+                    buttonChiudiServer.Visibility = Visibility.Visible;
+                    buttonDisconnetti.IsEnabled = false;
+                    buttonDisconnetti.Visibility = Visibility.Hidden;
+                }
             }            
         }        
 
-        private void disabilitaERimuoviCatturaComandi()
+        // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando
+        private void disabilitaERimuoviCatturaComando()
         {
-            // per disabilitare la cattura dei comandi 
+            // Nascondi e disabilita tutto (caso server disconnesso)
             labelComando.Visibility = Visibility.Hidden;
+            buttonCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.Visibility = Visibility.Hidden;
+
+            textBoxComando.Visibility = Visibility.Hidden;
+            buttonInvia.Visibility = Visibility.Hidden;
+
+            textBoxComando.Text = "";
+            comandoDaInviare.Clear();
+            buttonCattura.IsEnabled = false;
+            buttonAnnullaCattura.IsEnabled = false;
+            buttonInvia.IsEnabled = false;            
+        }
+
+        // Al click di "Cattura comando"
+        private void abilitaCatturaComando()
+        {
+            // mostra e abilita annulla cattura
             buttonCattura.IsEnabled = false;
             buttonCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.Visibility = Visibility.Visible;
+            buttonAnnullaCattura.IsEnabled = true;
+
+            // mostra textBox e abilita invio
+            textBoxComando.Visibility = Visibility.Visible;
+            textBoxComando.Text = "";
+            buttonInvia.Visibility = Visibility.Visible;
+            buttonInvia.IsEnabled = true;
+
+            // Crea event handler per scrivere i tasti premuti
+            this.KeyDown += new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
+
+        }
+
+        // Al click di "Annulla cattura"
+        private void disabilitaCatturaComando()
+        {
+            // Svuota la lista di keystroke da inviare
+            comandoDaInviare.Clear();
+            textBoxComando.Text = "";
+
+            // mostra e abilita
+            buttonCattura.IsEnabled = true;
+            buttonCattura.Visibility = Visibility.Visible;
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
             buttonAnnullaCattura.IsEnabled = false;
 
+            // nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
-            textBoxComando.Text = "";
+            buttonInvia.Visibility = Visibility.Hidden;
+            buttonInvia.IsEnabled = false;
+        }
+
+        // Chiamato quando il server è online e si possono inviare comandi
+        private void mostraCatturaComando()
+        {
+            // mostra cattura comando (caso server connesso, ma con cattura comando non abilitata)            
+            labelComando.Visibility = Visibility.Visible;
+
+            // buttonCattura abilitato e visibile
+            buttonCattura.IsEnabled = true;
+            buttonCattura.Visibility = Visibility.Visible;
+            // buttonAnnullaCattura non visibile e disabilitato  
+            buttonAnnullaCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.IsEnabled = false;
+
+            // textBoxComando e buttonInvia non visibili
+            textBoxComando.Visibility = Visibility.Hidden;            
             buttonInvia.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
         }
@@ -792,26 +870,17 @@ namespace WpfApplication1
             }
 
             // Rimuovi disconnectingServer da servers
-            servers.Remove(removingServer);
-
-            // Ripristina cattura comando
-            textBoxComando.Text = "";
-            buttonCattura.Visibility = Visibility.Visible;
-            buttonAnnullaCattura.Visibility = Visibility.Hidden;
-            comandoDaInviare.Clear();
+            servers.Remove(removingServer);            
         }
 
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
         {
-            buttonCattura.IsEnabled = false;
-            buttonCattura.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.Visibility = Visibility.Visible;
-            buttonAnnullaCattura.IsEnabled = true;
-
+            // Mostra la textBox dove scrivere e il button Invia
+            abilitaCatturaComando();
+            
+            // Alternativa:
             //_hookID = SetHook(_proc);
 
-            // Crea event handler per scrivere i tasti premuti
-            this.KeyDown += new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
         }
 
         private void OnButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -861,10 +930,9 @@ namespace WpfApplication1
                                 
                 // Aggiorna bottoni e textBox
                 textBoxComando.Text = "";
-                buttonInvia.IsEnabled = false;
-                buttonCattura.IsEnabled = true;
-                buttonCattura.Visibility = Visibility.Visible;
-                buttonAnnullaCattura.Visibility = Visibility.Hidden;
+                buttonInvia.IsEnabled = false;                
+                buttonAnnullaCattura.Visibility = Visibility.Visible;
+                buttonAnnullaCattura.IsEnabled = true;
 
                 // Svuota lista di tasti premuti da inviare
                 comandoDaInviare.Clear();
@@ -881,18 +949,10 @@ namespace WpfApplication1
 
         private void buttonAnnullaCattura_Click(object sender, RoutedEventArgs e)
         {
-            // Svuota la lista di keystroke da inviare
-            comandoDaInviare.Clear();
+            disabilitaCatturaComando();
 
             //UnhookWindowsHookEx(_hookID);
-
-            // Aggiorna bottoni e textBox
-            textBoxComando.Text = "";
-            buttonInvia.IsEnabled = false;
-            buttonCattura.IsEnabled = true;
-            buttonCattura.Visibility = Visibility.Visible;
-            buttonAnnullaCattura.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.IsEnabled = false;
+            
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -923,7 +983,10 @@ namespace WpfApplication1
 
                     labelDisconnesso.Visibility = Visibility.Hidden;
 
-                    // per abilitare la cattura dei comandi 
+                    mostraCatturaComando();
+
+                    // per abilitare la cattura dei comandi
+                    /* 
                     labelComando.Visibility = Visibility.Visible;
                     buttonCattura.IsEnabled = false;
                     buttonCattura.Visibility = Visibility.Hidden;
@@ -934,6 +997,7 @@ namespace WpfApplication1
                     textBoxComando.Text = "";
                     buttonInvia.Visibility = Visibility.Visible;
                     buttonInvia.IsEnabled = true;
+                    */
                 }
                 else if (!selectedServer.Equals("Nessun server connesso") && !servers[selectedServer].isOnline)
                 {
@@ -952,7 +1016,10 @@ namespace WpfApplication1
 
                     labelDisconnesso.Visibility = Visibility.Visible;
 
-                    // per disabilitare la cattura dei comandi 
+                    // per disabilitare e rimuovere la cattura dei comandi 
+                    disabilitaERimuoviCatturaComando();
+
+                    /*                    
                     labelComando.Visibility = Visibility.Hidden;
                     buttonCattura.IsEnabled = false;
                     buttonCattura.Visibility = Visibility.Hidden;
@@ -963,7 +1030,7 @@ namespace WpfApplication1
                     textBoxComando.Text = "";
                     buttonInvia.Visibility = Visibility.Hidden;
                     buttonInvia.IsEnabled = false;
-
+                    */
                 }
                 else if (selectedServer.Equals("Nessun server connesso"))
                 {
@@ -971,18 +1038,21 @@ namespace WpfApplication1
                     currentConnectedServer = selectedServer;
                     listView1.ItemsSource = null;
 
+                    // Non mostrare né "Disconnetti" né "Chiudi server"
                     buttonChiudiServer.IsEnabled = false;
                     buttonChiudiServer.Visibility = Visibility.Hidden;
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
-
-                    buttonCattura.IsEnabled = false; // per disabilitare la cattura dei comandi
-
+                    
                     textBoxIpAddress.Text = "";     // per connessione a un nuovo server
                     indirizzoServerConnesso.Content = "Nessun server connesso";
 
+                    // Nascondi label "Disconnesso"
                     labelDisconnesso.Visibility = Visibility.Hidden;
 
+                    // per disabilitare e rimuovere la cattura dei comandi 
+                    disabilitaERimuoviCatturaComando();
+                    /*
                     // per disabilitare la cattura dei comandi 
                     labelComando.Visibility = Visibility.Hidden;
                     buttonCattura.IsEnabled = false;
@@ -994,6 +1064,7 @@ namespace WpfApplication1
                     textBoxComando.Text = "";
                     buttonInvia.Visibility = Visibility.Hidden;
                     buttonInvia.IsEnabled = false;
+                    */
                 }
             }            
             
