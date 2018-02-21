@@ -30,6 +30,7 @@
 
 #include <process.h>
 
+// Gestione eventi windows
 #include <oleacc.h>
 #pragma comment (lib, "oleacc.lib")
 
@@ -89,29 +90,32 @@ Server::~Server()
 
 void Server::start()
 {
-	/* Ottieni porta su cui ascoltare */
-	regex port("10[2-9][4-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
-	while (true)
-	{
-		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";		
-		cin >> listeningPort;
+	/* Ottieni porta su cui ascoltare e accetta prima connessione */	
+	listeningPort = leggiPorta();
 
-		if (!cin.good())
-			wcout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
-		
-		else if (!regex_match(listeningPort, port))
-			wcout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
-		else
+	/* Avvia il server controllando che il socket ricevuto sia corretto per poter procedere */
+	while (true)
+	{		
+		/* Tentativo di avviare il server con la porta letta */
+		listenSocket = avviaServer();
+		if (listenSocket != INVALID_SOCKET)	// server avviato: break
 			break;
+		else
+			listeningPort = leggiPorta();	// problema con l'avvio del server: rileggi porta
 	}
 
 	// Tentativo di sganciare un thread e settare una hook function al focus, nome cambiato, etc.
 	//thread t(hook, this);
 
-	while (true) {		
+	while (true) {
 
-		wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
-		clientSocket = acceptConnection();
+		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
+		wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;		
+		while (true) {
+			clientSocket = acceptConnection();
+			if (clientSocket != INVALID_SOCKET)
+				break;			
+		}
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
@@ -147,14 +151,123 @@ void Server::start()
 		
 		/* Cleanup */
 		closesocket(clientSocket);
-		WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+		//WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+	}
+	closesocket(listenSocket);
+}
+
+/* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
+string Server::leggiPorta()
+{
+	/* Ottieni porta su cui ascoltare */
+	string porta;
+	regex portRegex("10[2-9][4-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
+	while (true)
+	{
+		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
+		cin >> porta;
+
+		if (!wcin.good()) {
+			wcout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
+			return NULL;
+		}
+
+		else if (!regex_match(porta, portRegex))
+			wcout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
+		else
+			break;
 	}
 
+	return porta;
+}
+
+/* Avvia il server settando la listeningPort del Server */
+SOCKET Server::avviaServer()
+{
+	WSADATA wsaData;
+	int iResult;
+
+	listenSocket = INVALID_SOCKET;
+
+	int recvbuflen = DEFAULT_BUFLEN;
+
+	// Inizializza Winsock
+	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		wcout << "[" << GetCurrentThreadId() << "] " << "WSAStartup() fallita con errore: " << iResult << std::endl;
+		return INVALID_SOCKET;
+	}
+
+	// Creazione socket
+	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (listenSocket == INVALID_SOCKET) {
+		wcout << "[" << GetCurrentThreadId() << "] " << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
+		WSACleanup();
+		return INVALID_SOCKET;
+	}
+
+	// Imposta struct sockaddr_in
+	struct sockaddr_in mySockaddr_in;
+	mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
+	mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
+	mySockaddr_in.sin_family = AF_INET;
+
+	// Associa socket a indirizzo locale
+	iResult = ::bind(listenSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
+	if (iResult == SOCKET_ERROR) {
+		int errorCode = WSAGetLastError();
+
+		wcout << "[" << GetCurrentThreadId() << "] " << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
+		if (errorCode == WSAEADDRINUSE)
+			wcout << "[" << GetCurrentThreadId() << "] " << "Porta " << atoi(listeningPort.c_str()) << " già in uso. Scegliere un'altra porta." << endl;
+
+		closesocket(listenSocket);
+		WSACleanup();
+		return INVALID_SOCKET;
+	}
+
+	// Ascolta per richieste di connessione
+	iResult = listen(listenSocket, SOMAXCONN);
+	if (iResult == SOCKET_ERROR) {
+		wcout << "[" << GetCurrentThreadId() << "] " << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
+		closesocket(listenSocket);
+		WSACleanup();
+		return INVALID_SOCKET;
+	}
+
+	return listenSocket;
+}
+
+/* Attende una connessione in entrata da un client */
+SOCKET Server::acceptConnection(void)
+{
+	int iResult = 0;
+
+	// Accetta la connessione
+	clientSocket = accept(listenSocket, NULL, NULL);
+	if (clientSocket == INVALID_SOCKET) {
+		wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
+		closesocket(listenSocket);
+		WSACleanup();
+		return INVALID_SOCKET;
+	}
+
+	struct sockaddr_in clientSockAddr;
+	int nameLength = sizeof(clientSockAddr);
+	getpeername(clientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
+	int port = ntohs(clientSockAddr.sin_port);
+	char ipstr[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
+	wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
+
+	//closesocket(listenSocket);
+
+	return clientSocket;
 }
 
 BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 {
-	map<HWND, wstring>* windows2 = reinterpret_cast< map<HWND, wstring>* > (lParam);
+	map<HWND, wstring>* windows = reinterpret_cast< map<HWND, wstring>* > (lParam);
 
 	DWORD process, thread;
 	thread = GetWindowThreadProcessId(hWnd, &process);
@@ -163,17 +276,10 @@ BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 	GetWindowTextW(hWnd, title, sizeof(title));
 
 	wstring windowTitle = wstring(title);
-
-	// Reinterpreta LPARAM lParam come puntatore alla lista dei nomi 
-	//vector<HWND>* progNames = reinterpret_cast<vector<HWND>*>(lParam);
-
-	// Aggiungi le handle dei programmi aperti al vector<HWND> ricevuto
-	//if (IsAltTabWindow(hWnd))
-//		progNames->push_back(hWnd);
-
+	
 	// Proteggere accesso a variabile condivisa "windows"
 	if (IsAltTabWindow(hWnd))
-		windows2->insert(pair<HWND,wstring>(hWnd, windowTitle));
+		windows->insert(pair<HWND,wstring>(hWnd, windowTitle));
 
 	return TRUE;
 }
@@ -255,7 +361,7 @@ BOOL Server::IsAltTabWindow(HWND hwnd)
 	 return hwndWalk == hwnd;
 	 */
 	hwndTry = GetAncestor(hwnd, GA_ROOTOWNER);
-	while(hwndTry != hwndWalk) 
+	while(hwndTry != hwndWalk)
 	{
 		hwndWalk = hwndTry;
 		hwndTry = GetLastActivePopup(hwndWalk);
@@ -392,76 +498,6 @@ DWORD WINAPI Server::notificationsManagement()
 	return 0;
 }
 
-SOCKET Server::acceptConnection(void)
-{
-	WSADATA wsaData;
-	int iResult;
-
-	SOCKET listenSocket = INVALID_SOCKET;
-	SOCKET clientSocket = INVALID_SOCKET;
-		
-	int recvbuflen = DEFAULT_BUFLEN;
-
-	// Inizializza Winsock
-	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {
-		wcout << "WSAStartup() fallita con errore: " << iResult << std::endl;
-		return 1;
-	}
-
-	// Creazione socket
-	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (listenSocket == INVALID_SOCKET) {
-		wcout << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
-		WSACleanup();
-		return 1;
-	}
-
-	// Imposta struct sockaddr_in
-	struct sockaddr_in mySockaddr_in;
-	mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
-	mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
-	mySockaddr_in.sin_family = AF_INET;
-
-	// Associa socket a indirizzo locale
-	iResult = ::bind(listenSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
-	if (iResult == SOCKET_ERROR) {
-		wcout << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
-		closesocket(listenSocket);
-		WSACleanup();
-		return 1;
-	}
-
-	// Ascolta per richieste di connessione
-	iResult = listen(listenSocket, SOMAXCONN);
-	if (iResult == SOCKET_ERROR) {
-		wcout << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
-		closesocket(listenSocket);
-		WSACleanup();
-		return 1;
-	}
-
-	// Accetta la connessione
-	clientSocket = accept(listenSocket, NULL, NULL);
-	if (clientSocket == INVALID_SOCKET) {
-		wcout << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
-		closesocket(listenSocket);
-		WSACleanup();
-		return 1;
-	}
-
-	struct sockaddr_in clientSockAddr;
-	int nameLength = sizeof(clientSockAddr);
-	getpeername(clientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
-	int port = ntohs(clientSockAddr.sin_port);
-	char ipstr[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
-	wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
-
-	closesocket(listenSocket);
-
-	return clientSocket;
-}
 
 wstring Server::getTitleFromHwnd(HWND hwnd) {
 	TCHAR title[MAX_PATH];

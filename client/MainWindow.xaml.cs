@@ -23,6 +23,7 @@ using System.Text.RegularExpressions;
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Icona con sfondo nero 
+ * - Ordinare l'elenco delle finestre per percentuale focus, o in modo da mettere in alto la finestra in focus
  */
 
 namespace WpfApplication1

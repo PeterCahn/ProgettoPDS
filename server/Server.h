@@ -40,6 +40,7 @@ public:
 
 private:
 	SOCKET clientSocket;
+	SOCKET listenSocket;
 	string listeningPort;
 
 	exception_ptr globalExceptionPtr;
@@ -50,6 +51,8 @@ private:
 	HWINEVENTHOOK g_hook;
 	map<HWND, wstring> windows;
 
+	string leggiPorta();
+	SOCKET avviaServer();
 	SOCKET acceptConnection();
 	DWORD WINAPI notificationsManagement();
 	static BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam);
