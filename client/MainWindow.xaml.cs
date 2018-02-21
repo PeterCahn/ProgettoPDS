@@ -52,7 +52,19 @@ namespace WpfApplication1
             currentConnectedServer = serversListBox.Items[index] as string;
 
             textBoxIpAddress.Focus();
-            
+
+            // per disabilitare la cattura dei comandi 
+            labelComando.Visibility = Visibility.Hidden;
+            buttonCattura.IsEnabled = false;
+            buttonCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.IsEnabled = false;
+
+            textBoxComando.Visibility = Visibility.Hidden;
+            textBoxComando.Text = "";
+            buttonInvia.Visibility = Visibility.Hidden;
+            buttonInvia.IsEnabled = false;
+
         }
         
         public IPEndPoint parseHostPort(string hostPort)
@@ -139,11 +151,14 @@ namespace WpfApplication1
             /* Crea ServerInfo per la nuova connessione */
             ServerInfo si = new ServerInfo();
             si.server = server;
+            si.serverName = serverName;
+
+            // Setta IsOnline a true per segnalare che il server è attivo e online
+            si.isOnline = true;
 
             // Aggiorna bottoni
             buttonDisconnetti.Visibility = Visibility.Visible;
-            textBoxIpAddress.Text = "";                
-            buttonCattura.IsEnabled = true;
+            textBoxIpAddress.Text = "";
                 
             // Aggiungi MyTable vuota in ServerInfo
             si.table = new MyTable();
@@ -312,6 +327,10 @@ namespace WpfApplication1
                     // il disconnectionEvent è stato "disposed"
                     break;
                 }
+                catch (KeyNotFoundException)
+                {
+                    return;
+                }
                 
             }
 
@@ -411,10 +430,8 @@ namespace WpfApplication1
                         // Scatenata dalla Read(): il socket è stato chiuso lato server.
                         // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
                         servers[serverName].disconnectionEvent.Set();
-                        Dispatcher.BeginInvoke((Action)(() =>
-                        {
-                            pulisciInterfacciaDopoDisconnessione(server, serverStream, serverName);
-                        }));                                                
+                        safePulisciInterfaccia(server, serverStream, serverName, false);
+                        
                         continue;
                     }
                     catch(ObjectDisposedException)
@@ -422,8 +439,9 @@ namespace WpfApplication1
                         // Il networkStream è stato chiuso oppure c'è stato un errore nella lettura dalla rete.
                         // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
                         servers[serverName].disconnectionEvent.Set();
-                        continue;
+                        safePulisciInterfaccia(server, serverStream, serverName, false);
 
+                        continue;
                     }
                     catch(Exception)
                     {
@@ -432,6 +450,7 @@ namespace WpfApplication1
 
                         // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
                         servers[serverName].disconnectionEvent.Set();
+                        safePulisciInterfaccia(server, serverStream, serverName, false);
                         continue;
                     }
                                                 
@@ -580,6 +599,8 @@ namespace WpfApplication1
             return bmp;
         }
 
+        delegate void PulisciInterfacciaDelegate(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose);
+
         private void disconnettiDalServer()
         {
             NetworkStream serverStream = null;
@@ -631,12 +652,34 @@ namespace WpfApplication1
 
             }
             finally{
-                pulisciInterfacciaDopoDisconnessione(server, serverStream, disconnectingServer);
+                safePulisciInterfaccia(server, serverStream, disconnectingServer, true);
             }
                 
         }
 
-        private void pulisciInterfacciaDopoDisconnessione(TcpClient server, NetworkStream serverStream, string disconnectingServer)
+        /* Pulisce l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke)
+         * Seleziona la listView adatta da visualizzare, con distinzione tra pulizia dovuta a disconnessione volontaria
+         *      o pulizia dovuta a eccezzione scatenata (parametro onPurpose)
+         * Disconnessione volontaria:   rimuove l'elenco delle finestre di quel server e la voce nella ListBox
+         * Disconnessione forzata:      non rimuove l'elenco delle finestre di quel server né la voce nella ListBox 
+         * TODO: gestione riconnessione a server già presente nell'elenco e in 'servers'
+         */
+        private void safePulisciInterfaccia(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose)
+        {
+            if (!listView1.Dispatcher.CheckAccess())
+            {
+                // Non mi trovo sul main thread
+                PulisciInterfacciaDelegate d = new PulisciInterfacciaDelegate(pulisciInterfacciaDopoDisconnessione);
+                Dispatcher.BeginInvoke(d, new object[] { server, serverStream, disconnectingServer, onPurpose });
+            }
+            else
+            {
+                // Mi trovo sul main thread e posso chiamare direttamente la funzione per aggiornare l'interfaccia
+                pulisciInterfacciaDopoDisconnessione(server, serverStream, disconnectingServer, onPurpose);
+            }
+        }
+
+        private void pulisciInterfacciaDopoDisconnessione(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose)
         {
             if (serverStream != null)
                 serverStream.Close();
@@ -646,20 +689,100 @@ namespace WpfApplication1
             // Rilascia risorse del ManualResetEvent e del Mutex
             servers[disconnectingServer].disconnectionEvent.Close();
             servers[disconnectingServer].tableModificationsMutex.Dispose();
+                        
+            if (onPurpose)
+            {
+                // Disconnessione volontaria: rimuovi voce server dalla ListBox e sposta selezione al primo elemento in lista
+                serversListBox.Items.Remove(disconnectingServer);
+                if (serversListBox.Items.Count == 0)
+                {
+                    // Aggiorna bottoni
+                    buttonDisconnetti.Visibility = Visibility.Hidden;
+                    buttonInvia.IsEnabled = false;
+                    buttonCattura.IsEnabled = false;
 
-            // Aggiorna bottoni
-            buttonDisconnetti.Visibility = Visibility.Hidden;
-            buttonConnetti.Visibility = Visibility.Visible;
-            buttonInvia.IsEnabled = false;
+                    // non ci sono più server connessi
+                    serversListBox.Items.Add("Nessun server connesso");
+                    serversListBox.SelectedIndex = 0;
+                }
+                else
+                {
+                    // Selezioniamo il primo server della lista
+                    serversListBox.SelectedIndex = 0;
+                }
+
+                // Rimuovi disconnectingServer da servers
+                servers.Remove(disconnectingServer);
+
+                // Ripristina cattura comando
+                textBoxComando.Text = "";
+                buttonCattura.Visibility = Visibility.Visible;
+                buttonAnnullaCattura.Visibility = Visibility.Hidden;
+                comandoDaInviare.Clear();
+            }
+            else
+            {
+                // Disconnessione forzata: non eliminare voce dalla ListBox né l'elenco delle finestre. Disabilita solo tasti cattura.
+                // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
+                // ma continuiamo a mostrare le statistiche all'ultima volta che è stato visto online
+                servers[disconnectingServer].isOnline = false;
+
+                servers[disconnectingServer].serverName = disconnectingServer;
+                if(disconnectingServer.Equals(currentConnectedServer))
+                    labelDisconnesso.Visibility = Visibility.Visible;
+
+                textBoxComando.Text = "";
+                buttonCattura.Visibility = Visibility.Hidden;
+                buttonAnnullaCattura.Visibility = Visibility.Hidden;
+                comandoDaInviare.Clear();
+
+                // Server non online: posso abilitare il pulsante "Chiudi server"
+                buttonChiudiServer.IsEnabled = true;
+                buttonChiudiServer.Visibility = Visibility.Visible;
+                buttonDisconnetti.IsEnabled = false;
+                buttonDisconnetti.Visibility = Visibility.Hidden;
+                
+                // per disabilitare la cattura dei comandi 
+                disabilitaERimuoviCatturaComandi();
+
+            }            
+        }        
+
+        private void disabilitaERimuoviCatturaComandi()
+        {
+            // per disabilitare la cattura dei comandi 
+            labelComando.Visibility = Visibility.Hidden;
             buttonCattura.IsEnabled = false;
+            buttonCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.IsEnabled = false;
 
-            // Rimuovi server da serverListBox
-            serversListBox.Items.Remove(disconnectingServer);
+            textBoxComando.Visibility = Visibility.Hidden;
+            textBoxComando.Text = "";
+            buttonInvia.Visibility = Visibility.Hidden;
+            buttonInvia.IsEnabled = false;
+        }
+
+        private void buttonDisconnetti_Click(object sender, RoutedEventArgs e)
+        {
+            disconnettiDalServer();
+        }
+
+        private void buttonChiudiServerDisconnesso_Click(object sender, RoutedEventArgs e)
+        {
+            string removingServer = currentConnectedServer;
+
+            // Disconnessione volontaria: rimuovi voce server dalla ListBox e sposta selezione al primo elemento in lista
+            serversListBox.Items.Remove(removingServer);
             if (serversListBox.Items.Count == 0)
             {
+                // Aggiorna bottoni
+                buttonDisconnetti.Visibility = Visibility.Hidden;
+                buttonInvia.IsEnabled = false;
+                buttonCattura.IsEnabled = false;
+
                 // non ci sono più server connessi
                 serversListBox.Items.Add("Nessun server connesso");
-                indirizzoServerConnesso.Content = "Nessun server connesso";
                 serversListBox.SelectedIndex = 0;
             }
             else
@@ -669,7 +792,7 @@ namespace WpfApplication1
             }
 
             // Rimuovi disconnectingServer da servers
-            servers.Remove(disconnectingServer);
+            servers.Remove(removingServer);
 
             // Ripristina cattura comando
             textBoxComando.Text = "";
@@ -678,16 +801,12 @@ namespace WpfApplication1
             comandoDaInviare.Clear();
         }
 
-        private void buttonDisconnetti_Click(object sender, RoutedEventArgs e)
-        {
-            disconnettiDalServer();
-        }
-
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
         {
             buttonCattura.IsEnabled = false;
             buttonCattura.Visibility = Visibility.Hidden;
             buttonAnnullaCattura.Visibility = Visibility.Visible;
+            buttonAnnullaCattura.IsEnabled = true;
 
             //_hookID = SetHook(_proc);
 
@@ -773,29 +892,110 @@ namespace WpfApplication1
             buttonCattura.IsEnabled = true;
             buttonCattura.Visibility = Visibility.Visible;
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
+            buttonAnnullaCattura.IsEnabled = false;
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {            
-            string selectedServer = ((sender as System.Windows.Controls.ListBox).SelectedItem as string);
-            if (selectedServer != null && !selectedServer.Equals("Nessun server connesso"))
-            {
-                currentConnectedServer = selectedServer;
-                listView1.ItemsSource = servers[currentConnectedServer].table.Finestre;
+            string fullSelectedServer = ((sender as System.Windows.Controls.ListBox).SelectedItem as string);
 
-                // Aggiorna interfaccia
-                buttonDisconnetti.Visibility = Visibility.Visible;
-                buttonCattura.IsEnabled = true; // per abilitare la cattura dei comandi
-                textBoxIpAddress.Text = "";     // per connessione a un nuovo server
-                indirizzoServerConnesso.Content = selectedServer;
-            }
-
-            if (selectedServer != null && selectedServer.Equals("Nessun server connesso"))
+            string selectedServer = null;
+            if (fullSelectedServer != null && !fullSelectedServer.Equals("Nessun server connesso"))
+                selectedServer = fullSelectedServer.Split(' ')[0];
+            else selectedServer = fullSelectedServer;
+            
+            if(selectedServer != null)
             {
-                currentConnectedServer = selectedServer;
-                listView1.ItemsSource = null;
-                indirizzoServerConnesso.Content = "Nessun server connesso";
-            }
+                if (!selectedServer.Equals("Nessun server connesso") && servers[selectedServer].isOnline)
+                {
+                    // Aggiorna elenco finestre
+                    currentConnectedServer = selectedServer;
+                    listView1.ItemsSource = servers[selectedServer].table.Finestre;
+
+                    // Server online: posso abilitare il pulsante "Disconnetti"
+                    buttonDisconnetti.IsEnabled = true;
+                    buttonDisconnetti.Visibility = Visibility.Visible;
+                    buttonChiudiServer.IsEnabled = false;
+                    buttonChiudiServer.Visibility = Visibility.Hidden;                                       
+
+                    textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    indirizzoServerConnesso.Content = servers[selectedServer].serverName;
+
+                    labelDisconnesso.Visibility = Visibility.Hidden;
+
+                    // per abilitare la cattura dei comandi 
+                    labelComando.Visibility = Visibility.Visible;
+                    buttonCattura.IsEnabled = false;
+                    buttonCattura.Visibility = Visibility.Hidden;
+                    buttonAnnullaCattura.Visibility = Visibility.Visible;
+                    buttonAnnullaCattura.IsEnabled = true;
+                                        
+                    textBoxComando.Visibility = Visibility.Visible;
+                    textBoxComando.Text = "";
+                    buttonInvia.Visibility = Visibility.Visible;
+                    buttonInvia.IsEnabled = true;
+                }
+                else if (!selectedServer.Equals("Nessun server connesso") && !servers[selectedServer].isOnline)
+                {
+                    // Aggiorna elenco finestre
+                    currentConnectedServer = selectedServer;
+                    listView1.ItemsSource = servers[selectedServer].table.Finestre;
+
+                    // Server non online: posso abilitare il pulsante "Chiudi server"
+                    buttonChiudiServer.IsEnabled = true;
+                    buttonChiudiServer.Visibility = Visibility.Visible;
+                    buttonDisconnetti.IsEnabled = false;
+                    buttonDisconnetti.Visibility = Visibility.Hidden;
+
+                    textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    indirizzoServerConnesso.Content = servers[selectedServer].serverName;
+
+                    labelDisconnesso.Visibility = Visibility.Visible;
+
+                    // per disabilitare la cattura dei comandi 
+                    labelComando.Visibility = Visibility.Hidden;
+                    buttonCattura.IsEnabled = false;
+                    buttonCattura.Visibility = Visibility.Hidden;
+                    buttonAnnullaCattura.Visibility = Visibility.Hidden;
+                    buttonAnnullaCattura.IsEnabled = false;
+
+                    textBoxComando.Visibility = Visibility.Hidden;
+                    textBoxComando.Text = "";
+                    buttonInvia.Visibility = Visibility.Hidden;
+                    buttonInvia.IsEnabled = false;
+
+                }
+                else if (selectedServer.Equals("Nessun server connesso"))
+                {
+                    // E' selezionato "Nessun server connesso"
+                    currentConnectedServer = selectedServer;
+                    listView1.ItemsSource = null;
+
+                    buttonChiudiServer.IsEnabled = false;
+                    buttonChiudiServer.Visibility = Visibility.Hidden;
+                    buttonDisconnetti.IsEnabled = false;
+                    buttonDisconnetti.Visibility = Visibility.Hidden;
+
+                    buttonCattura.IsEnabled = false; // per disabilitare la cattura dei comandi
+
+                    textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    indirizzoServerConnesso.Content = "Nessun server connesso";
+
+                    labelDisconnesso.Visibility = Visibility.Hidden;
+
+                    // per disabilitare la cattura dei comandi 
+                    labelComando.Visibility = Visibility.Hidden;
+                    buttonCattura.IsEnabled = false;
+                    buttonCattura.Visibility = Visibility.Hidden;
+                    buttonAnnullaCattura.Visibility = Visibility.Hidden;
+                    buttonAnnullaCattura.IsEnabled = false;
+
+                    textBoxComando.Visibility = Visibility.Hidden;
+                    textBoxComando.Text = "";
+                    buttonInvia.Visibility = Visibility.Hidden;
+                    buttonInvia.IsEnabled = false;
+                }
+            }            
             
         }        
 

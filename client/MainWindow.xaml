@@ -140,12 +140,13 @@
             <Label x:Name="labelServerConnessi" Content="Server connessi" HorizontalAlignment="Center" Margin="0,0,0,0" 
                    VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="0" FontSize="20" FontWeight="Bold"/>
             <ListBox x:Name="serversListBox" BorderThickness="0" Background="{StaticResource LeftMenuBackgroundColor}" 
-                     SelectionChanged="serversListBox_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden">
+                     SelectionChanged="serversListBox_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden">                
                 <ListBox.Resources>
                     <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
                         <Setter Property="SnapsToDevicePixels" Value="true"/>
                         <Setter Property="OverridesDefaultStyle" Value="true"/>
                         <Setter Property="FontSize" Value="16"/>
+                        <Setter Property="Height" Value="auto"/>
                         <Setter Property="Foreground" Value="{StaticResource TextLabelColor}"></Setter>
                         <Setter Property="Template">
                             <Setter.Value>
@@ -169,7 +170,7 @@
             </ListBox>
         </StackPanel>
         <!-- TextBlock per realizzare il watermark nella 'textBoxIpAddress" -->
-        <TextBlock IsHitTestVisible="False" Text="&lt;indirizzo ip&gt;:&lt;porta&gt;" HorizontalAlignment="Center" Height="22" Margin="13,53,15,0" VerticalAlignment="Top" Width="172" TextAlignment="Center" Panel.ZIndex="5">
+        <TextBlock IsHitTestVisible="False" Text="IndirizzoIp:Porta" HorizontalAlignment="Center" Height="22" Margin="13,53,15,0" VerticalAlignment="Top" Width="172" TextAlignment="Center" Panel.ZIndex="5">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
                     <Setter Property="Visibility" Value="Collapsed" />
@@ -215,7 +216,7 @@
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding 'StatoFinestra'}" Value="Focus">
                             <Setter Property="Background" Value="LightBlue"/>
-                            <Setter Property="Height" Value="40" />
+                            <Setter Property="Height" Value="40"/>                            
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
@@ -229,8 +230,10 @@
         <Button x:Name="buttonInvia" Style="{StaticResource MetroButton}" IsEnabled="False" Grid.Column="1" Content="Invia" Margin="490,512,34,0" VerticalAlignment="Top" Height="auto" Click="buttonInvia_Click" Foreground="{StaticResource BackgroundWindowColor}"/>
 
         <Button x:Name="buttonDisconnetti" Style="{StaticResource MetroButton}" Content="Disconnetti" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonDisconnetti_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
+        <Button x:Name="buttonChiudiServer" Style="{StaticResource MetroButton}" Content="Chiudi server" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonChiudiServerDisconnesso_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
 
-        <Label x:Name="indirizzoServerConnesso" Content="Nessun server connesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" FontWeight="Bold" Height="57" Width="auto" FontSize="34" Margin="26,44,0,0"/>
+        <Label x:Name="indirizzoServerConnesso" Content="Nessun server connesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" FontWeight="Bold" Height="auto" Width="auto" FontSize="34" Margin="26,44,0,0"/>
+        <Label x:Name="labelDisconnesso" Content="Disconnesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" Height="auto" Width="auto" FontSize="20" Margin="26,17,0,0" Visibility="Hidden"/>
 
     </Grid>
 
