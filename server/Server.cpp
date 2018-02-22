@@ -60,6 +60,8 @@
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
 
+#define MAX_RETRIES 3
+
 using namespace std;
 
 /* Definisce che tipo di notifica è associata alla stringa rappresentante il nome di un finestra da inviare al client */
@@ -77,6 +79,8 @@ Server::Server()
 	_setmode(_fileno(stdout), _O_U16TEXT);
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
+	numberRetries = 0;
+	retry = false;
 
 	windows = map<HWND, wstring>();
 	
@@ -121,6 +125,7 @@ void Server::start()
 				break;
 		}
 
+		
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
 		try {
@@ -145,11 +150,11 @@ void Server::start()
 		{
 			wcout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
 			/* Riprova a lanciare il thread (?) */
-			//thread notificationsThread(&Server::notificationsManagement, this, reinterpret_cast<LPVOID>(&clientSocket));
-			/* Cleanup */
-			closesocket(clientSocket);
+			//wcout << "[" << GetCurrentThreadId() << "] " << "Tentativo riavvio 'notificationsThread' sul client" << endl;				
+				
 		}
-		
+		/* Cleanup */
+		closesocket(clientSocket);		
 	}
 
 	closesocket(listenSocket);
@@ -452,7 +457,7 @@ BOOL Server::IsAltTabWindow(HWND hwnd)
 	return TRUE;
 }
 
-DWORD WINAPI Server::notificationsManagement()
+void WINAPI Server::notificationsManagement()
 {
 	try {
 
@@ -474,7 +479,7 @@ DWORD WINAPI Server::notificationsManagement()
 		sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
-
+		
 		/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
 		future<bool> f = stopNotificationsThread.get_future();
 		while (f.wait_for(chrono::seconds(0)) != future_status::ready) {
@@ -555,11 +560,26 @@ DWORD WINAPI Server::notificationsManagement()
 	}
 	catch (...)
 	{
+		Sleep(5000);
 		//Set the global exception pointer in case of an exception
 		globalExceptionPtr = current_exception();
+
+		char sendBuf[12 * sizeof(char)];
+		u_long msgLength = 5;
+		u_long netMsgLength = htonl(msgLength);
+
+		memcpy(sendBuf, "--", 2);
+		memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
+		memcpy(sendBuf + 6, "-", 1);
+
+		memcpy(sendBuf + 7, "ERRCL-", 5);
+
+		send(clientSocket, sendBuf, 12, 0);		
+		//wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
+
 	}
 
-	return 0;
+	//return 0;
 }
 
 
@@ -607,6 +627,8 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 	BYTE* finalBuffer = NULL;
 	
 	if (op == OPEN) {
+
+		throw exception("eccezione voluta");
 
 		/* Ottieni l'icona */
 		HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));

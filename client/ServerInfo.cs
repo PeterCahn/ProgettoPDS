@@ -16,7 +16,8 @@ namespace client
         public MyTable table { get; set; }
         public Thread statisticThread { get; set; }
         public Thread notificationsThread { get; set; }
-        public ManualResetEvent disconnectionEvent { get; set; } 
+        public ManualResetEvent disconnectionEvent { get; set; }
+        public AutoResetEvent forcedDisconnectionEvent { get; set; }
         public Mutex tableModificationsMutex { get; set; }
         public bool isOnline { get; set; }
     }

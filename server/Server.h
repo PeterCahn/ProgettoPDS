@@ -47,7 +47,9 @@ private:
 	map<HWND, wstring> windows;
 
 	exception_ptr globalExceptionPtr;
-	promise<bool> stopNotificationsThread;	
+	promise<bool> stopNotificationsThread;
+	bool retry;
+	int numberRetries;
 
 	HWINEVENTHOOK g_hook;	// Per funzionalità di cattura eventi
 
@@ -55,7 +57,7 @@ private:
 	string leggiPorta();
 	SOCKET avviaServer();
 	SOCKET acceptConnection();
-	DWORD WINAPI notificationsManagement();
+	void WINAPI notificationsManagement();
 	static BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam);
 
 	static void CALLBACK HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);

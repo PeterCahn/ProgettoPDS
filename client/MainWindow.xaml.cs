@@ -188,6 +188,8 @@ namespace WpfApplication1
             // Necessario per far terminare i thread quando si vuole disconnettere il server.
             si.disconnectionEvent = new ManualResetEvent(false);
 
+            si.forcedDisconnectionEvent = new AutoResetEvent(false);
+
             // Inizializzazione mutex per proteggere modifiche alla lista delle finestre
             si.tableModificationsMutex = new Mutex();
 
@@ -352,8 +354,14 @@ namespace WpfApplication1
                 {
                     return;
                 }
+                catch(Exception)
+                {
+                    return;
+                }
                 
             }
+
+            servers[serverName].forcedDisconnectionEvent.Set();
 
         }
 
@@ -430,7 +438,29 @@ namespace WpfApplication1
 
                         if (operation == "OKCLO")
                         {
+                            servers[serverName].disconnectionEvent.Set();                            
+                            continue;
+                        }
+
+                        if (operation == "RETRY")
+                        {                            
+                            continue;
+                        }
+
+                        if (operation == "ERRCL")
+                        {
                             servers[serverName].disconnectionEvent.Set();
+                            System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                            if (servers[serverName].notificationsThread.IsAlive)
+                            {
+                                servers[serverName].forcedDisconnectionEvent.WaitOne();
+                                safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                            }
+                            else
+                            {
+                                safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                            }
+                            
                             continue;
                         }
 
