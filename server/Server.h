@@ -39,17 +39,18 @@ public:
 	void start();
 
 private:
-	SOCKET clientSocket;
-	SOCKET listenSocket;
-	string listeningPort;
+	SOCKET clientSocket;	// Gestisce un client alla volta
+	SOCKET listenSocket;	// Il socket del server
+	string listeningPort;	// La porta su cui ascoltare connessioni in entrata
+
+	// "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." 
+	map<HWND, wstring> windows;
 
 	exception_ptr globalExceptionPtr;
+	promise<bool> stopNotificationsThread;	
 
-	promise<bool> stopNotificationsThread;
-	// "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." 
-	vector<HWND> currentProgs;
-	HWINEVENTHOOK g_hook;
-	map<HWND, wstring> windows;
+	HWINEVENTHOOK g_hook;	// Per funzionalità di cattura eventi
+
 
 	string leggiPorta();
 	SOCKET avviaServer();
@@ -71,7 +72,6 @@ private:
 	HICON getHICONfromHWND(HWND hwnd);
 	HBITMAP getHBITMAPfromHICON(HICON hIcon);
 	PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
-
 	
 };
 
