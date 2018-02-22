@@ -5,8 +5,6 @@
 - Raramente (in condizioni non ben specificate) il server moriva. Non è chiaro se dopo aver definito il
 	server da cui disconnettersi e su cui inviare e ricevere il segnale di close, il problema non si ripete più.
 	(NB: Rientra nella verifica delle eccezioni, se succede qualcosa, reagisci in modo che il client non si blocchi)
-- Incoerenza nelle notifiche inviate a causa del tempo che passa per accorgersi che le finestre aperte sono cambiate in qualche modo
-	Il client può non accorgersi di alcune modifiche o accorgersene in ritardo
 */
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -465,7 +463,6 @@ DWORD WINAPI Server::notificationsManagement()
 		
 		for each (pair<HWND, wstring> pair in windows) {
 			wstring windowTitle = pair.second;
-
 			wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 			sendApplicationToClient(clientSocket, pair.first, OPEN);
 		}
@@ -492,14 +489,14 @@ DWORD WINAPI Server::notificationsManagement()
 			for each (pair<HWND, wstring> pair in tempWindows) {
 				if (windows.find(pair.first) == windows.end()) {
 					// 'windows' non contiene questo programma (quindi è stato aperto ora)
-					wstring windowTitle = getTitleFromHwnd(pair.first);
-					if (windowTitle.length() != 0) {
-						// Devo aggiungere la finestra a 'windows'
-						windows[pair.first] = windowTitle;						
-						wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
-						wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-						sendApplicationToClient(clientSocket, pair.first, OPEN);
-					}
+					wstring windowTitle = pair.second;
+					
+					// Devo aggiungere la finestra a 'windows'
+					windows[pair.first] = windowTitle;						
+					wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
+					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+					sendApplicationToClient(clientSocket, pair.first, OPEN);
+					
 				}
 			}
 
@@ -507,14 +504,14 @@ DWORD WINAPI Server::notificationsManagement()
 			vector<HWND> toBeDeleted;
 			for each (pair<HWND, wstring> pair in windows) {
 				if (tempWindows.find(pair.first) == tempWindows.end()) {
-					// tempWindows non contiene più pair.first (quindi è stato chiusa)
-					wstring windowTitle = getTitleFromHwnd(pair.first);
-					if (windowTitle.length() != 0) {
-						wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
-						wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-						sendApplicationToClient(clientSocket, pair.first, CLOSE);
-						toBeDeleted.push_back(pair.first);
-					}
+					// tempWindows non contiene più pair.first (quindi è stata chiusa)
+					wstring windowTitle = pair.second;
+					
+					wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
+					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+					sendApplicationToClient(clientSocket, pair.first, CLOSE);
+					toBeDeleted.push_back(pair.first);
+					
 				}
 			}
 			for each(HWND hwnd in toBeDeleted) {
@@ -533,7 +530,7 @@ DWORD WINAPI Server::notificationsManagement()
 						windows[pair.first] = newTitle;
 						wcout << "[" << GetCurrentThreadId() << "] " << "Cambio nome per la finestra: " << endl;
 						wcout << "[" << GetCurrentThreadId() << "] " << "\t- " << previousTitle << endl;
-						wcout << "[" << GetCurrentThreadId() << "] " << "Ora è: " << endl;
+						wcout << "[" << GetCurrentThreadId() << "] " << "La finestra ora in focus è: " << endl;
 						wcout << "[" << GetCurrentThreadId() << "] " << "- " << newTitle << endl;
 						sendApplicationToClient(clientSocket, pair.first, TITLE_CHANGED);
 					}
@@ -543,15 +540,17 @@ DWORD WINAPI Server::notificationsManagement()
 			/* Check variazione focus */
 			HWND tempForeground = GetForegroundWindow();
 			if (tempForeground != currentForegroundHwnd) {
-				// Allora il programma che ha il focus è cambiato
+				// Allora il programma che ha il focus è cambiato				
 				currentForegroundHwnd = tempForeground;
+
 				wstring windowTitle = getTitleFromHwnd(currentForegroundHwnd);
-				if (windowTitle.length() == 0)
-					windowTitle = L"Desktop";
+				
 				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
 				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 				sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 			}
+
+			windows = tempWindows;
 		}
 	}
 	catch (...)
@@ -585,16 +584,19 @@ wstring Server::getTitleFromHwnd(HWND hwnd) {
 */
 void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation op) {
 	
-	wstring progNameStr(getTitleFromHwnd(hwnd));
+	/* Ottieni il nome dalla map 'windows' */
+	wstring progNameStr(windows[hwnd]);
+
+	/* Prepara variabile TCHAR per essere copiata sul buffer di invio */
 	TCHAR progName[MAX_PATH*sizeof(wchar_t)];
 	ZeroMemory(progName, MAX_PATH * sizeof(wchar_t));
 
+	/* Copia in progName la stringa ottenuta */
+	wcscpy_s(progName, progNameStr.c_str());
+
+	/* Prepara il valore della lunghezza del nome del programma in Network Byte Order */
 	u_long progNameLength = progNameStr.size() * sizeof(wchar_t);
 	u_long netProgNameLength = htonl(progNameLength);
-	if (progNameLength == 0)
-		wcscpy_s(progName, L"Desktop");
-	else
-		wcscpy_s(progName, progNameStr.c_str());
 
 	int i = 0;
 	u_long msgLength = 0;
