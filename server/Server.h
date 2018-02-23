@@ -39,10 +39,16 @@ public:
 	void start();
 
 private:
+	/* SERVER */
 	SOCKET clientSocket;	// Gestisce un client alla volta
 	SOCKET listenSocket;	// Il socket del server
 	string listeningPort;	// La porta su cui ascoltare connessioni in entrata
 
+	string leggiPorta();
+	SOCKET avviaServer();
+	SOCKET acceptConnection();
+
+	/* WINDOWS MANAGEMENT */
 	// "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." 
 	map<HWND, wstring> windows;
 
@@ -50,30 +56,30 @@ private:
 	promise<bool> stopNotificationsThread;
 	bool retry;
 	int numberRetries;
-
-	HWINEVENTHOOK g_hook;	// Per funzionalità di cattura eventi
-
-
-	string leggiPorta();
-	SOCKET avviaServer();
-	SOCKET acceptConnection();
+	
 	void WINAPI notificationsManagement();
 	static BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam);
-
-	static void CALLBACK HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
-	static unsigned CALLBACK hook(void* args);
-
-	void sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation op);	
-	long ottieniIcona(BYTE* lpPixels, HWND hwnd);
-	void receiveCommands();
-	void sendKeystrokesToProgram(vector<UINT> vKeysList);
 	
+	/* MIXED: Server and WindowsManagement */
+	void sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation op);		// SERVER
+	void receiveCommands();															// WINDOWS MANAGEMENT
+	void sendKeystrokesToProgram(vector<UINT> vKeysList);							// WINDOWS MANAGEMENT
+	
+	/* Helper */
+	long ottieniIcona(BYTE* lpPixels, HWND hwnd);
 	static BOOL IsAltTabWindow(HWND hwnd);
 	wstring getTitleFromHwnd(HWND hwnd);
 	void BitmapInfoErrorExit(LPTSTR lpszFunction);
 	HICON getHICONfromHWND(HWND hwnd);
 	HBITMAP getHBITMAPfromHICON(HICON hIcon);
 	PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
+
+
 	
+	/* In più */
+	HWINEVENTHOOK g_hook;	// Per funzionalità di cattura eventi
+
+	static void CALLBACK HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
+	static unsigned CALLBACK hook(void* args);
 };
 

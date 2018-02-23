@@ -113,7 +113,7 @@ void Server::start()
 		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
 			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
 	*/	 
-	//thread t(hook, this);
+	thread t(hook, this);
 
 	while (true) {
 
@@ -166,7 +166,7 @@ string Server::leggiPorta()
 {
 	/* Ottieni porta su cui ascoltare */
 	string porta;
-	regex portRegex("10[2-9][4-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
+	regex portRegex("102[4-9]|10[3-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
 	while (true)
 	{
 		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
@@ -305,25 +305,25 @@ void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
 
 		/* Non considero alcuni eventi che non ci interessano o che vengono chiamati di continuo */
 		if (
-			event == EVENT_OBJECT_LOCATIONCHANGE 
-			|| event == EVENT_OBJECT_REORDER 
+			event == EVENT_OBJECT_LOCATIONCHANGE
+			|| event == EVENT_OBJECT_REORDER
 			|| (event > 0x4001 && event < 0x4007) 
 			|| event == EVENT_OBJECT_VALUECHANGE 
 			|| event == 16385
 			|| (event == 8 || event == 9)	// click giù e click su
 			)
 			return;
-		/*
-		if( event == EVENT_OBJECT_FOCUS || event == EVENT_OBJECT_SHOW)
+		
+		if( event == EVENT_OBJECT_FOCUS || event == EVENT_SYSTEM_FOREGROUND)
 			wcout << "New focus: [" << hwnd << "] " << t << endl;
 		else if(event == EVENT_OBJECT_NAMECHANGE)
 			wcout << "Name changed: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED)
+		else if(event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED || event == EVENT_OBJECT_SHOW)
 			wcout << "Finestra aperta: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_CLOAKED)
-			wcout << "Finestra chiusa (cloaked): [" << hwnd << "] " << t << endl;
-		*/
-
+		else if(event == EVENT_OBJECT_CLOAKED || event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_STATECHANGE)
+			wcout << "Finestra chiusa: [" << hwnd << "] " << t << endl;
+		
+		/*
 		switch (event)
 		{
 			// La finestra in foreground è cambiata
@@ -364,7 +364,7 @@ void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
 			wcout << "Event happened (" << event << "): [" << hwnd << "] " << t << endl;
 			break;				
 		}
-
+		*/
 	}
 	
 }
@@ -497,7 +497,7 @@ void WINAPI Server::notificationsManagement()
 					wstring windowTitle = pair.second;
 					
 					// Devo aggiungere la finestra a 'windows'
-					windows[pair.first] = windowTitle;						
+					windows[pair.first] = windowTitle;
 					wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
 					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 					sendApplicationToClient(clientSocket, pair.first, OPEN);
@@ -558,9 +558,18 @@ void WINAPI Server::notificationsManagement()
 			windows = tempWindows;
 		}
 	}
+	catch (future_error &fe)
+	{
+		// cosa fare?
+	}
+	catch (const std::exception &exc)
+	{
+		// catch anything thrown within try block that derives from std::exception
+		wcout << exc.what();
+	}
 	catch (...)
 	{
-		Sleep(5000);
+		//Sleep(5000);
 		//Set the global exception pointer in case of an exception
 		globalExceptionPtr = current_exception();
 
