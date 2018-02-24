@@ -34,20 +34,51 @@
 #include <stdexcept>
 
 #include "ServerClass.h"
+#include "Helper.h"
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
 // #pragma comment (lib, "Mswsock.lib")
 
+#define N_BYTE_TRATTINO 1
+#define N_BYTE_MSG_LENGTH 4
+#define N_BYTE_PROG_NAME_LENGTH 4
+#define N_BYTE_OPERATION 5
+#define N_BYTE_HWND sizeof(HWND)
+#define N_BYTE_ICON_LENGTH 4
+#define MSG_LENGTH_SIZE (3*N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH)
+#define OPERATION_SIZE (N_BYTE_OPERATION + N_BYTE_TRATTINO)
+#define HWND_SIZE (N_BYTE_HWND + N_BYTE_TRATTINO)
+#define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
+#define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
+
+/* Definisce che tipo di notifica è associata alla stringa rappresentante il nome di un finestra da inviare al client */
+enum operation {
+	OPEN,
+	CLOSE,
+	FOCUS,
+	TITLE_CHANGED
+};
+
 ServerClass::ServerClass()
 {
+	WSADATA wsaData;
 
+	// Inizializza Winsock
+	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		//wcout << "[" << GetCurrentThreadId() << "] " << "WSAStartup() fallita con errore: " << iResult << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "ServerClass non inizializzata correttamente." << endl;
+		return;
+	}
 }
 
 
 ServerClass::~ServerClass()
 {
-
+	// Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+	closesocket(listeningSocket);
+	WSACleanup();
 }
 
 /* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
@@ -79,7 +110,6 @@ void ServerClass::leggiPorta()
 /* Avvia il server settando la listeningPort del Server */
 void ServerClass::avviaServer()
 {
-	WSADATA wsaData;
 	int iResult;
 	
 	listeningSocket = INVALID_SOCKET;
@@ -94,15 +124,7 @@ void ServerClass::avviaServer()
 		}
 
 		wcout << "[" << GetCurrentThreadId() << "] " << "Server in avvio..." << endl;
-
-		// Inizializza Winsock
-		iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-		if (iResult != 0) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "WSAStartup() fallita con errore: " << iResult << endl;
-			listeningSocket = INVALID_SOCKET;
-			continue;
-		}		
-
+		
 		// Creazione socket
 		listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (listeningSocket == INVALID_SOCKET) {
@@ -178,6 +200,10 @@ void ServerClass::acceptConnection(void)
 	return;
 }
 
+void ServerClass::sendNotificationsToClient(operation op) {
+
+}
+
 bool ServerClass::validServer() 
 {
 	if (listeningSocket == INVALID_SOCKET)
@@ -194,12 +220,15 @@ bool ServerClass::validClient()
 	return true;
 }
 
+// TODO: da eliminare nella fase finale
 SOCKET ServerClass::getClientSocket()
 {
 	return clientSocket;
 }
 
+// TODO: da eliminare nella fase finale
 SOCKET ServerClass::getListeningSocket()
 {
 	return listeningSocket;
 }
+

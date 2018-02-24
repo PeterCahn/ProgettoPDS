@@ -2,6 +2,8 @@
 #include <string>
 #include <typeinfo>
 
+enum operation;
+
 using namespace std;
 
 class ServerClass
@@ -18,6 +20,7 @@ public:
 	bool validClient();
 	SOCKET getClientSocket();
 	SOCKET getListeningSocket();
+	void sendNotificationsToClient(operation op);
 
 private:
 

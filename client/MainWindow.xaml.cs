@@ -643,8 +643,6 @@ namespace WpfApplication1
         private void disconnettiDalServer()
         {
             NetworkStream serverStream = null;
-            byte[] buffer = new byte[8];
-            Array.Clear(buffer, 0, 8);
 
             TcpClient server = null;
 
@@ -655,16 +653,20 @@ namespace WpfApplication1
 
             try
             {
+                byte[] buffer = new byte[9];
+                Array.Clear(buffer, 0, 9);
+
                 server = servers[disconnectingServer].server;
                 serverStream = server.GetStream();
 
                 // Prepara messaggio da inviare
                 StringBuilder sb = new StringBuilder();
                 sb.Append("--CLOSE-");
-                buffer = Encoding.ASCII.GetBytes(sb.ToString());
-
+                Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
+                //buffer = Encoding.ASCII.GetBytes(sb.ToString());
+                buffer[8] = (byte) '\0';
                 // Invia richiesta chiusura
-                serverStream.Write(buffer, 0, 8);
+                serverStream.Write(buffer, 0, 9);
 
                 // Aspetto che il thread manageNotifications() finisca
                 servers[disconnectingServer].notificationsThread.Join();

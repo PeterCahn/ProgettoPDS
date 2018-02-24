@@ -24,12 +24,18 @@
     <ClCompile Include="ServerClass.cpp">
       <Filter>File di origine</Filter>
     </ClCompile>
+    <ClCompile Include="Helper.cpp">
+      <Filter>File di origine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Server.h">
       <Filter>File di intestazione</Filter>
     </ClInclude>
     <ClInclude Include="ServerClass.h">
+      <Filter>File di intestazione</Filter>
+    </ClInclude>
+    <ClInclude Include="Helper.h">
       <Filter>File di intestazione</Filter>
     </ClInclude>
   </ItemGroup>
