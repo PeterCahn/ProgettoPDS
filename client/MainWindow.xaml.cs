@@ -904,19 +904,26 @@ namespace WpfApplication1
 
         private void OnButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
+
+            // Se viene premuto Alt e.Key restituisce "System" ma la vera chiave di Alt è contenuta in SystemKey!
+            Key pressedKey = (e.Key == Key.System ? e.SystemKey : e.Key);
+
             if (textBoxComando.Text.Length == 0)
             {
-                textBoxComando.Text = e.Key.ToString();
+                textBoxComando.Text = pressedKey.ToString();
                 buttonInvia.IsEnabled = true;
             }
             else
             {
-                if (!textBoxComando.Text.Contains(e.Key.ToString()))
-                    textBoxComando.AppendText("+" + e.Key.ToString());
+                if (!textBoxComando.Text.Contains(pressedKey.ToString()))
+                    textBoxComando.AppendText("+" + pressedKey.ToString());
             }
 
             // Converti c# Key in Virtual-Key da inviare al server
-            comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key));
+            comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey));
+
+            // Segnala l'evento come gestito per evitare che venga chiamata nuovamente OnButtonKeyDown
+            e.Handled = true;
         }
 
         private void buttonInvia_Click(object sender, RoutedEventArgs e)
