@@ -21,9 +21,7 @@
 #include <future>
 #include <io.h>
 #include <fcntl.h>
-
 #include <cstdio>
-
 #include <exception>
 #include <typeinfo>
 #include <stdexcept>
