@@ -113,7 +113,7 @@ void Server::start()
 		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
 			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
 	*/	 
-	thread t(hook, this);
+	//thread t(hook, this);
 
 	while (true) {
 
@@ -637,7 +637,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 	
 	if (op == OPEN) {
 
-		throw exception("eccezione voluta");
+		//throw exception("eccezione voluta");
 
 		/* Ottieni l'icona */
 		HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));

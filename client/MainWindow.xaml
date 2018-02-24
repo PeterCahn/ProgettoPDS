@@ -218,6 +218,9 @@
                             <Setter Property="Background" Value="LightBlue"/>
                             <Setter Property="Height" Value="40"/>                            
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding 'Visible'}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed"/>                            
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </ListView.Resources>
