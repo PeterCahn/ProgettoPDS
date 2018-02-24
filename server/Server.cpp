@@ -113,7 +113,7 @@ void Server::start()
 		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
 			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
 	*/	 
-	thread t(hook, this);
+	//thread t(hook, this);
 
 	while (true) {
 
@@ -637,7 +637,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 	
 	if (op == OPEN) {
 
-		throw exception("eccezione voluta");
+		//throw exception("eccezione voluta");
 
 		/* Ottieni l'icona */
 		HBITMAP hSource = getHBITMAPfromHICON(getHICONfromHWND(hwnd));
@@ -962,7 +962,7 @@ void Server::receiveCommands() {
 		}
 
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		if (strcmp(recvbuf, "--CLOSE-")) {			
+		if (strcmp(recvbuf, "--CLOSE-") == 0) {			
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
@@ -1055,27 +1055,27 @@ void Server::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	keystrokes_lenght = vKeysList.size();
 	keystroke = new INPUT[keystrokes_lenght * 2];	// *2 perchè abbiamo pressione e rilascio dei tasti
 													// Pressione dei tasti
-	for (i = 0; i < keystrokes_lenght; ++i) {
-		keystroke[i * 2].type = INPUT_KEYBOARD;		// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
-													// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-		keystroke[i * 2].ki.wVk = vKeysList[i];		// Virtual-key code dell'input.																						  
-		keystroke[i * 2].ki.wScan = 0;				// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-		keystroke[i * 2].ki.dwFlags = 0;			// Eventuali informazioni addizionali sull'evento
-		keystroke[i * 2].ki.time = 0;				// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
-		keystroke[i * 2].ki.dwExtraInfo = GetMessageExtraInfo();	// Valore addizionale associato al keystroke
+	for (i = 0; i < keystrokes_lenght; i++) {
+		keystroke[i].type = INPUT_KEYBOARD;		// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+												// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+		keystroke[i].ki.wVk = vKeysList[i];		// Virtual-key code dell'input.																						  
+		keystroke[i].ki.wScan = 0;				// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+		keystroke[i].ki.dwFlags = 0;			// Eventuali informazioni addizionali sull'evento
+		keystroke[i].ki.time = 0;				// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+		keystroke[i].ki.dwExtraInfo = 0;		// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
 	}
 	// Rilascio dei tasti
-	for (i = 0; i < keystrokes_lenght; ++i) {
-		keystroke[i * 2 + 1].type = INPUT_KEYBOARD;
-		keystroke[i * 2 + 1].ki.wVk = vKeysList[i];
-		keystroke[i * 2 + 1].ki.wScan;
-		keystroke[i * 2 + 1].ki.dwFlags = KEYEVENTF_KEYUP;
-		keystroke[i * 2 + 1].ki.time = 0;
-		keystroke[i * 2 + 1].ki.dwExtraInfo = GetMessageExtraInfo();
+	for (i = keystrokes_lenght; i < keystrokes_lenght * 2; i++) {
+		keystroke[i].type = INPUT_KEYBOARD;
+		keystroke[i].ki.wVk = vKeysList[i - keystrokes_lenght];
+		keystroke[i].ki.wScan;
+		keystroke[i].ki.dwFlags = KEYEVENTF_KEYUP;
+		keystroke[i].ki.time = 0;
+		keystroke[i].ki.dwExtraInfo = 0;
 	}
 
 	//Send the keystrokes.
-	keystrokes_sent = SendInput((UINT)keystrokes_lenght, keystroke, sizeof(*keystroke));
+	keystrokes_sent = SendInput((UINT)keystrokes_lenght*2, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
 
 	wcout << "# of keystrokes to send to the window: " << keystrokes_lenght << endl;
