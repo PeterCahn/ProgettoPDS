@@ -55,17 +55,7 @@ namespace WpfApplication1
 
             textBoxIpAddress.Focus();
 
-            // per disabilitare la cattura dei comandi 
-            labelComando.Visibility = Visibility.Hidden;
-            buttonCattura.IsEnabled = false;
-            buttonCattura.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.IsEnabled = false;
-
-            textBoxComando.Visibility = Visibility.Hidden;
-            textBoxComando.Text = "";
-            buttonInvia.Visibility = Visibility.Hidden;
-            buttonInvia.IsEnabled = false;
+            disabilitaERimuoviCatturaComando();
 
         }
         
@@ -90,6 +80,12 @@ namespace WpfApplication1
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
         {
+            // Problema di accesso agli elementi della UI se si lancia un thread
+            //Thread connecting;
+            //connecting = new Thread(() => { } );      // lambda perchè è necessario anche passare il parametro
+            //connecting.IsBackground = true;
+            //connecting.Start();
+            
             connettiAlServer();
         }
 
@@ -115,6 +111,18 @@ namespace WpfApplication1
             serverName = ipAddress + ":" + port;
 
             /* Controlla che non ci sia già serverName tra i server a cui si è connessi */
+            lock (servers)
+            {
+                if (servers.ContainsKey(serverName))
+                {
+                    if (servers[serverName].isOnline)
+                    {
+                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
+                        return;
+                    }
+                }
+            }
+            /*
             try
             {
                 tablesMapsEntryMutex.WaitOne();
@@ -126,13 +134,6 @@ namespace WpfApplication1
                         tablesMapsEntryMutex.ReleaseMutex();
                         return;
                     }
-                    /*
-                    else
-                    {
-                        servers.Remove(serverName);
-                        serversListBox.Items.Remove(serverName);
-                    }
-                    */
                 }
                 tablesMapsEntryMutex.ReleaseMutex();
             }
@@ -147,9 +148,16 @@ namespace WpfApplication1
                 // The current instance has already been disposed.
                 return;
             }
+            */
 
             try
-            {                
+            {
+                /*
+                Thread connecting;
+                connecting = new Thread(() => { });      // lambda perchè è necessario anche passare il parametro
+                connecting.IsBackground = true;                
+                connecting.Start();
+                */
                 server = new TcpClient(ipAddress, port);
                 /* ArgumentNullException: hostname is null
                  * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */

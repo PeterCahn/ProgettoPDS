@@ -1,11 +1,3 @@
-#include <Windows.h>
-/*
-#include <vector>
-#include <future>
-#include <map>
-#include <string>
-*/
-
 #include <map>
 #include <Windows.h>
 #include <stdlib.h>
@@ -24,6 +16,8 @@
 #include <io.h>
 #include <fcntl.h>
 
+#include "ServerClass.h"
+
 enum operation;
 
 //#pragma once
@@ -39,14 +33,8 @@ public:
 	void start();
 
 private:
-	/* SERVER */
-	SOCKET clientSocket;	// Gestisce un client alla volta
-	SOCKET listenSocket;	// Il socket del server
-	string listeningPort;	// La porta su cui ascoltare connessioni in entrata
 
-	string leggiPorta();
-	SOCKET avviaServer();
-	SOCKET acceptConnection();
+	ServerClass server;
 
 	/* WINDOWS MANAGEMENT */
 	// "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." 
