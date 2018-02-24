@@ -416,7 +416,16 @@ namespace WpfApplication1
                     if ((res = readn(server, serverStream, serverName, buffer, 7)) == 0)
                         continue;
                     else if (res == -2)
-                        break;
+                    {
+                        servers[serverName].disconnectionEvent.Set();
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        if (servers[serverName].notificationsThread.IsAlive)
+                            servers[serverName].forcedDisconnectionEvent.WaitOne();
+
+                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                        continue;
+                    }
+                        
                     else if (res < 0)
                     {
                         // TODO: prima facevamo già così, ma non dovremmo fare meglio?
@@ -434,7 +443,6 @@ namespace WpfApplication1
                         continue;
                     else if (res == -2)
                     {
-
                         servers[serverName].disconnectionEvent.Set();
                         System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
                         if (servers[serverName].notificationsThread.IsAlive)
@@ -459,6 +467,7 @@ namespace WpfApplication1
                     if (operation == "OKCLO")
                     {
                         servers[serverName].disconnectionEvent.Set();
+                        safePulisciInterfaccia(server, serverStream, serverName, true);
                         continue;
                     }
 
@@ -672,10 +681,6 @@ namespace WpfApplication1
                 servers[disconnectingServer].disconnectionEvent.Set();
 
             }
-            finally
-            {
-                safePulisciInterfaccia(server, serverStream, disconnectingServer, true);
-            }
 
         }
 
@@ -706,8 +711,8 @@ namespace WpfApplication1
             if (serverStream != null)
                 serverStream.Close();
             if (server != null)
-                server.Close(); // TODO: Nessun avviene errore. Ma si può fare Close() dopo averlo già fatto? Check.
-
+                server.Close(); // TODO: Non avviene nessun errore. Ma si può fare Close() dopo averlo già fatto? Check.
+            
             // Rilascia risorse del ManualResetEvent e del Mutex
             servers[disconnectingServer].disconnectionEvent.Close();
             servers[disconnectingServer].tableModificationsMutex.Dispose();
@@ -735,14 +740,7 @@ namespace WpfApplication1
 
                 // Rimuovi disconnectingServer da servers
                 servers.Remove(disconnectingServer);
-
-                /*
-                // Ripristina cattura comando
-                textBoxComando.Text = "";
-                buttonCattura.Visibility = Visibility.Visible;
-                buttonAnnullaCattura.Visibility = Visibility.Hidden;
-                comandoDaInviare.Clear();
-                */
+                
             }
             else
             {

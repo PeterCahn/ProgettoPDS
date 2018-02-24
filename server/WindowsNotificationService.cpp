@@ -387,7 +387,7 @@ void WindowsNotificationService::receiveCommands() {
 			return;
 		}
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		else if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {			
+		else if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
