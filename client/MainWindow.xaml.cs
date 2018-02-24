@@ -37,7 +37,7 @@ namespace WpfApplication1
         private List<int> comandoDaInviare = new List<int>();
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
-        
+
         /* Mutex necessario alla gestione delle modifiche nella listView1 perchè i thread statistics and notifications
          * accedono alla stessa variabile 'servers'
          */
@@ -46,7 +46,7 @@ namespace WpfApplication1
         public MainWindow()
         {
             InitializeComponent();
-            
+
             // Aggiungi elemento vuoto alla serversListBox
             int index = serversListBox.Items.Add("Nessun server connesso");
             serversListBox.SelectedIndex = index;
@@ -57,7 +57,7 @@ namespace WpfApplication1
             disabilitaERimuoviCatturaComando();
 
         }
-        
+
         public IPEndPoint parseHostPort(string hostPort)
         {
             /* Match di indirizzi ip:porta del tipo: [0-255].[0-255].[0-255].[0.255]:[1024-65535] */
@@ -84,7 +84,7 @@ namespace WpfApplication1
             //connecting = new Thread(() => { } );      // lambda perchè è necessario anche passare il parametro
             //connecting.IsBackground = true;
             //connecting.Start();
-            
+
             connettiAlServer();
         }
 
@@ -172,7 +172,7 @@ namespace WpfApplication1
             catch (SocketException se)
             {
                 int errorCode = se.ErrorCode;
-                if(errorCode.Equals(SocketError.TimedOut))
+                if (errorCode.Equals(SocketError.TimedOut))
                     System.Windows.MessageBox.Show("Tentativo di connessione al server " + serverName + " scaduto.");
                 else
                     System.Windows.MessageBox.Show("Connessione al server " + serverName + " fallita.");
@@ -191,7 +191,7 @@ namespace WpfApplication1
             // Aggiorna bottoni
             buttonDisconnetti.Visibility = Visibility.Visible;
             textBoxIpAddress.Text = "";
-                
+
             // Aggiungi MyTable vuota in ServerInfo
             si.table = new MyTable();
 
@@ -256,7 +256,7 @@ namespace WpfApplication1
 
                 return;
             }
-            catch(OutOfMemoryException)
+            catch (OutOfMemoryException)
             {
                 // There is not enough memory available to start this thread.
                 servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
@@ -265,14 +265,14 @@ namespace WpfApplication1
 
                 return;
             }
-            
+
             // Mostra la nuova tavola
             listView1.ItemsSource = si.table.Finestre;
 
             // Aggiungi il nuovo server alla lista di server nella lista combo box
             if (serversListBox.Items[0].Equals("Nessun server connesso")) // se c'è solo l'elemento "Nessun server connesso" (è il primo)
                 serversListBox.Items.RemoveAt(0); // rimuovi primo elemento
-                
+
             // Cambia la selezione della serversListBox al server appena connesso
             int index = serversListBox.Items.Add(serverName);
             serversListBox.SelectedIndex = index;
@@ -281,9 +281,9 @@ namespace WpfApplication1
             // Cambia la label per mostrare quale server si è appena connesso
             indirizzoServerConnesso.Content = serverName;
             listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
-            
+
         }
-        
+
         /* Viene eseguito in un thread a parte.
          * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
          * In questo modo abbiamo statistiche "live"
@@ -293,10 +293,10 @@ namespace WpfApplication1
             // Imposta tempo connessione
             DateTime connectionTime = DateTime.Now;
             DateTime lastUpdate = connectionTime;
-                                          
+
             while (true)
             {
-                /* Controlla che 'serverName' non sia stata eliminata */                
+                /* Controlla che 'serverName' non sia stata eliminata */
                 try
                 {
                     // Accesso a 'servers'
@@ -325,10 +325,10 @@ namespace WpfApplication1
                 {
                     bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
                     if (isSignaled)
-                        break;                
+                        break;
 
                     servers[serverName].tableModificationsMutex.WaitOne();
-                    
+
                     foreach (Finestra finestra in servers[serverName].table.Finestre)
                     {
                         if (finestra.StatoFinestra.Equals("Focus"))
@@ -340,17 +340,17 @@ namespace WpfApplication1
                         // Calcola la percentuale
                         double perc = ((double)finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds * 100);
                         finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
-                    }                    
-                    
+                    }
+
                     servers[serverName].tableModificationsMutex.ReleaseMutex();
 
                 }
-                catch(AbandonedMutexException ame)
+                catch (AbandonedMutexException ame)
                 {
                     if (ame != null) ame.Mutex.ReleaseMutex();
                     break;
                 }
-                catch(ObjectDisposedException)
+                catch (ObjectDisposedException)
                 {
                     // il disconnectionEvent è stato "disposed"
                     break;
@@ -359,11 +359,11 @@ namespace WpfApplication1
                 {
                     return;
                 }
-                catch(Exception)
+                catch (Exception)
                 {
                     return;
                 }
-                
+
             }
 
             servers[serverName].forcedDisconnectionEvent.Set();
@@ -387,129 +387,100 @@ namespace WpfApplication1
             }
             TcpClient server = servers[serverName].server;
             tablesMapsEntryMutex.ReleaseMutex();
-            
+
             serverStream = server.GetStream();
 
             string operation = null;
-            string progName = null;                        
+            string progName = null;
 
             // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
             // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
             // Available() ritorna il numero di dati da leggere
             // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
-                        
+
             //while(!((servers[serverName].socket.Poll(1000, SelectMode.SelectRead) && (servers[serverName].socket.Available == 0)) || !servers[serverName].socket.Connected))
-            while(serverStream.CanRead && server.Connected)
+            while (serverStream.CanRead && server.Connected)
             {
                 // Aspetto se si sta settando il disconnectionEvent, altrimenti leggo i dati ricevuti.                     
                 bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(1);
                 if (!isSignaled)
                 {
                     // Leggi inizio e dimensione messaggio "--<4 byte int>-" = 7 byte in "buffer"
-                    int offset = 0;
                     int remaining = 7;
                     int msgSize = 0;
                     int hwnd = 0;
                     int progNameLength = 0;
                     byte[] msg = null;
 
-                    try
+                    int res;
+                    if ((res = readn(server, serverStream, serverName, buffer, 7)) == 0)
+                        continue;
+                    else if (res == -2)
+                        break;
+                    else if (res < 0)
                     {
-                        while (remaining > 0)
-                        {
-                            int read = serverStream.Read(buffer, offset, remaining);
-                            remaining -= read;
-                            offset += read;
-                        }
-
-                        // Leggi la dimensione del messaggio dal buffer
-                        msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
-
-                        // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
-                        msg = new byte[msgSize];
-                        offset = 0;
-                        remaining = msgSize;
-                        while (remaining > 0)
-                        {
-                            int read = serverStream.Read(msg, offset, remaining);
-                            remaining -= read;
-                            offset += read;
-                        }
-
-                        // Estrai operazione => primi 5 byte
-                        byte[] op = new byte[5];
-                        Array.Copy(msg, 0, op, 0, 5);
-                        operation = Encoding.ASCII.GetString(op);
-
-                        if (operation == "OKCLO")
-                        {
-                            servers[serverName].disconnectionEvent.Set();                            
-                            continue;
-                        }
-
-                        if (operation == "RETRY")
-                        {                            
-                            continue;
-                        }
-
-                        if (operation == "ERRCL")
-                        {
-                            servers[serverName].disconnectionEvent.Set();
-                            System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                            if (servers[serverName].notificationsThread.IsAlive)
-                            {
-                                servers[serverName].forcedDisconnectionEvent.WaitOne();
-                                safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
-                            }
-                            else
-                            {
-                                safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
-                            }
-                            
-                            continue;
-                        }
-
-                        // Estrai hwnd: successivi 5 byte.
-                        byte[] h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
-
-                        // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                        progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                        // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                        byte[] pN = new byte[progNameLength];
-                        Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                        progName = Encoding.Unicode.GetString(pN);
-                    }
-                    catch (IOException)
-                    {
-                        // Scatenata dalla Read(): il socket è stato chiuso lato server.
-                        // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
-                        servers[serverName].disconnectionEvent.Set();
-                        safePulisciInterfaccia(server, serverStream, serverName, false);
-                        
+                        // TODO: prima facevamo già così, ma non dovremmo fare meglio?
+                        // Eccezione scatenata in readn
                         continue;
                     }
-                    catch(ObjectDisposedException)
-                    {
-                        // Il networkStream è stato chiuso oppure c'è stato un errore nella lettura dalla rete.
-                        // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
-                        servers[serverName].disconnectionEvent.Set();
-                        safePulisciInterfaccia(server, serverStream, serverName, false);
 
+                    // Leggi la dimensione del messaggio dal buffer
+                    msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
+
+                    // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
+                    msg = new byte[msgSize];
+                    remaining = msgSize;
+                    if ((res = readn(server, serverStream, serverName, msg, msgSize)) == 0)
+                        continue;
+                    else if (res == -2)
+                        break;
+                    else if (res < 0)
+                    {
+                        // TODO: prima facevamo già così, ma non dovremmo fare meglio?
+                        // Eccezione scatenata in readn
                         continue;
                     }
-                    catch(Exception)
-                    {
-                        // qualsiasi eccezione sia stata sctenata, il thread è necessario:
-                        // prova a riavviarlo, oppure...
 
-                        // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
+                    // Estrai operazione => primi 5 byte
+                    byte[] op = new byte[5];
+                    Array.Copy(msg, 0, op, 0, 5);
+                    operation = Encoding.ASCII.GetString(op);
+
+                    if (operation == "OKCLO")
+                    {
                         servers[serverName].disconnectionEvent.Set();
-                        safePulisciInterfaccia(server, serverStream, serverName, false);
                         continue;
                     }
-                                                
+
+                    if (operation == "RETRY")
+                    {
+                        continue;
+                    }
+
+                    if (operation == "ERRCL")
+                    {
+                        servers[serverName].disconnectionEvent.Set();
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        if (servers[serverName].notificationsThread.IsAlive)
+                            servers[serverName].forcedDisconnectionEvent.WaitOne();
+
+                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                        continue;
+                    }
+
+                    // Estrai hwnd: successivi 5 byte.
+                    byte[] h = new byte[5];
+                    Array.Copy(msg, 6, h, 0, 4);
+                    hwnd = BitConverter.ToInt32(msg, 6);
+
+                    // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                    progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
+                    // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                    byte[] pN = new byte[progNameLength];
+                    Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
+                    progName = Encoding.Unicode.GetString(pN);
+
+
                     /* Possibili valori ricevuti:
                         * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
                         * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
@@ -526,7 +497,7 @@ namespace WpfApplication1
                             break;
                         case "CLOSE":
                             // Rimuovi programma dalla listView                            
-                            servers[serverName].table.removeFinestra(hwnd);                            
+                            servers[serverName].table.removeFinestra(hwnd);
 
                             break;
                         case "TTCHA":
@@ -548,7 +519,7 @@ namespace WpfApplication1
                                 /* Ricevi icona processo */
                                 Bitmap bitmap = new Bitmap(64, 64);
                                 bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                                                                                                //bitmap.SetTransparencyKey(Color.White);
+                                                                                             //bitmap.SetTransparencyKey(Color.White);
 
                                 // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
                                 // 4 byte di dimensione icona e il trattino
@@ -598,10 +569,10 @@ namespace WpfApplication1
 
                                     // Aggiungi il nuovo elemento all'elenco delle tabelle
                                     servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bmpImage);
-                                    
+
                                 }
                             }
-                            catch(Exception)
+                            catch (Exception)
                             {
                                 // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
                                 // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre                                    
@@ -612,9 +583,9 @@ namespace WpfApplication1
                 }
                 else
                     break;
-                    
-            }            
-            
+
+            }
+
         }
 
         public Bitmap CopyDataToBitmap(byte[] data)
@@ -663,7 +634,7 @@ namespace WpfApplication1
                 sb.Append("--CLSCN-");
                 Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
                 //buffer = Encoding.ASCII.GetBytes(sb.ToString());
-                buffer[8] = (byte) '\0';
+                buffer[8] = (byte)'\0';
                 // Invia richiesta chiusura
                 serverStream.Write(buffer, 0, 9);
 
@@ -682,7 +653,7 @@ namespace WpfApplication1
                 // Se il NetworkStream non è accessibile, anche il notificationThread se ne accorge e scatena l'eccezione.
                 servers[disconnectingServer].disconnectionEvent.Set();
             }
-            catch(IOException)
+            catch (IOException)
             {
                 // Sblocca il server manualmente e continua sul finally.
                 // StatisticsThread si chiude dopo la sola Set().
@@ -691,10 +662,11 @@ namespace WpfApplication1
                 servers[disconnectingServer].disconnectionEvent.Set();
 
             }
-            finally{
+            finally
+            {
                 safePulisciInterfaccia(server, serverStream, disconnectingServer, true);
             }
-                
+
         }
 
         /* Pulisce l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke)
@@ -729,7 +701,7 @@ namespace WpfApplication1
             // Rilascia risorse del ManualResetEvent e del Mutex
             servers[disconnectingServer].disconnectionEvent.Close();
             servers[disconnectingServer].tableModificationsMutex.Dispose();
-                        
+
             if (onPurpose)
             {
                 // Disconnessione volontaria: rimuovi voce server dalla ListBox e sposta selezione al primo elemento in lista
@@ -768,7 +740,7 @@ namespace WpfApplication1
                 // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
                 // ma continuiamo a mostrare le statistiche all'ultima volta che è stato visto online
                 servers[disconnectingServer].isOnline = false;
-                                
+
                 if (disconnectingServer.Equals(currentConnectedServer))
                 {
                     // l'elenco finestre disattivo è quello attivo, 
@@ -782,8 +754,8 @@ namespace WpfApplication1
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
                 }
-            }            
-        }        
+            }
+        }
 
         // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando
         private void disabilitaERimuoviCatturaComando()
@@ -800,7 +772,7 @@ namespace WpfApplication1
             comandoDaInviare.Clear();
             buttonCattura.IsEnabled = false;
             buttonAnnullaCattura.IsEnabled = false;
-            buttonInvia.IsEnabled = false;            
+            buttonInvia.IsEnabled = false;
         }
 
         // Al click di "Cattura comando"
@@ -856,7 +828,7 @@ namespace WpfApplication1
             buttonAnnullaCattura.IsEnabled = false;
 
             // textBoxComando e buttonInvia non visibili
-            textBoxComando.Visibility = Visibility.Hidden;            
+            textBoxComando.Visibility = Visibility.Hidden;
             buttonInvia.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
         }
@@ -890,14 +862,14 @@ namespace WpfApplication1
             }
 
             // Rimuovi disconnectingServer da servers
-            servers.Remove(removingServer);            
+            servers.Remove(removingServer);
         }
 
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
         {
             // Mostra la textBox dove scrivere e il button Invia
             abilitaCatturaComando();
-            
+
             // Alternativa:
             //_hookID = SetHook(_proc);
 
@@ -947,11 +919,11 @@ namespace WpfApplication1
 
                 /* Prepara l'invio del messaggio */
                 NetworkStream serverStream = null;
-                
+
                 TcpClient server = null;
                 server = servers[currentConnectedServer].server;
-                serverStream = server.GetStream();                
-                
+                serverStream = server.GetStream();
+
                 // Invia messaggio
                 serverStream.Write(messaggio, 0, messaggio.Length);
 
@@ -963,7 +935,7 @@ namespace WpfApplication1
             }
             catch (Exception)
             {
-                
+
             }
         }
 
@@ -972,19 +944,19 @@ namespace WpfApplication1
             disabilitaCatturaComando();
 
             //UnhookWindowsHookEx(_hookID);
-            
+
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {            
+        {
             string fullSelectedServer = ((sender as System.Windows.Controls.ListBox).SelectedItem as string);
 
             string selectedServer = null;
             if (fullSelectedServer != null && !fullSelectedServer.Equals("Nessun server connesso"))
                 selectedServer = fullSelectedServer.Split(' ')[0];
             else selectedServer = fullSelectedServer;
-            
-            if(selectedServer != null)
+
+            if (selectedServer != null)
             {
                 if (!selectedServer.Equals("Nessun server connesso") && servers[selectedServer].isOnline)
                 {
@@ -996,7 +968,7 @@ namespace WpfApplication1
                     buttonDisconnetti.IsEnabled = true;
                     buttonDisconnetti.Visibility = Visibility.Visible;
                     buttonChiudiServer.IsEnabled = false;
-                    buttonChiudiServer.Visibility = Visibility.Hidden;                                       
+                    buttonChiudiServer.Visibility = Visibility.Hidden;
 
                     textBoxIpAddress.Text = "";     // per connessione a un nuovo server
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
@@ -1063,7 +1035,7 @@ namespace WpfApplication1
                     buttonChiudiServer.Visibility = Visibility.Hidden;
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
-                    
+
                     textBoxIpAddress.Text = "";     // per connessione a un nuovo server
                     indirizzoServerConnesso.Content = "Nessun server connesso";
 
@@ -1086,9 +1058,58 @@ namespace WpfApplication1
                     buttonInvia.IsEnabled = false;
                     */
                 }
-            }            
-            
-        }        
+            }
+
+        }
+
+        // Normalmente ritorna quanti byte ha letto, altrimenti 0 se dopo 1 secondo non ha letto niente oppure -1 se si è scatenata un'eccezione
+        private int readn(TcpClient server, NetworkStream serverStream, String serverName, byte[] buffer, int n)
+        {
+            int offset = 0;
+            try
+            {
+                while (n > 0)
+                {
+                    if (server.Client.Poll(1000000 /* MICROseconds */, SelectMode.SelectRead))
+                    {
+                        int read = serverStream.Read(buffer, offset, n);
+                        if (read == 0)  // Significa che la connessione è stata chiusa
+                            return -2;  // TODO: non è bellissimo
+                        n -= read;
+                        offset += read;
+                    }
+                    else
+                    {
+                        return 0;
+                    }
+                }
+                return offset;
+            }
+            catch (Exception e)
+            {
+                if (e is IOException)
+                {
+                    // Scatenata dalla Read(): il socket è stato chiuso lato server.
+                    // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
+                }
+                else if (e is ObjectDisposedException)
+                {
+                    // Il networkStream è stato chiuso oppure c'è stato un errore nella lettura dalla rete.
+                    // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
+                }
+                else
+                {
+                    // qualsiasi eccezione sia stata sctenata, il thread è necessario:
+                    // prova a riavviarlo, oppure...
+                    throw e;
+                }
+
+                // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
+                servers[serverName].disconnectionEvent.Set();
+                safePulisciInterfaccia(server, serverStream, serverName, false);
+                return -1;
+            }
+        }
 
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
@@ -1130,7 +1151,7 @@ namespace WpfApplication1
         private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);   
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
 
     }
 }

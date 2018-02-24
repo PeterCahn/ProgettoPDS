@@ -236,7 +236,7 @@
         <Button x:Name="buttonChiudiServer" Style="{StaticResource MetroButton}" Content="Chiudi server" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonChiudiServerDisconnesso_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
 
         <Label x:Name="indirizzoServerConnesso" Content="Nessun server connesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" FontWeight="Bold" Height="auto" Width="auto" FontSize="34" Margin="26,44,0,0"/>
-        <Label x:Name="labelDisconnesso" Content="Disconnesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" Height="auto" Width="auto" FontSize="20" Margin="26,17,0,0" Visibility="Hidden"/>
+        <Label x:Name="labelDisconnesso" Content="Disconnesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFDE0000" Panel.ZIndex="1" Height="auto" Width="auto" FontSize="20" Margin="26,17,0,0" Background="#00000000" BorderThickness="0" Visibility="Hidden"/>
 
     </Grid>
 
