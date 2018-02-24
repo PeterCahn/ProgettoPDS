@@ -433,7 +433,17 @@ namespace WpfApplication1
                     if ((res = readn(server, serverStream, serverName, msg, msgSize)) == 0)
                         continue;
                     else if (res == -2)
-                        break;
+                    {
+
+                        servers[serverName].disconnectionEvent.Set();
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        if (servers[serverName].notificationsThread.IsAlive)
+                            servers[serverName].forcedDisconnectionEvent.WaitOne();
+
+                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                        continue;
+                        
+                    }
                     else if (res < 0)
                     {
                         // TODO: prima facevamo già così, ma non dovremmo fare meglio?
@@ -977,19 +987,6 @@ namespace WpfApplication1
 
                     mostraCatturaComando();
 
-                    // per abilitare la cattura dei comandi
-                    /* 
-                    labelComando.Visibility = Visibility.Visible;
-                    buttonCattura.IsEnabled = false;
-                    buttonCattura.Visibility = Visibility.Hidden;
-                    buttonAnnullaCattura.Visibility = Visibility.Visible;
-                    buttonAnnullaCattura.IsEnabled = true;
-                                        
-                    textBoxComando.Visibility = Visibility.Visible;
-                    textBoxComando.Text = "";
-                    buttonInvia.Visibility = Visibility.Visible;
-                    buttonInvia.IsEnabled = true;
-                    */
                 }
                 else if (!selectedServer.Equals("Nessun server connesso") && !servers[selectedServer].isOnline)
                 {
@@ -1011,18 +1008,6 @@ namespace WpfApplication1
                     // per disabilitare e rimuovere la cattura dei comandi 
                     disabilitaERimuoviCatturaComando();
 
-                    /*                    
-                    labelComando.Visibility = Visibility.Hidden;
-                    buttonCattura.IsEnabled = false;
-                    buttonCattura.Visibility = Visibility.Hidden;
-                    buttonAnnullaCattura.Visibility = Visibility.Hidden;
-                    buttonAnnullaCattura.IsEnabled = false;
-
-                    textBoxComando.Visibility = Visibility.Hidden;
-                    textBoxComando.Text = "";
-                    buttonInvia.Visibility = Visibility.Hidden;
-                    buttonInvia.IsEnabled = false;
-                    */
                 }
                 else if (selectedServer.Equals("Nessun server connesso"))
                 {
@@ -1044,19 +1029,7 @@ namespace WpfApplication1
 
                     // per disabilitare e rimuovere la cattura dei comandi 
                     disabilitaERimuoviCatturaComando();
-                    /*
-                    // per disabilitare la cattura dei comandi 
-                    labelComando.Visibility = Visibility.Hidden;
-                    buttonCattura.IsEnabled = false;
-                    buttonCattura.Visibility = Visibility.Hidden;
-                    buttonAnnullaCattura.Visibility = Visibility.Hidden;
-                    buttonAnnullaCattura.IsEnabled = false;
 
-                    textBoxComando.Visibility = Visibility.Hidden;
-                    textBoxComando.Text = "";
-                    buttonInvia.Visibility = Visibility.Hidden;
-                    buttonInvia.IsEnabled = false;
-                    */
                 }
             }
 
