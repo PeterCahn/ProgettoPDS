@@ -77,6 +77,10 @@ typedef std::map<HWND, wstring> WinStringMap;
 Server::Server()
 {
 	_setmode(_fileno(stdout), _O_U16TEXT);
+
+	/* Inizializza il server */
+	server = ServerClass();
+
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
 	numberRetries = 0;
@@ -94,20 +98,6 @@ Server::~Server()
 
 void Server::start()
 {
-	/* Ottieni porta su cui ascoltare e accetta prima connessione */	
-	listeningPort = leggiPorta();
-
-	/* Avvia il server controllando che il socket ricevuto sia corretto per poter procedere */
-	while (true)
-	{		
-		/* Tentativo di avviare il server con la porta letta */
-		listenSocket = avviaServer();
-		if (listenSocket != INVALID_SOCKET)	// server avviato: break
-			break;
-		else
-			listeningPort = leggiPorta();	// problema con l'avvio del server: rileggi porta
-	}
-
 	/* Tentativo di sganciare un thread per raccogliere i messaggi nella coda degli eventi windows delle finestre monitorate.
 		Gestione eventi windows (semplificato ed adattato), preso spunto da qui: http://www.cplusplus.com/forum/windows/58791/
 		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
@@ -115,16 +105,18 @@ void Server::start()
 	*/	 
 	//thread t(hook, this);
 
+	/* Avvia il server */
+	server.avviaServer();
+
 	while (true) {
 
-		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
-		wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;		
+		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */		
 		while (true) {
-			clientSocket = acceptConnection();
-			if (clientSocket != INVALID_SOCKET)
+			wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
+			server.acceptConnection();
+			if (server.validClient())
 				break;
 		}
-
 		
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
@@ -154,118 +146,11 @@ void Server::start()
 				
 		}
 		/* Cleanup */
-		closesocket(clientSocket);		
+		closesocket(server.getClientSocket());		
 	}
 
-	closesocket(listenSocket);
+	closesocket(server.getListeningSocket());
 	WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
-}
-
-/* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
-string Server::leggiPorta()
-{
-	/* Ottieni porta su cui ascoltare */
-	string porta;
-	regex portRegex("102[4-9]|10[3-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
-	while (true)
-	{
-		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
-		cin >> porta;
-
-		if (!wcin.good()) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
-			return NULL;
-		}
-
-		else if (!regex_match(porta, portRegex))
-			wcout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
-		else
-			break;
-	}
-
-	return porta;
-}
-
-/* Avvia il server settando la listeningPort del Server */
-SOCKET Server::avviaServer()
-{
-	WSADATA wsaData;
-	int iResult;
-
-	listenSocket = INVALID_SOCKET;
-
-	int recvbuflen = DEFAULT_BUFLEN;
-
-	// Inizializza Winsock
-	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {
-		wcout << "[" << GetCurrentThreadId() << "] " << "WSAStartup() fallita con errore: " << iResult << std::endl;
-		return INVALID_SOCKET;
-	}
-
-	// Creazione socket
-	listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (listenSocket == INVALID_SOCKET) {
-		wcout << "[" << GetCurrentThreadId() << "] " << "socket() fallita con errore: " << WSAGetLastError() << std::endl;
-		WSACleanup();
-		return INVALID_SOCKET;
-	}
-
-	// Imposta struct sockaddr_in
-	struct sockaddr_in mySockaddr_in;
-	mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
-	mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
-	mySockaddr_in.sin_family = AF_INET;
-
-	// Associa socket a indirizzo locale
-	iResult = ::bind(listenSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
-	if (iResult == SOCKET_ERROR) {
-		int errorCode = WSAGetLastError();
-
-		wcout << "[" << GetCurrentThreadId() << "] " << "bind() fallita con errore: " << WSAGetLastError() << std::endl;
-		if (errorCode == WSAEADDRINUSE)
-			wcout << "[" << GetCurrentThreadId() << "] " << "Porta " << atoi(listeningPort.c_str()) << " già in uso. Scegliere un'altra porta." << endl;
-
-		closesocket(listenSocket);
-		WSACleanup();
-		return INVALID_SOCKET;
-	}
-
-	// Ascolta per richieste di connessione
-	iResult = listen(listenSocket, SOMAXCONN);
-	if (iResult == SOCKET_ERROR) {
-		wcout << "[" << GetCurrentThreadId() << "] " << "listen() fallita con errore: " << WSAGetLastError() << std::endl;
-		closesocket(listenSocket);
-		WSACleanup();
-		return INVALID_SOCKET;
-	}
-
-	return listenSocket;
-}
-
-/* Attende una connessione in entrata da un client */
-SOCKET Server::acceptConnection(void)
-{
-	int iResult = 0;
-
-	SOCKET newClientSocket;
-
-	// Accetta la connessione
-	newClientSocket = accept(listenSocket, NULL, NULL);
-	if (newClientSocket == INVALID_SOCKET) {
-		wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << std::endl;
-		return INVALID_SOCKET;
-	}
-
-	struct sockaddr_in clientSockAddr;
-	int nameLength = sizeof(clientSockAddr);
-	getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
-	int port = ntohs(clientSockAddr.sin_port);
-	char ipstr[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
-	wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
-	
-	return newClientSocket;
 }
 
 BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
@@ -469,14 +354,14 @@ void WINAPI Server::notificationsManagement()
 		for each (pair<HWND, wstring> pair in windows) {
 			wstring windowTitle = pair.second;
 			wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-			sendApplicationToClient(clientSocket, pair.first, OPEN);
+			sendApplicationToClient(server.getClientSocket(), pair.first, OPEN);
 		}
 
 		/* Stampa ed invia finestra col focus con flag FOCUS */
 		HWND currentForegroundHwnd = GetForegroundWindow();
 		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
 		wcout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
-		sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
+		sendApplicationToClient(server.getClientSocket(), currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
 		
@@ -500,7 +385,7 @@ void WINAPI Server::notificationsManagement()
 					windows[pair.first] = windowTitle;
 					wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
 					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-					sendApplicationToClient(clientSocket, pair.first, OPEN);
+					sendApplicationToClient(server.getClientSocket(), pair.first, OPEN);
 					
 				}
 			}
@@ -514,7 +399,7 @@ void WINAPI Server::notificationsManagement()
 					
 					wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
 					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-					sendApplicationToClient(clientSocket, pair.first, CLOSE);
+					sendApplicationToClient(server.getClientSocket(), pair.first, CLOSE);
 					toBeDeleted.push_back(pair.first);
 					
 				}
@@ -537,7 +422,7 @@ void WINAPI Server::notificationsManagement()
 						wcout << "[" << GetCurrentThreadId() << "] " << "\t- " << previousTitle << endl;
 						wcout << "[" << GetCurrentThreadId() << "] " << "La finestra ora in focus è: " << endl;
 						wcout << "[" << GetCurrentThreadId() << "] " << "- " << newTitle << endl;
-						sendApplicationToClient(clientSocket, pair.first, TITLE_CHANGED);
+						sendApplicationToClient(server.getClientSocket(), pair.first, TITLE_CHANGED);
 					}
 				}
 			}
@@ -552,7 +437,7 @@ void WINAPI Server::notificationsManagement()
 				
 				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
 				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-				sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
+				sendApplicationToClient(server.getClientSocket(), currentForegroundHwnd, FOCUS);
 			}
 
 			windows = tempWindows;
@@ -583,7 +468,7 @@ void WINAPI Server::notificationsManagement()
 
 		memcpy(sendBuf + 7, "ERRCL-", 5);
 
-		send(clientSocket, sendBuf, 12, 0);		
+		send(server.getClientSocket(), sendBuf, 12, 0);
 		//wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
 
 	}
@@ -948,7 +833,8 @@ void Server::receiveCommands() {
 
 	int iResult;
 	do {
-		iResult = recv(clientSocket, recvbuf, DEFAULT_BUFLEN, 0);
+		SOCKET s = server.getClientSocket();
+		iResult = recv(s, recvbuf, DEFAULT_BUFLEN, 0);
 		if (iResult == 0)
 			wcout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione..." << endl << endl;
 		else if (iResult < 0) {
@@ -957,7 +843,7 @@ void Server::receiveCommands() {
 				wcout << "[" << GetCurrentThreadId() << "] " << "Connessione chiusa dal client." << endl;
 			}else
 				wcout << "[" << GetCurrentThreadId() << "] " << "recv() fallita con errore: " << WSAGetLastError() << endl;
-			closesocket(clientSocket);
+			closesocket(server.getClientSocket());
 			return;
 		}
 
@@ -973,7 +859,7 @@ void Server::receiveCommands() {
 
 			memcpy(sendBuf + 7, "OKCLO-", 5);
 			
-			send(clientSocket, sendBuf, 12, 0);
+			send(server.getClientSocket(), sendBuf, 12, 0);
 			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
 
 			return;
