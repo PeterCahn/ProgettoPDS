@@ -26,8 +26,7 @@ using System.Text.RegularExpressions;
  * - Ordinare l'elenco delle finestre per percentuale focus, o in modo da mettere in alto la finestra in focus
  * - Modifica controllo numero server connessi. Crash al controllo se serversListBox.Items[0].Equals("Nessun server connesso")
  *  => Aggiungere elemento che viene mostrato solo quando non ci sono server connessi. Così il controllo è solo sulla size della lista.
- * - Sgancia un thread per creare la TcpClient. Join subito dopo.
- * - Quando invio comando, pulisci bene interfaccia.
+ * - Sgancia un thread per creare la TcpClient. Join subito dopo. 
  */
 
 namespace WpfApplication1

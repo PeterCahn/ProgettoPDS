@@ -76,8 +76,10 @@ Server::Server()
 
 Server::~Server()
 {
+	/* Se non è stato ancora chiuso il socket, chiudilo */
+	if(validServer())
+		closesocket(listeningSocket);
 	// Terminates use of the Winsock 2 DLL (Ws2_32.dll)
-	closesocket(listeningSocket);
 	WSACleanup();
 }
 
@@ -123,8 +125,6 @@ void Server::avviaServer()
 			continue;
 		}
 
-		wcout << "[" << GetCurrentThreadId() << "] " << "Server in avvio..." << endl;
-		
 		// Creazione socket
 		listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (listeningSocket == INVALID_SOCKET) {
@@ -198,6 +198,16 @@ void Server::acceptConnection(void)
 	clientSocket = newClientSocket;
 
 	return;
+}
+
+void Server::chiudiConnessioneClient()
+{
+	closesocket(clientSocket);
+}
+
+void Server::arrestaServer()
+{
+	closesocket(listeningSocket);
 }
 
 /*
@@ -395,6 +405,33 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 
 	return;
 
+}
+
+int Server::receiveMessageFromClient(char* buffer, int bufferSize)
+{
+	int iResult = recv(clientSocket, buffer, bufferSize, 0);
+
+	if (iResult > 0)
+		return iResult;
+	if (iResult == 0) {
+		printMessage(TEXT("Chiusura connessione..."));
+		printMessage(TEXT("\n"));
+	}
+	else if (iResult < 0) {
+		int errorCode = WSAGetLastError();
+		if (errorCode == WSAECONNRESET) {
+			printMessage(TEXT("Connessione chiusa dal client."));
+		}
+		else
+			printMessage(TEXT("recv() fallita con errore : " + WSAGetLastError()));		
+	}
+
+	/* Se si è arrivati qui, c'è stato un problema, quindi chiudi la connessione con il client. */
+	//chiudiConnessioneClient();
+}
+
+void Server::printMessage(wstring string) {
+	wcout << "[" << GetCurrentThreadId() << "] " << string << endl;
 }
 
 bool Server::validServer() 

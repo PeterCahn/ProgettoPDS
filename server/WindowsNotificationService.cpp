@@ -108,15 +108,24 @@ void WindowsNotificationService::start()
 
 	/* Avvia il server */
 	server.avviaServer();
+	if (!server.validServer()) {
+		printMessage(TEXT("Istanza di server creata non valida.Riprovare."));		
+		return;
+	}
 
 	while (true) {
 
 		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */		
 		while (true) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
-			server.acceptConnection();
-			if (server.validClient())
-				break;
+			try {
+				printMessage(TEXT("In attesa della connessione di un client..."));
+				server.acceptConnection();
+				if (server.validClient())
+					break;
+			}
+			catch (exception& ex) {
+				wcout << "[" << GetCurrentThreadId() << "] " << "Eccezione lanciata durante l'accettazione del client: " << ex.what() << endl;
+			}
 		}
 		
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
@@ -128,14 +137,14 @@ void WindowsNotificationService::start()
 			/* Thread principale attende eventuali comandi sulla finestra attualmente in focus */
 			receiveCommands();	// ritorna quando la connessione con il client è chiusa
 
-			/* Procedura terminazione thread notifiche */
+			/* Procedura terminazione thread notifiche: setta il value nella promise in modo che il notificationsmanagement esca */
 			stopNotificationsThread.set_value(TRUE);
 			notificationsThread.join();
 
 			/* Se un'eccezione si è verificata nel background thread viene rilanciata nel main thread */
 			if (globalExceptionPtr) rethrow_exception(globalExceptionPtr);
 		}
-		catch (system_error se) {
+		catch (system_error se) {			
 			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
 			//WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
 			continue;
@@ -145,16 +154,15 @@ void WindowsNotificationService::start()
 			wcout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
 			/* Riprova a lanciare il thread (?) */
 			//wcout << "[" << GetCurrentThreadId() << "] " << "Tentativo riavvio 'notificationsThread' sul client" << endl;
-			continue;
-				
+			continue;				
 		}
 
 		/* Cleanup */
-		closesocket(server.getClientSocket());		
+		server.chiudiConnessioneClient();
 	}
 
-	closesocket(server.getListeningSocket());
-	WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+	server.arrestaServer();
+	//WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
 }
 
 BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lParam)
@@ -176,127 +184,7 @@ BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lPar
 	return TRUE;
 }
 
-/* Questa funzione viene passata alla SetWinEventHook nella funzione hook per gestire gli eventi */
-void CALLBACK WindowsNotificationService::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
-{
-	TCHAR title[MAX_PATH];
-	GetWindowTextW(hwnd, title, sizeof(title));
-
-	wstring t = wstring(title);
-
-	map<HWND, wstring> tempWindows;
-	EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
-	
-	if (tempWindows.find(hwnd) != tempWindows.end()) {
-		// la finestra c'è
-		GetWindowTextW(hwnd, title, sizeof(title));
-		wstring t = wstring(title);
-
-		/* Non considero alcuni eventi che non ci interessano o che vengono chiamati di continuo */
-		if (
-			event == EVENT_OBJECT_LOCATIONCHANGE
-			|| event == EVENT_OBJECT_REORDER
-			|| (event > 0x4001 && event < 0x4007) 
-			|| event == EVENT_OBJECT_VALUECHANGE 
-			|| event == 16385
-			|| (event == 8 || event == 9)	// click giù e click su
-			)
-			return;
-		
-		if( event == EVENT_OBJECT_FOCUS || event == EVENT_SYSTEM_FOREGROUND)
-			wcout << "New focus: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_NAMECHANGE)
-			wcout << "Name changed: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED || event == EVENT_OBJECT_SHOW)
-			wcout << "Finestra aperta: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_CLOAKED || event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_STATECHANGE)
-			wcout << "Finestra chiusa: [" << hwnd << "] " << t << endl;
-		
-		/*
-		switch (event)
-		{
-			// La finestra in foreground è cambiata
-		case EVENT_SYSTEM_FOREGROUND:
-			wcout << "Change foreground: [" << hwnd << "] " << t << endl;
-			break;
-		case EVENT_OBJECT_FOCUS:
-			// La finestra ha ricevuto il focus
-			wcout << "New focus (focus): [" << hwnd << "] " << t << endl;
-			break;
-			// Il nome di una finestra è cambiato
-		case EVENT_OBJECT_NAMECHANGE:
-			wcout << "Name changed: [" << hwnd << "] " << t << endl;
-			break;
-			// Una nuova finestra è stata creata (avviene solo in alcune occasioni)
-		case EVENT_OBJECT_CREATE:
-			// Funziona quando viene chiusa la calcolatrice
-			wcout << "Finestra aperta (create): [" << hwnd << "] " << t << endl;
-			break;				
-		case EVENT_OBJECT_SHOW:
-			wcout << "New focus (show): [" << hwnd << "] " << t << endl;
-			break;				
-		case EVENT_OBJECT_CLOAKED:
-			wcout << "Finestra chiusa (cloaked): [" << hwnd << "] " << t << endl;
-			break;				
-		case EVENT_OBJECT_UNCLOAKED:
-			// funziona quando viene aperta la calcolatrice
-			wcout << "Finestra aperta (uncloaked): [" << hwnd << "] " << t << endl;
-			break;
-		case EVENT_OBJECT_DESTROY:	// chiamato quasi mai
-			wcout << "Finestra chiusa (destroyed): [" << hwnd << "] " << t << endl;
-			break;
-		case EVENT_OBJECT_STATECHANGE:
-			// l'evento non è propriamente per la chiusura, ma per cambio di stato di un oggetto qualsiasi
-			wcout << "Finestra chiusa (state change): [" << hwnd << "] " << t << endl;
-			break;
-		default:
-			wcout << "Event happened (" << event << "): [" << hwnd << "] " << t << endl;
-			break;				
-		}
-		*/
-	}
-	
-}
-
-unsigned __stdcall WindowsNotificationService::hook(void* args)
-{
-	HWINEVENTHOOK hHook = NULL;
-
-	CoInitialize(NULL);
-	/* Primo e secondo parametro sono i limiti inferiore e superiore degli eventi da ascoltare.
-		wWINEVENT_OUTOFCONTEXT per ascoltare tutti i thread e non solo quelli creati da questa applicazione */
-	hHook = SetWinEventHook(0x1, 0x80FF, NULL, HandleWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
-
-	MSG msg;
-	// Secondo parametro può essere la hwnd della window da cui ricevere i messaggi
-	//while (GetMessage(&msg, NULL, 0, 0) > 0)
-
-	map<HWND, wstring> tempWindows;
-	while (true)
-	{
-		EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
-
-		for each (pair<HWND, wstring> pair in tempWindows) 
-		{
-			if (tempWindows.find(pair.first) != tempWindows.end()) 
-			{
-				// la finestra c'è
-				
-				if (GetMessage(&msg, pair.first, 0, 0)) {
-					//TranslateMessage(&msg);
-					//DispatchMessage(&msg);
-				}				
-				
-			}
-		}
-	}
-
-	UnhookWinEvent(hHook);
-	CoUninitialize();
-
-	return 0;
-}
-
+/* Usato per fare una cernita delle finestre restituite da EnumWindowsProc da aggiungere a 'windows' */
 BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 {
 	TITLEBARINFO ti;
@@ -350,22 +238,21 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 {
 	try {
 
-		/* Stampa ed invia tutte le finestre con flag OPEN */
-		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazioni attive:" << endl;
+		/* Stampa ed invia tutte le finestre con flag OPEN */		
 		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
-		wcout << "[" << GetCurrentThreadId() << "] " << "Programmi aperti: " << endl;
+		printMessage(TEXT("Finestre aperte:"));
 		
 		for each (pair<HWND, wstring> pair in windows) {
 			wstring windowTitle = pair.second;
-			wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+			printMessage(windowTitle);			
 			server.sendNotificationToClient(pair.first, pair.second, OPEN);
 		}
 
 		/* Stampa ed invia finestra col focus con flag FOCUS */
 		HWND currentForegroundHwnd = GetForegroundWindow();
 		wstring title = Helper::getTitleFromHwnd(currentForegroundHwnd);
-		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
-		wcout << "[" << GetCurrentThreadId() << "] " << "- " << title << endl;
+		printMessage(TEXT("Applicazione con il focus:"));
+		printMessage(TEXT("-" + title));
 		server.sendNotificationToClient(currentForegroundHwnd, title, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
@@ -388,10 +275,9 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 					
 					// Devo aggiungere la finestra a 'windows'
 					windows[pair.first] = windowTitle;
-					wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
-					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
-					server.sendNotificationToClient(pair.first, pair.second, OPEN);
-					
+					printMessage(TEXT("Nuova finestra aperta!"));
+					printMessage(TEXT("- " + windowTitle));
+					server.sendNotificationToClient(pair.first, pair.second, OPEN);					
 				}
 			}
 
@@ -401,12 +287,11 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 				if (tempWindows.find(pair.first) == tempWindows.end()) {
 					// tempWindows non contiene più pair.first (quindi è stata chiusa)
 					wstring windowTitle = pair.second;
-					
-					wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
-					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+
+					printMessage(TEXT("Finestra chiusa!"));
+					printMessage(TEXT("- " + windowTitle));
 					server.sendNotificationToClient(pair.first, pair.second, CLOSE);
-					toBeDeleted.push_back(pair.first);
-					
+					toBeDeleted.push_back(pair.first);					
 				}
 			}
 			for each(HWND hwnd in toBeDeleted) {
@@ -423,10 +308,10 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 					if (previousTitle != newTitle) {
 						// Devo aggiungere la finestra a 'windows'
 						windows[pair.first] = newTitle;
-						wcout << "[" << GetCurrentThreadId() << "] " << "Cambio nome per la finestra: " << endl;
-						wcout << "[" << GetCurrentThreadId() << "] " << "\t- " << previousTitle << endl;
-						wcout << "[" << GetCurrentThreadId() << "] " << "La finestra ora in focus è: " << endl;
-						wcout << "[" << GetCurrentThreadId() << "] " << "- " << newTitle << endl;
+						printMessage(TEXT("Cambio nome per la finestra: "));
+						printMessage(TEXT("\t " + previousTitle));
+						printMessage(TEXT("La finestra ora in focus è: "));
+						printMessage(TEXT("- " + newTitle));
 						server.sendNotificationToClient(pair.first, pair.second, TITLE_CHANGED);
 					}
 				}
@@ -439,9 +324,9 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 				currentForegroundHwnd = tempForeground;
 
 				wstring windowTitle = Helper::getTitleFromHwnd(currentForegroundHwnd);
-				
-				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
-				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
+
+				printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
+				printMessage(TEXT("- " + windowTitle));
 				server.sendNotificationToClient(currentForegroundHwnd, windowTitle, FOCUS);				
 			}
 
@@ -474,36 +359,35 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		memcpy(sendBuf + 7, "ERRCL-", 5);
 
 		send(server.getClientSocket(), sendBuf, 12, 0);
-		//wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
 
 	}
-
-	//return 0;
 }
 
 void WindowsNotificationService::receiveCommands() {
+
 	// Ricevi finchè il client non chiude la connessione
 	char recvbuf[DEFAULT_BUFLEN*sizeof(char)];
 	char sendBuf[DEFAULT_BUFLEN*sizeof(char)];
 
 	int iResult;
 	do {
-		SOCKET s = server.getClientSocket();
-		iResult = recv(s, recvbuf, DEFAULT_BUFLEN, 0);
-		if (iResult == 0)
-			wcout << "[" << GetCurrentThreadId() << "] " << "Chiusura connessione..." << endl << endl;
+		iResult = server.receiveMessageFromClient(recvbuf, DEFAULT_BUFLEN);
+		if (iResult == 0) {
+			printMessage(TEXT("Chiusura connessione..."));
+			printMessage(TEXT("\n"));
+		}
 		else if (iResult < 0) {
 			int errorCode = WSAGetLastError();
 			if (errorCode == WSAECONNRESET) {
-				wcout << "[" << GetCurrentThreadId() << "] " << "Connessione chiusa dal client." << endl;
+				printMessage(TEXT("Connessione chiusa dal client."));
 			}else
-				wcout << "[" << GetCurrentThreadId() << "] " << "recv() fallita con errore: " << WSAGetLastError() << endl;
-			closesocket(server.getClientSocket());
+				printMessage(TEXT("recv() fallita con errore : " + WSAGetLastError()));
+
+			server.chiudiConnessioneClient();
 			return;
 		}
-
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {			
+		else if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {			
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
@@ -515,8 +399,7 @@ void WindowsNotificationService::receiveCommands() {
 			memcpy(sendBuf + 7, "OKCLO-", 5);
 			
 			send(server.getClientSocket(), sendBuf, 12, 0);
-			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
-
+			printMessage(TEXT("Connessione con il client chiusa.\n"));
 			return;
 		}
 		else {
@@ -590,3 +473,129 @@ void WindowsNotificationService::sendKeystrokesToProgram(std::vector<UINT> vKeys
 * essere uno "scan code", in una Virtual-key.
 * Se usassimo KEYEVENTF_UNICODE in dwFlags, dovrebbe essere settato a 0
 */
+
+void WindowsNotificationService::printMessage(wstring string) {
+	wcout << "[" << GetCurrentThreadId() << "] " << string << endl;
+}
+
+/* Questa funzione viene passata alla SetWinEventHook nella funzione hook per gestire gli eventi */
+void CALLBACK WindowsNotificationService::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
+{
+	TCHAR title[MAX_PATH];
+	GetWindowTextW(hwnd, title, sizeof(title));
+
+	wstring t = wstring(title);
+
+	map<HWND, wstring> tempWindows;
+	EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
+
+	if (tempWindows.find(hwnd) != tempWindows.end()) {
+		// la finestra c'è
+		GetWindowTextW(hwnd, title, sizeof(title));
+		wstring t = wstring(title);
+
+		/* Non considero alcuni eventi che non ci interessano o che vengono chiamati di continuo */
+		if (
+			event == EVENT_OBJECT_LOCATIONCHANGE
+			|| event == EVENT_OBJECT_REORDER
+			|| (event > 0x4001 && event < 0x4007)
+			|| event == EVENT_OBJECT_VALUECHANGE
+			|| event == 16385
+			|| (event == 8 || event == 9)	// click giù e click su
+			)
+			return;
+
+		if (event == EVENT_OBJECT_FOCUS || event == EVENT_SYSTEM_FOREGROUND)
+			wcout << "New focus: [" << hwnd << "] " << t << endl;
+		else if (event == EVENT_OBJECT_NAMECHANGE)
+			wcout << "Name changed: [" << hwnd << "] " << t << endl;
+		else if (event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED || event == EVENT_OBJECT_SHOW)
+			wcout << "Finestra aperta: [" << hwnd << "] " << t << endl;
+		else if (event == EVENT_OBJECT_CLOAKED || event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_STATECHANGE)
+			wcout << "Finestra chiusa: [" << hwnd << "] " << t << endl;
+
+		/*
+		switch (event)
+		{
+		// La finestra in foreground è cambiata
+		case EVENT_SYSTEM_FOREGROUND:
+		wcout << "Change foreground: [" << hwnd << "] " << t << endl;
+		break;
+		case EVENT_OBJECT_FOCUS:
+		// La finestra ha ricevuto il focus
+		wcout << "New focus (focus): [" << hwnd << "] " << t << endl;
+		break;
+		// Il nome di una finestra è cambiato
+		case EVENT_OBJECT_NAMECHANGE:
+		wcout << "Name changed: [" << hwnd << "] " << t << endl;
+		break;
+		// Una nuova finestra è stata creata (avviene solo in alcune occasioni)
+		case EVENT_OBJECT_CREATE:
+		// Funziona quando viene chiusa la calcolatrice
+		wcout << "Finestra aperta (create): [" << hwnd << "] " << t << endl;
+		break;
+		case EVENT_OBJECT_SHOW:
+		wcout << "New focus (show): [" << hwnd << "] " << t << endl;
+		break;
+		case EVENT_OBJECT_CLOAKED:
+		wcout << "Finestra chiusa (cloaked): [" << hwnd << "] " << t << endl;
+		break;
+		case EVENT_OBJECT_UNCLOAKED:
+		// funziona quando viene aperta la calcolatrice
+		wcout << "Finestra aperta (uncloaked): [" << hwnd << "] " << t << endl;
+		break;
+		case EVENT_OBJECT_DESTROY:	// chiamato quasi mai
+		wcout << "Finestra chiusa (destroyed): [" << hwnd << "] " << t << endl;
+		break;
+		case EVENT_OBJECT_STATECHANGE:
+		// l'evento non è propriamente per la chiusura, ma per cambio di stato di un oggetto qualsiasi
+		wcout << "Finestra chiusa (state change): [" << hwnd << "] " << t << endl;
+		break;
+		default:
+		wcout << "Event happened (" << event << "): [" << hwnd << "] " << t << endl;
+		break;
+		}
+		*/
+	}
+
+}
+
+unsigned __stdcall WindowsNotificationService::hook(void* args)
+{
+	HWINEVENTHOOK hHook = NULL;
+
+	CoInitialize(NULL);
+	/* Primo e secondo parametro sono i limiti inferiore e superiore degli eventi da ascoltare.
+	wWINEVENT_OUTOFCONTEXT per ascoltare tutti i thread e non solo quelli creati da questa applicazione */
+	hHook = SetWinEventHook(0x1, 0x80FF, NULL, HandleWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+	MSG msg;
+	// Secondo parametro può essere la hwnd della window da cui ricevere i messaggi
+	//while (GetMessage(&msg, NULL, 0, 0) > 0)
+
+	map<HWND, wstring> tempWindows;
+	while (true)
+	{
+		EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
+
+		for each (pair<HWND, wstring> pair in tempWindows)
+		{
+			if (tempWindows.find(pair.first) != tempWindows.end())
+			{
+				// la finestra c'è
+
+				if (GetMessage(&msg, pair.first, 0, 0)) {
+					//TranslateMessage(&msg);
+					//DispatchMessage(&msg);
+				}
+
+			}
+		}
+	}
+
+	UnhookWinEvent(hHook);
+	CoUninitialize();
+
+	return 0;
+}
+
