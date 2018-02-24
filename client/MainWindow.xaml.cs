@@ -652,7 +652,7 @@ namespace WpfApplication1
 
                 // Prepara messaggio da inviare
                 StringBuilder sb = new StringBuilder();
-                sb.Append("--CLOSE-");
+                sb.Append("--CLSCN-");
                 buffer = Encoding.ASCII.GetBytes(sb.ToString());
 
                 // Invia richiesta chiusura

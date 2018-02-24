@@ -966,7 +966,7 @@ void Server::receiveCommands() {
 		}
 
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		if (strcmp(recvbuf, "--CLOSE-") == 0) {
+		if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
