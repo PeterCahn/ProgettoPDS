@@ -674,6 +674,8 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 	while (remaining > 0)
 	{
 		bytesSent = send(clientSocket, (char*)finalBuffer, remaining, offset);
+		if (bytesSent < 0)
+			break;
 		remaining -= bytesSent;
 		offset += bytesSent;
 	}
@@ -848,7 +850,7 @@ void Server::receiveCommands() {
 		}
 
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		if (strcmp(recvbuf, "--CLOSE-") == 0) {			
+		if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {			
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
@@ -963,9 +965,6 @@ void Server::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	//Send the keystrokes.
 	keystrokes_sent = SendInput((UINT)keystrokes_lenght*2, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
-
-	wcout << "# of keystrokes to send to the window: " << keystrokes_lenght << endl;
-	wcout << "# of keystrokes sent to the window: " << keystrokes_sent << endl;
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys
