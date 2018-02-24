@@ -3,16 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
-#include <thread>
-#include <chrono>
 #include <string>
 #include <sstream>
-#include <vector>
-#include <algorithm>
 #include <strsafe.h>
 #include <Wingdi.h>
 #include <future>
-#include <regex>
 #include <io.h>
 #include <fcntl.h>
 
@@ -53,16 +48,7 @@ private:
 	void receiveCommands();															// WINDOWS MANAGEMENT
 	void sendKeystrokesToProgram(vector<UINT> vKeysList);							// WINDOWS MANAGEMENT
 	
-	/* Helper */
-	long ottieniIcona(BYTE* lpPixels, HWND hwnd);
 	static BOOL IsAltTabWindow(HWND hwnd);
-	wstring getTitleFromHwnd(HWND hwnd);
-	void BitmapInfoErrorExit(LPTSTR lpszFunction);
-	HICON getHICONfromHWND(HWND hwnd);
-	HBITMAP getHBITMAPfromHICON(HICON hIcon);
-	PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
-
-
 	
 	/* In più */
 	HWINEVENTHOOK g_hook;	// Per funzionalità di cattura eventi

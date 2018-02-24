@@ -1,3 +1,5 @@
+#define UNICODE
+
 #include "Helper.h"
 /*
 #include <Windows.h>
@@ -7,41 +9,24 @@
 #include <strsafe.h>
 */
 
-
-
-
-
+#include <map>
 #include <Windows.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
-#include <thread>
-#include <chrono>
 #include <string>
 #include <sstream>
-#include <vector>
-#include <algorithm>
 #include <strsafe.h>
 #include <Wingdi.h>
 #include <future>
-#include <regex>
 #include <io.h>
 #include <fcntl.h>
-
-#include <process.h>
 
 #include <cstdio>
 
 #include <exception>
 #include <typeinfo>
 #include <stdexcept>
-
-
-
-
-
-
-#define UNICODE
 
 using namespace std;
 
@@ -89,7 +74,7 @@ long Helper::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	int res;
 	if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
-		Helper::BitmapInfoErrorExit("GetDIBits1()");
+		Helper::BitmapInfoErrorExit(L"GetDIBits1()");
 	}
 
 	// create the pixel buffer
@@ -102,7 +87,7 @@ long Helper::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	// bitmap data (the "pixels") in the buffer lpPixels		
 	if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
-		Helper::BitmapInfoErrorExit("GetDIBits2()");
+		Helper::BitmapInfoErrorExit(L"GetDIBits2()");
 	}
 
 	DeleteObject(hSource);
@@ -233,3 +218,13 @@ PBITMAPINFO Helper::CreateBitmapInfoStruct(HBITMAP hBmp)
 	pbmi->bmiHeader.biClrImportant = 0;
 	return pbmi;
 }
+
+wstring Helper::getTitleFromHwnd(HWND hwnd) {
+
+	TCHAR title[MAX_PATH];
+	GetWindowTextW(hwnd, title, sizeof(title));
+
+	return wstring(title);
+}
+
+

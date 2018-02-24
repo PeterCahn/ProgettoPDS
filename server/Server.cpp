@@ -364,7 +364,7 @@ void WINAPI Server::notificationsManagement()
 		/* Stampa ed invia finestra col focus con flag FOCUS */
 		HWND currentForegroundHwnd = GetForegroundWindow();
 		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus:" << endl;
-		wcout << "[" << GetCurrentThreadId() << "] " << "- " << getTitleFromHwnd(currentForegroundHwnd) << endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "- " << Helper::getTitleFromHwnd(currentForegroundHwnd) << endl;
 		sendApplicationToClient(server.getClientSocket(), currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
@@ -437,7 +437,7 @@ void WINAPI Server::notificationsManagement()
 				// Allora il programma che ha il focus è cambiato				
 				currentForegroundHwnd = tempForeground;
 
-				wstring windowTitle = getTitleFromHwnd(currentForegroundHwnd);
+				wstring windowTitle = Helper::getTitleFromHwnd(currentForegroundHwnd);
 				
 				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
 				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
@@ -478,14 +478,6 @@ void WINAPI Server::notificationsManagement()
 	}
 
 	//return 0;
-}
-
-
-wstring Server::getTitleFromHwnd(HWND hwnd) {
-	TCHAR title[MAX_PATH];
-	GetWindowTextW(hwnd, title, sizeof(title));
-
-	return wstring(title);
 }
 
 /* 

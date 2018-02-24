@@ -661,7 +661,7 @@ namespace WpfApplication1
 
                 // Prepara messaggio da inviare
                 StringBuilder sb = new StringBuilder();
-                sb.Append("--CLOSE-");
+                sb.Append("--CLSCN-");
                 Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
                 //buffer = Encoding.ASCII.GetBytes(sb.ToString());
                 buffer[8] = (byte) '\0';
@@ -941,7 +941,7 @@ namespace WpfApplication1
                     if (sb.Length != 0)
                         sb.Append("+");
                     sb.Append(virtualKey.ToString());
-                    System.Windows.MessageBox.Show(virtualKey.ToString());
+                    // System.Windows.MessageBox.Show(virtualKey.ToString());
                 }
                 sb.Append("\0");
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
@@ -955,19 +955,12 @@ namespace WpfApplication1
                 
                 // Invia messaggio
                 serverStream.Write(messaggio, 0, messaggio.Length);
-                                
-                // Aggiorna bottoni e textBox
-                textBoxComando.Text = "";
-                buttonInvia.IsEnabled = false;                
-                buttonAnnullaCattura.Visibility = Visibility.Visible;
-                buttonAnnullaCattura.IsEnabled = true;
 
-                // Svuota lista di tasti premuti da inviare
-                comandoDaInviare.Clear();
+                // Aggiorna bottoni e textBox
+                disabilitaCatturaComando();
 
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
                 this.KeyDown -= new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
-                
             }
             catch (Exception)
             {
