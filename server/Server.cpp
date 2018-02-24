@@ -83,23 +83,23 @@ Server::Server()
 	retry = false;
 
 	windows = map<HWND, wstring>();
-	
-	stopNotificationsThread = promise<bool>();	
+
+	stopNotificationsThread = promise<bool>();
 }
 
 Server::~Server()
 {
-	
+
 }
 
 void Server::start()
 {
-	/* Ottieni porta su cui ascoltare e accetta prima connessione */	
+	/* Ottieni porta su cui ascoltare e accetta prima connessione */
 	listeningPort = leggiPorta();
 
 	/* Avvia il server controllando che il socket ricevuto sia corretto per poter procedere */
 	while (true)
-	{		
+	{
 		/* Tentativo di avviare il server con la porta letta */
 		listenSocket = avviaServer();
 		if (listenSocket != INVALID_SOCKET)	// server avviato: break
@@ -112,20 +112,20 @@ void Server::start()
 		Gestione eventi windows (semplificato ed adattato), preso spunto da qui: http://www.cplusplus.com/forum/windows/58791/
 		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
 			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
-	*/	 
+	*/
 	//thread t(hook, this);
 
 	while (true) {
 
 		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
-		wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;		
+		wcout << "[" << GetCurrentThreadId() << "] " << "In attesa della connessione di un client..." << endl;
 		while (true) {
 			clientSocket = acceptConnection();
 			if (clientSocket != INVALID_SOCKET)
 				break;
 		}
 
-		
+
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
 		try {
@@ -151,10 +151,10 @@ void Server::start()
 			wcout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
 			/* Riprova a lanciare il thread (?) */
 			//wcout << "[" << GetCurrentThreadId() << "] " << "Tentativo riavvio 'notificationsThread' sul client" << endl;				
-				
+
 		}
 		/* Cleanup */
-		closesocket(clientSocket);		
+		closesocket(clientSocket);
 	}
 
 	closesocket(listenSocket);
@@ -264,13 +264,13 @@ SOCKET Server::acceptConnection(void)
 	char ipstr[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
 	wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
-	
+
 	return newClientSocket;
 }
 
 BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 {
-	map<HWND, wstring>* windows2 = reinterpret_cast< map<HWND, wstring>* > (lParam);
+	map<HWND, wstring>* windows2 = reinterpret_cast<map<HWND, wstring>*> (lParam);
 
 	//DWORD process, thread;
 	//thread = GetWindowThreadProcessId(hWnd, &process);
@@ -279,10 +279,10 @@ BOOL CALLBACK Server::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 	GetWindowTextW(hWnd, title, sizeof(title));
 
 	wstring windowTitle = wstring(title);
-		
+
 	// Proteggere accesso a variabile condivisa "windows"
 	if (IsAltTabWindow(hWnd))
-		windows2->insert(pair<HWND,wstring>(hWnd, windowTitle));
+		windows2->insert(pair<HWND, wstring>(hWnd, windowTitle));
 
 	return TRUE;
 }
@@ -297,7 +297,7 @@ void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
 
 	map<HWND, wstring> tempWindows;
 	EnumWindows(&Server::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
-	
+
 	if (tempWindows.find(hwnd) != tempWindows.end()) {
 		// la finestra c'è
 		GetWindowTextW(hwnd, title, sizeof(title));
@@ -307,22 +307,22 @@ void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
 		if (
 			event == EVENT_OBJECT_LOCATIONCHANGE
 			|| event == EVENT_OBJECT_REORDER
-			|| (event > 0x4001 && event < 0x4007) 
-			|| event == EVENT_OBJECT_VALUECHANGE 
+			|| (event > 0x4001 && event < 0x4007)
+			|| event == EVENT_OBJECT_VALUECHANGE
 			|| event == 16385
 			|| (event == 8 || event == 9)	// click giù e click su
 			)
 			return;
-		
-		if( event == EVENT_OBJECT_FOCUS || event == EVENT_SYSTEM_FOREGROUND)
+
+		if (event == EVENT_OBJECT_FOCUS || event == EVENT_SYSTEM_FOREGROUND)
 			wcout << "New focus: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_NAMECHANGE)
+		else if (event == EVENT_OBJECT_NAMECHANGE)
 			wcout << "Name changed: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED || event == EVENT_OBJECT_SHOW)
+		else if (event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED || event == EVENT_OBJECT_SHOW)
 			wcout << "Finestra aperta: [" << hwnd << "] " << t << endl;
-		else if(event == EVENT_OBJECT_CLOAKED || event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_STATECHANGE)
+		else if (event == EVENT_OBJECT_CLOAKED || event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_STATECHANGE)
 			wcout << "Finestra chiusa: [" << hwnd << "] " << t << endl;
-		
+
 		/*
 		switch (event)
 		{
@@ -342,13 +342,13 @@ void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
 		case EVENT_OBJECT_CREATE:
 			// Funziona quando viene chiusa la calcolatrice
 			wcout << "Finestra aperta (create): [" << hwnd << "] " << t << endl;
-			break;				
+			break;
 		case EVENT_OBJECT_SHOW:
 			wcout << "New focus (show): [" << hwnd << "] " << t << endl;
-			break;				
+			break;
 		case EVENT_OBJECT_CLOAKED:
 			wcout << "Finestra chiusa (cloaked): [" << hwnd << "] " << t << endl;
-			break;				
+			break;
 		case EVENT_OBJECT_UNCLOAKED:
 			// funziona quando viene aperta la calcolatrice
 			wcout << "Finestra aperta (uncloaked): [" << hwnd << "] " << t << endl;
@@ -362,11 +362,11 @@ void CALLBACK Server::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
 			break;
 		default:
 			wcout << "Event happened (" << event << "): [" << hwnd << "] " << t << endl;
-			break;				
+			break;
 		}
 		*/
 	}
-	
+
 }
 
 unsigned __stdcall Server::hook(void* args)
@@ -387,17 +387,17 @@ unsigned __stdcall Server::hook(void* args)
 	{
 		EnumWindows(&Server::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
 
-		for each (pair<HWND, wstring> pair in tempWindows) 
+		for each (pair<HWND, wstring> pair in tempWindows)
 		{
-			if (tempWindows.find(pair.first) != tempWindows.end()) 
+			if (tempWindows.find(pair.first) != tempWindows.end())
 			{
 				// la finestra c'è
-				
+
 				if (GetMessage(&msg, pair.first, 0, 0)) {
 					//TranslateMessage(&msg);
 					//DispatchMessage(&msg);
-				}				
-				
+				}
+
 			}
 		}
 	}
@@ -413,7 +413,7 @@ BOOL Server::IsAltTabWindow(HWND hwnd)
 	TITLEBARINFO ti;
 	HWND hwndTry, hwndWalk = NULL;
 
-	if(!IsWindowVisible(hwnd))
+	if (!IsWindowVisible(hwnd))
 		return FALSE;
 
 	TCHAR title[MAX_PATH];
@@ -426,7 +426,7 @@ BOOL Server::IsAltTabWindow(HWND hwnd)
 	/* For each visible window, walk up its owner chain until you find the root owner.
 	 * Then walk back down the visible last active popup chain until you find a visible window.
 	 * If you're back to where you're started, then put the window in the Alt + Tab list.
-	 * 
+	 *
 	 ** TODO: Prova questo prima o poi
 	 while ((hwndTry = GetLastActivePopup(hwndWalk)) != hwndTry) {
 	 if (IsWindowVisible(hwndTry)) break;
@@ -435,20 +435,20 @@ BOOL Server::IsAltTabWindow(HWND hwnd)
 	 return hwndWalk == hwnd;
 	 */
 	hwndTry = GetAncestor(hwnd, GA_ROOTOWNER);
-	while(hwndTry != hwndWalk)
+	while (hwndTry != hwndWalk)
 	{
 		hwndWalk = hwndTry;
 		hwndTry = GetLastActivePopup(hwndWalk);
-		if(IsWindowVisible(hwndTry)) 
+		if (IsWindowVisible(hwndTry))
 			break;
 	}
-	if(hwndWalk != hwnd)
+	if (hwndWalk != hwnd)
 		return FALSE;
-	
+
 	// the following removes some task tray programs and "Program Manager"
 	ti.cbSize = sizeof(ti);
 	GetTitleBarInfo(hwnd, &ti);
-	if(ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
+	if (ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
 		return FALSE;
 
 	if (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)
@@ -465,7 +465,7 @@ void WINAPI Server::notificationsManagement()
 		wcout << "[" << GetCurrentThreadId() << "] " << "Applicazioni attive:" << endl;
 		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
 		wcout << "[" << GetCurrentThreadId() << "] " << "Programmi aperti: " << endl;
-		
+
 		for each (pair<HWND, wstring> pair in windows) {
 			wstring windowTitle = pair.second;
 			wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
@@ -479,7 +479,7 @@ void WINAPI Server::notificationsManagement()
 		sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
-		
+
 		/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
 		future<bool> f = stopNotificationsThread.get_future();
 		while (f.wait_for(chrono::seconds(0)) != future_status::ready) {
@@ -495,13 +495,13 @@ void WINAPI Server::notificationsManagement()
 				if (windows.find(pair.first) == windows.end()) {
 					// 'windows' non contiene questo programma (quindi è stato aperto ora)
 					wstring windowTitle = pair.second;
-					
+
 					// Devo aggiungere la finestra a 'windows'
 					windows[pair.first] = windowTitle;
 					wcout << "[" << GetCurrentThreadId() << "] " << "Nuova finestra aperta!" << endl;
 					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 					sendApplicationToClient(clientSocket, pair.first, OPEN);
-					
+
 				}
 			}
 
@@ -511,12 +511,12 @@ void WINAPI Server::notificationsManagement()
 				if (tempWindows.find(pair.first) == tempWindows.end()) {
 					// tempWindows non contiene più pair.first (quindi è stata chiusa)
 					wstring windowTitle = pair.second;
-					
+
 					wcout << "[" << GetCurrentThreadId() << "] " << "Finestra chiusa!" << endl;
 					wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 					sendApplicationToClient(clientSocket, pair.first, CLOSE);
 					toBeDeleted.push_back(pair.first);
-					
+
 				}
 			}
 			for each(HWND hwnd in toBeDeleted) {
@@ -549,7 +549,7 @@ void WINAPI Server::notificationsManagement()
 				currentForegroundHwnd = tempForeground;
 
 				wstring windowTitle = getTitleFromHwnd(currentForegroundHwnd);
-				
+
 				wcout << "[" << GetCurrentThreadId() << "] " << "Applicazione col focus cambiata! Ora e':" << endl;
 				wcout << "[" << GetCurrentThreadId() << "] " << "- " << windowTitle << endl;
 				sendApplicationToClient(clientSocket, currentForegroundHwnd, FOCUS);
@@ -583,7 +583,7 @@ void WINAPI Server::notificationsManagement()
 
 		memcpy(sendBuf + 7, "ERRCL-", 5);
 
-		send(clientSocket, sendBuf, 12, 0);		
+		send(clientSocket, sendBuf, 12, 0);
 		//wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
 
 	}
@@ -599,7 +599,7 @@ wstring Server::getTitleFromHwnd(HWND hwnd) {
 	return wstring(title);
 }
 
-/* 
+/*
 * Invia il nome della finestra e l'informazione ad esso associata al client
 * Il formato del messaggio per le operazioni CLOSE e FOCUS è :
 *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>
@@ -612,12 +612,12 @@ wstring Server::getTitleFromHwnd(HWND hwnd) {
 *	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
 */
 void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation op) {
-	
+
 	/* Ottieni il nome dalla map 'windows' */
 	wstring progNameStr(windows[hwnd]);
 
 	/* Prepara variabile TCHAR per essere copiata sul buffer di invio */
-	TCHAR progName[MAX_PATH*sizeof(wchar_t)];
+	TCHAR progName[MAX_PATH * sizeof(wchar_t)];
 	ZeroMemory(progName, MAX_PATH * sizeof(wchar_t));
 
 	/* Copia in progName la stringa ottenuta */
@@ -634,7 +634,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1
 	BYTE* lpPixels = NULL;
 	BYTE* finalBuffer = NULL;
-	
+
 	if (op == OPEN) {
 
 		//throw exception("eccezione voluta");
@@ -673,17 +673,17 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 
 		/* iconLength è la dimensione dell'icona */
 		/* Calcola lunghezza totale messaggio e salvala */
-		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + 
+		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE +
 			PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE + iconLength;
 		u_long netMsgLength = htonl(msgLength);
 
-		memcpy(dimension, "--", 2*N_BYTE_TRATTINO);
-		memcpy(dimension + 2*N_BYTE_TRATTINO, (void*) &netMsgLength, N_BYTE_MSG_LENGTH);
-		memcpy(dimension + 2*N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH, "-", N_BYTE_TRATTINO);
+		memcpy(dimension, "--", 2 * N_BYTE_TRATTINO);
+		memcpy(dimension + 2 * N_BYTE_TRATTINO, (void*)&netMsgLength, N_BYTE_MSG_LENGTH);
+		memcpy(dimension + 2 * N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH, "-", N_BYTE_TRATTINO);
 
 		/* Salva l'operazione */
 		memcpy(operation, "OPENP-", N_BYTE_OPERATION + N_BYTE_TRATTINO);
-				
+
 		/* Crea buffer da inviare */
 		finalBuffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
 
@@ -699,7 +699,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
 
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO , &iconLength, N_BYTE_ICON_LENGTH);	// Aggiungi dimensione icona (4 byte)
+		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO, &iconLength, N_BYTE_ICON_LENGTH);	// Aggiungi dimensione icona (4 byte)
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + N_BYTE_ICON_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE, lpPixels, iconLength);	// Aggiungi dati icona
 	}
@@ -710,7 +710,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 		u_long netMsgLength = htonl(msgLength);
 
 		memcpy(dimension, "--", 2);
-		memcpy(dimension + 2, (void*) &netMsgLength, 4);
+		memcpy(dimension + 2, (void*)&netMsgLength, 4);
 		memcpy(dimension + 6, "-", 1);
 
 		/* Crea operation */
@@ -718,7 +718,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 
 		/* Crea buffer da inviare */
 		finalBuffer = new BYTE[7 + msgLength];
-		
+
 		memcpy(finalBuffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
 		memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
@@ -730,14 +730,14 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
 	}
-	else if(op == FOCUS){
+	else if (op == FOCUS) {
 
 		/* Calcola lunghezza totale messaggio e salvala */
 		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength;
 		u_long netMsgLength = htonl(msgLength);
 
 		memcpy(dimension, "--", 2);
-		memcpy(dimension + 2, (void*) &netMsgLength, 4);
+		memcpy(dimension + 2, (void*)&netMsgLength, 4);
 		memcpy(dimension + 6, "-", 1);
 
 		memcpy(operation, "FOCUS-", 6);
@@ -782,7 +782,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
 		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
 	}
-		
+
 	int bytesSent = 0;
 	int offset = 0;
 	int remaining = MSG_LENGTH_SIZE + msgLength;
@@ -792,7 +792,7 @@ void Server::sendApplicationToClient(SOCKET clientSocket, HWND hwnd, operation o
 		remaining -= bytesSent;
 		offset += bytesSent;
 	}
-	
+
 	return;
 }
 
@@ -943,8 +943,8 @@ PBITMAPINFO Server::CreateBitmapInfoStruct(HBITMAP hBmp)
 
 void Server::receiveCommands() {
 	// Ricevi finchè il client non chiude la connessione
-	char recvbuf[DEFAULT_BUFLEN*sizeof(char)];
-	char sendBuf[DEFAULT_BUFLEN*sizeof(char)];
+	char recvbuf[DEFAULT_BUFLEN * sizeof(char)];
+	char sendBuf[DEFAULT_BUFLEN * sizeof(char)];
 
 	int iResult;
 	do {
@@ -955,14 +955,15 @@ void Server::receiveCommands() {
 			int errorCode = WSAGetLastError();
 			if (errorCode == WSAECONNRESET) {
 				wcout << "[" << GetCurrentThreadId() << "] " << "Connessione chiusa dal client." << endl;
-			}else
+			}
+			else
 				wcout << "[" << GetCurrentThreadId() << "] " << "recv() fallita con errore: " << WSAGetLastError() << endl;
 			closesocket(clientSocket);
 			return;
 		}
 
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		if (strcmp(recvbuf, "--CLOSE-") == 0) {			
+		if (strcmp(recvbuf, "--CLOSE-") == 0) {
 
 			u_long msgLength = 5;
 			u_long netMsgLength = htonl(msgLength);
@@ -972,7 +973,7 @@ void Server::receiveCommands() {
 			memcpy(sendBuf + 6, "-", 1);
 
 			memcpy(sendBuf + 7, "OKCLO-", 5);
-			
+
 			send(clientSocket, sendBuf, 12, 0);
 			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione con il client chiusa." << endl << endl;
 
@@ -1075,7 +1076,7 @@ void Server::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
 	}
 
 	//Send the keystrokes.
-	keystrokes_sent = SendInput((UINT)keystrokes_lenght*2, keystroke, sizeof(*keystroke));
+	keystrokes_sent = SendInput((UINT)keystrokes_lenght * 2, keystroke, sizeof(*keystroke));
 	delete[] keystroke;
 
 	wcout << "# of keystrokes to send to the window: " << keystrokes_lenght << endl;
