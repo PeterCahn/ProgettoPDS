@@ -1,9 +1,9 @@
-#include "Server.h"
+#include "WindowsNotificationService.h"
 
 int main(int argc, char* argv[])
 {
-	Server server;	
-	server.start();
+	WindowsNotificationService wns;
+	wns.start();
 	
 	return 0;
 }

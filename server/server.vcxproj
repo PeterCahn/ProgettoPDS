@@ -112,13 +112,13 @@
   <ItemGroup>
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="WindowsNotificationService.cpp" />
     <ClCompile Include="Server.cpp" />
-    <ClCompile Include="ServerClass.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Helper.h" />
+    <ClInclude Include="WindowsNotificationService.h" />
     <ClInclude Include="Server.h" />
-    <ClInclude Include="ServerClass.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
