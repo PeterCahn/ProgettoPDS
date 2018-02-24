@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WpfApplication1"
         mc:Ignorable="d"
-        Title="Client" Height="600" Width="800" ResizeMode="NoResize" Background="White">
+        Title="Client" Height="600" Width="800" ResizeMode="CanMinimize" Background="White">
 
     <Window.Resources>
         <DataGridTemplateColumn x:Key="dgt" Header="Icona" Width="SizeToCells">
