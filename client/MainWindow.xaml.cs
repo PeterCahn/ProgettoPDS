@@ -24,6 +24,10 @@ using System.Text.RegularExpressions;
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Icona con sfondo nero 
  * - Ordinare l'elenco delle finestre per percentuale focus, o in modo da mettere in alto la finestra in focus
+ * - Modifica controllo numero server connessi. Crash al controllo se serversListBox.Items[0].Equals("Nessun server connesso")
+ *  => Aggiungere elemento che viene mostrato solo quando non ci sono server connessi. Così il controllo è solo sulla size della lista.
+ * - Sgancia un thread per creare la TcpClient. Join subito dopo.
+ * - Quando invio comando, pulisci bene interfaccia.
  */
 
 namespace WpfApplication1
@@ -272,12 +276,6 @@ namespace WpfApplication1
             listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
             
         }
-
-        void addItemToListView(Int32 hwnd, string server, string nomeProgramma, BitmapImage bmp)
-        {
-            // Aggiungi il nuovo elemento all'elenco delle tabelle
-            servers[server].table.addFinestra(hwnd, nomeProgramma, "Background", 0, 0, bmp);
-        }
         
         /* Viene eseguito in un thread a parte.
          * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
@@ -515,31 +513,13 @@ namespace WpfApplication1
                     switch (operation)
                     {
                         case "FOCUS":
-                            // Cambia programma col focus
-                            servers[serverName].tableModificationsMutex.WaitOne();
-                            foreach (Finestra finestra in servers[serverName].table.Finestre)
-                            {
-                                if (finestra.Hwnd.Equals(hwnd))
-                                    finestra.StatoFinestra = "Focus";
-                                else if (finestra.StatoFinestra.Equals("Focus"))
-                                    finestra.StatoFinestra = "Background";
-                            }
-                            servers[serverName].tableModificationsMutex.ReleaseMutex();
+                            // Cambia programma col focus                            
+                            servers[serverName].table.changeFocus(hwnd);
 
                             break;
                         case "CLOSE":
-                            // Rimuovi programma dalla listView
-                            servers[serverName].tableModificationsMutex.WaitOne();
-                            foreach (Finestra finestra in servers[serverName].table.Finestre)
-                            {
-                                if (finestra.Hwnd.Equals(hwnd))
-                                {
-                                    // TODO: se % è zero elimina dalla lista, altrimenti setta "Stato finestra" a "Closed"
-                                    finestra.StatoFinestra = "Closed";                                        
-                                    break;
-                                }
-                            }
-                            servers[serverName].tableModificationsMutex.ReleaseMutex();
+                            // Rimuovi programma dalla listView                            
+                            servers[serverName].table.removeFinestra(hwnd);                            
 
                             break;
                         case "TTCHA":
@@ -609,9 +589,9 @@ namespace WpfApplication1
                                         bmpImage.Freeze();
                                     }
 
-                                    servers[serverName].tableModificationsMutex.WaitOne();
-                                    addItemToListView(hwnd, serverName, progName, bmpImage);
-                                    servers[serverName].tableModificationsMutex.ReleaseMutex();
+                                    // Aggiungi il nuovo elemento all'elenco delle tabelle
+                                    servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bmpImage);
+                                    
                                 }
                             }
                             catch(Exception)

@@ -27,21 +27,59 @@ namespace client
                     OnPropertyChanged(new PropertyChangedEventArgs("Finestre"));
                 }
             }
-        }        
+        }
+
+        public MyTable()
+        {
+            addFinestra(0, "", "Background", 0, 0, null);
+            Finestre.First().Visible = false;
+        }
 
         public void addFinestra(Int32 hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
         {
-            _finestre.Add(new Finestra(hwnd, nomeFinestra, statoFinestra, tempoFocusPerc, tempoFocus, icona));
+            lock (this)
+            {
+                Finestre.Add(new Finestra(hwnd, nomeFinestra, statoFinestra, tempoFocusPerc, tempoFocus, icona));
+            }            
         }
 
-        public void changeFocus(Int32 hwnd, string statoFinestra)
+        public void changeFocus(Int32 hwnd)
         {
-            var it = _finestre.GetEnumerator();            
+            lock (this)
+            {
+                bool trovato = false;
+                foreach (Finestra finestra in Finestre)
+                {
+                    if (finestra.Hwnd.Equals(hwnd))
+                    {
+                        finestra.StatoFinestra = "Focus";
+                        trovato = true;
+                    }
+                    else if (finestra.StatoFinestra.Equals("Focus"))
+                        finestra.StatoFinestra = "Background";
+                }
+
+                // 
+                if (!trovato)
+                {
+                    // First() perché il primo elemento sarà sempre la finestra che raccoglie le statistiche di quando niente è in focus.
+                    // Questa finestra non verrà mai eliminata durante l'esecuzione, quindi sarà sempre la prima.
+                    Finestre.First().StatoFinestra = "Focus";
+                }
+            }
         }
 
-        public void removeWnd(Int32 hwnd)
+        public void removeFinestra(Int32 hwnd)
         {
-
+            lock (this)
+            {
+                foreach (Finestra finestra in Finestre)
+                    if (finestra.Hwnd.Equals(hwnd))
+                    {
+                        Finestre.Remove(finestra);
+                        break;
+                    }
+            }
         }        
         
     }
@@ -54,6 +92,7 @@ namespace client
         private double _tempoFocusPerc { get; set; }
         private double _tempoFocus { get; set; }
         private BitmapImage _icona { get; set; }
+        private bool _visible { get; set; }
 
         public Int32 Hwnd
         {
@@ -128,6 +167,20 @@ namespace client
             }
         }
 
+        public bool Visible
+        {
+            get { return _visible; }
+            set
+            {
+                if (_visible != value)
+                {
+                    _visible = value;
+                    OnPropertyChanged(this, "Visible");
+                }
+                
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         // OnPropertyChanged will raise the PropertyChanged event passing the
@@ -148,6 +201,7 @@ namespace client
             TempoFocusPerc = tempoFocusPerc;
             TempoFocus = tempoFocus;
             Icona = icona;
+            Visible = true;
         }
     }
 
