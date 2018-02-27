@@ -121,33 +121,6 @@ namespace WpfApplication1
                     }
                 }
             }
-            /*
-            try
-            {
-                tablesMapsEntryMutex.WaitOne();
-                if (servers.ContainsKey(serverName))
-                {
-                    if (servers[serverName].isOnline)
-                    {
-                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
-                        tablesMapsEntryMutex.ReleaseMutex();
-                        return;
-                    }
-                }
-                tablesMapsEntryMutex.ReleaseMutex();
-            }
-            catch (AbandonedMutexException ex)
-            {
-                // Se questa eccesione viene chiamata, qualcuno detiene il mutex e bisogna rilasciarlo
-                if (ex.Mutex != null) ex.Mutex.ReleaseMutex();
-                return;  // ritorna per permettere la riconnessione manuale
-            }
-            catch(ObjectDisposedException)
-            {
-                // The current instance has already been disposed.
-                return;
-            }
-            */
 
             try
             {
@@ -157,16 +130,20 @@ namespace WpfApplication1
                 connecting.IsBackground = true;                
                 connecting.Start();
                 */
+
                 server = new TcpClient(ipAddress, port);
                 /* ArgumentNullException: hostname is null
                  * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
 
                 // Se già è presente una connessione a quel server ma era offline, rimuovi i suoi riferimenti
                 // che erano già stati precedentemente invalidati, in modo da poterlo riaggiungere alla lista
-                if (servers.ContainsKey(serverName) && !servers[serverName].isOnline)
+                lock (servers)
                 {
-                    servers.Remove(serverName);
-                    serversListBox.Items.Remove(serverName);
+                    if (servers.ContainsKey(serverName) && !servers[serverName].isOnline)
+                    {
+                        servers.Remove(serverName);
+                        serversListBox.Items.Remove(serverName);
+                    }
                 }
             }
             catch (SocketException se)
@@ -177,10 +154,10 @@ namespace WpfApplication1
                 else
                     System.Windows.MessageBox.Show("Connessione al server " + serverName + " fallita.");
 
-                return; // Usciamo perché l'operazione non è andata a buon fine. Nuovo tentativo manuale.
+                return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
             }
 
-            /* Crea ServerInfo per la nuova connessione */
+            // Crea ServerInfo per la nuova connessione
             ServerInfo si = new ServerInfo();
             si.server = server;
             si.serverName = serverName;
@@ -480,7 +457,7 @@ namespace WpfApplication1
                     {
                         servers[serverName].disconnectionEvent.Set();
                         System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                        if (servers[serverName].notificationsThread.IsAlive)
+                        if (servers[serverName].statisticThread.IsAlive)
                             servers[serverName].forcedDisconnectionEvent.WaitOne();
 
                         safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);

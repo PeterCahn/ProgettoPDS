@@ -1,4 +1,3 @@
-
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
 
@@ -22,12 +21,6 @@
 #include <fcntl.h>
 
 #include <process.h>
-
-// Gestione eventi windows
-#include <oleacc.h>
-#pragma comment (lib, "oleacc.lib")
-
-#include <cstdio>
 
 #include <exception>
 #include <typeinfo>
@@ -73,13 +66,16 @@ Server::Server()
 	}
 }
 
-
 Server::~Server()
 {
-	/* Se non è stato ancora chiuso il socket, chiudilo */
-	if(validServer())
-		closesocket(listeningSocket);
-	// Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+	/* Se non è stato ancora chiuso il client socket, chiudilo insieme alla connessione con il client */
+	if(validClient())
+		chiudiConnessioneClient();
+
+	/* Arresta il server rilasciando le sue risorse (close del socket) */
+	arrestaServer();
+
+	/* Termina l'uso della Winsock 2 DLL (Ws2_32.dll) */
 	WSACleanup();
 }
 
@@ -121,15 +117,14 @@ void Server::avviaServer()
 		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
 		leggiPorta();
 		if (!listeningPort.compare("")) {
-			/* Tentativo di recupuperare 'cin" */
+			/* Tentativo di recupuperare 'cin' */
 			continue;
 		}
 
 		// Creazione socket
 		listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (listeningSocket == INVALID_SOCKET) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "socket() fallita con errore: " << WSAGetLastError() << endl;
-			WSACleanup();
+			wcout << "[" << GetCurrentThreadId() << "] " << "socket() fallita con errore: " << WSAGetLastError() << endl;			
 			listeningSocket = INVALID_SOCKET;
 			continue;
 		}
@@ -150,7 +145,6 @@ void Server::avviaServer()
 				wcout << "[" << GetCurrentThreadId() << "] " << "Porta " << atoi(listeningPort.c_str()) << " già in uso. Scegliere un'altra porta." << endl;
 
 			closesocket(listeningSocket);
-			WSACleanup();
 			listeningSocket = INVALID_SOCKET;
 			continue;
 		}
@@ -160,7 +154,6 @@ void Server::avviaServer()
 		if (iResult == SOCKET_ERROR) {
 			wcout << "[" << GetCurrentThreadId() << "] " << "listen() fallita con errore: " << WSAGetLastError() << endl;
 			closesocket(listeningSocket);
-			WSACleanup();
 			listeningSocket = INVALID_SOCKET;
 			continue;
 		}
@@ -173,29 +166,42 @@ void Server::avviaServer()
 }
 
 /* Attende una connessione in entrata da un client e setta il clientSocket */
-void Server::acceptConnection(void)
+void Server::acceptConnection()
 {
 	int iResult = 0;
-
 	SOCKET newClientSocket;
 
-	// Accetta la connessione
-	newClientSocket = accept(listeningSocket, NULL, NULL);
-	if (newClientSocket == INVALID_SOCKET) {
-		wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << endl;
-		newClientSocket = INVALID_SOCKET;
-		return;
+	while (true) {
+		try {
+			printMessage(TEXT("In attesa della connessione di un client..."));
+
+			// Accetta la connessione
+			newClientSocket = accept(listeningSocket, NULL, NULL);
+			if (newClientSocket == INVALID_SOCKET) {
+				wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << endl;
+				newClientSocket = INVALID_SOCKET;
+				return;
+			}
+
+			struct sockaddr_in clientSockAddr;
+			int nameLength = sizeof(clientSockAddr);
+			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
+			int port = ntohs(clientSockAddr.sin_port);
+
+			char ipstr[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
+
+			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
+
+			clientSocket = newClientSocket;
+
+			if (validClient())
+				break;
+		}
+		catch (exception& ex) {
+			wcout << "[" << GetCurrentThreadId() << "] " << "Eccezione lanciata durante l'accettazione del client: " << ex.what() << endl;
+		}
 	}
-
-	struct sockaddr_in clientSockAddr;
-	int nameLength = sizeof(clientSockAddr);
-	getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
-	int port = ntohs(clientSockAddr.sin_port);
-	char ipstr[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
-	wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
-
-	clientSocket = newClientSocket;
 
 	return;
 }
@@ -244,9 +250,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	BYTE* finalBuffer = NULL;
 
 	if (op == OPEN) {
-
-		//throw exception("eccezione voluta");
-
+		
 		/* Ottieni l'icona */
 		HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
 		PBITMAPINFO pbi = Helper::CreateBitmapInfoStruct(hSource);
@@ -260,7 +264,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		int res;
 		if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			//Helper::BitmapInfoErrorExit(L"GetDIBits1()");
+			Helper::BitmapInfoErrorExit(L"GetDIBits1()");
 		}
 
 		// create the pixel buffer
@@ -273,7 +277,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		// bitmap data (the "pixels") in the buffer lpPixels		
 		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 		{
-			//Helper::BitmapInfoErrorExit(L"GetDIBits2()");
+			Helper::BitmapInfoErrorExit(L"GetDIBits2()");
 		}
 
 		DeleteObject(hSource);
@@ -405,6 +409,21 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 
 	return;
 
+}
+
+void Server::sendMessageToClient(const char* operation) {
+
+	char sendBuf[12 * sizeof(char)];
+	u_long msgLength = 5;
+	u_long netMsgLength = htonl(msgLength);
+
+	memcpy(sendBuf, "--", 2);
+	memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
+	memcpy(sendBuf + 6, "-", 1);
+
+	memcpy(sendBuf + 7, operation, 5);
+
+	send(clientSocket, sendBuf, 12, 0);
 }
 
 int Server::receiveMessageFromClient(char* buffer, int bufferSize)

@@ -49,18 +49,6 @@
 
 #define DEFAULT_BUFLEN 1024
 
-#define N_BYTE_TRATTINO 1
-#define N_BYTE_MSG_LENGTH 4
-#define N_BYTE_PROG_NAME_LENGTH 4
-#define N_BYTE_OPERATION 5
-#define N_BYTE_HWND sizeof(HWND)
-#define N_BYTE_ICON_LENGTH 4
-#define MSG_LENGTH_SIZE (3*N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH)
-#define OPERATION_SIZE (N_BYTE_OPERATION + N_BYTE_TRATTINO)
-#define HWND_SIZE (N_BYTE_HWND + N_BYTE_TRATTINO)
-#define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
-#define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
-
 #define MAX_RETRIES 3
 
 using namespace std;
@@ -78,10 +66,7 @@ typedef std::map<HWND, wstring> WinStringMap;
 WindowsNotificationService::WindowsNotificationService()
 {
 	_setmode(_fileno(stdout), _O_U16TEXT);
-
-	/* Inizializza il server */
-	server = Server();
-
+	
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
 	numberRetries = 0;
@@ -89,12 +74,27 @@ WindowsNotificationService::WindowsNotificationService()
 
 	windows = map<HWND, wstring>();
 	
-	stopNotificationsThread = promise<bool>();	
 }
 
 WindowsNotificationService::~WindowsNotificationService()
 {
-	
+	printMessage(TEXT("WindowsNotificationsService chiuso."));
+}
+
+/* Per uscire dal servizio */
+volatile bool isRunning = true;
+BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
+	switch (dwCtrlType)
+	{
+	case CTRL_C_EVENT:
+		//printf("[Ctrl]+C\n");
+		isRunning = false;
+		// Signal is handled - don't pass it on to the next handler
+		return TRUE;
+	default:
+		// Pass signal on to the next handler
+		return FALSE;
+	}
 }
 
 void WindowsNotificationService::start()
@@ -105,7 +105,7 @@ void WindowsNotificationService::start()
 			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
 	*/	 
 	//thread t(hook, this);
-
+	
 	/* Avvia il server */
 	server.avviaServer();
 	if (!server.validServer()) {
@@ -113,56 +113,63 @@ void WindowsNotificationService::start()
 		return;
 	}
 
-	while (true) {
+	/* Settato a false dall'handler per CTRL-C (TODO: così è visto solo alla prossima iterazione) */
+	while (isRunning) {
 
 		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */		
-		while (true) {
-			try {
-				printMessage(TEXT("In attesa della connessione di un client..."));
-				server.acceptConnection();
-				if (server.validClient())
-					break;
-			}
-			catch (exception& ex) {
-				wcout << "[" << GetCurrentThreadId() << "] " << "Eccezione lanciata durante l'accettazione del client: " << ex.what() << endl;
-			}
-		}
+		server.acceptConnection();
 		
+		/* Setta la control routine per gestire il CTRL-C */
+		if (!SetConsoleCtrlHandler(HandlerRoutine, TRUE)) {
+			printf("\nERROR: Could not set control handler");
+			return;
+		}
+
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
 		try {
+
 			/* Crea thread per gestire le notifiche */
 			thread notificationsThread(&WindowsNotificationService::notificationsManagement, this);
 
-			/* Thread principale attende eventuali comandi sulla finestra attualmente in focus */
+			/* Thread principale attende eventuali comandi sulla finestra attualmente in focus e messaggi dal client */
 			receiveCommands();	// ritorna quando la connessione con il client è chiusa
 
-			/* Procedura terminazione thread notifiche: setta il value nella promise in modo che il notificationsmanagement esca */
+			/* Procedura terminazione thread notifiche: setta il value nella promise in modo che il notificationsManagement esca */
 			stopNotificationsThread.set_value(TRUE);
 			notificationsThread.join();
 
 			/* Se un'eccezione si è verificata nel background thread viene rilanciata nel main thread */
 			if (globalExceptionPtr) rethrow_exception(globalExceptionPtr);
+
 		}
-		catch (system_error se) {			
-			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
-			//WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
+		catch (system_error se) {
+			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;			
+			/* Riprova a lanciare il thread (?) */
 			continue;
 		}
 		catch (exception &ex)
 		{
-			wcout << "[" << GetCurrentThreadId() << "] " << "Thread 'notificationsThread' terminato con un'eccezione: " << ex.what() << endl;
-			/* Riprova a lanciare il thread (?) */
 			//wcout << "[" << GetCurrentThreadId() << "] " << "Tentativo riavvio 'notificationsThread' sul client" << endl;
-			continue;				
+			server.sendMessageToClient("ERRCL");
+
+			continue;
 		}
-
-		/* Cleanup */
+		
+		/* Chiudi connessione con il client prima di provare a reiterare sul while */
 		server.chiudiConnessioneClient();
-	}
+		printMessage(TEXT("Connessione con il client chiusa."));
 
+		/* Se è stato premuto CTRL-C 'isRunning' è a false e quindi si può evitare di ciclare di nuovo uscendo dal servizio */
+		if (!isRunning) {
+			break;
+		}
+	}	
+}
+
+void WindowsNotificationService::stop()
+{
 	server.arrestaServer();
-	//WSACleanup(); // Terminates use of the Winsock 2 DLL (Ws2_32.dll)
 }
 
 BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lParam)
@@ -259,7 +266,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		
 		/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
 		future<bool> f = stopNotificationsThread.get_future();
-		while (f.wait_for(chrono::seconds(0)) != future_status::ready) {
+		while (f.wait_for(chrono::seconds(0)) != future_status::ready && isRunning) {
 			// Esegui ogni mezzo secondo
 			this_thread::sleep_for(chrono::milliseconds(500));
 
@@ -331,7 +338,15 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 			}
 
 			windows = tempWindows;
+
+			/*  */
+			if (!isRunning) {
+				printMessage(TEXT("Gestione finestre in chiusura...\n"));
+				server.sendMessageToClient("ERRCL");
+				throw exception("Chiusura forzata.");
+			}
 		}
+
 	}
 	catch (future_error &fe)
 	{
@@ -339,27 +354,16 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 	}
 	catch (const std::exception &exc)
 	{
-		// catch anything thrown within try block that derives from std::exception
-		wcout << exc.what();
+		// catch anything thrown within try block that derives from std::exception			
+		globalExceptionPtr = current_exception();
 	}
 	catch (...)
 	{
-		//Sleep(5000);
 		//Set the global exception pointer in case of an exception
 		globalExceptionPtr = current_exception();
 
-		char sendBuf[12 * sizeof(char)];
-		u_long msgLength = 5;
-		u_long netMsgLength = htonl(msgLength);
-
-		memcpy(sendBuf, "--", 2);
-		memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
-		memcpy(sendBuf + 6, "-", 1);
-
-		memcpy(sendBuf + 7, "ERRCL-", 5);
-
-		send(server.getClientSocket(), sendBuf, 12, 0);
-
+		/* E' stata scatenata un'eccezione. Notificalo al client per chiudere la connessione. */
+		server.sendMessageToClient("ERRCL");
 	}
 }
 
@@ -386,20 +390,16 @@ void WindowsNotificationService::receiveCommands() {
 			server.chiudiConnessioneClient();
 			return;
 		}
+
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
 		else if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {
 
-			u_long msgLength = 5;
-			u_long netMsgLength = htonl(msgLength);
+			printMessage(TEXT("Il client ha richiesta la disconnessione."));
 
-			memcpy(sendBuf, "--", 2);
-			memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
-			memcpy(sendBuf + 6, "-", 1);
+			/* Il client ha inviato uuna richiesta di chiusura connessione.
+			 * Invia la conferma al client per chiudere la connessione. */
+			server.sendMessageToClient("OKCLO");
 
-			memcpy(sendBuf + 7, "OKCLO-", 5);
-			
-			send(server.getClientSocket(), sendBuf, 12, 0);
-			printMessage(TEXT("Connessione con il client chiusa.\n"));
 			return;
 		}
 		else {
@@ -427,7 +427,7 @@ void WindowsNotificationService::receiveCommands() {
 			sendKeystrokesToProgram(vKeysList);
 		}
 
-	} while (iResult > 0);
+	} while (iResult > 0 && isRunning);
 
 }
 

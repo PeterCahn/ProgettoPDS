@@ -17,7 +17,8 @@ namespace client
 {
     class MyTable : AsyncObservableCollection<Finestra>
     {
-        private ObservableCollection<Finestra> _finestre = new AsyncObservableCollection<Finestra>();
+        private ObservableCollection<Finestra> _finestre;
+
         public AsyncObservableCollection<Finestra> Finestre {
             get { return (AsyncObservableCollection<Finestra>) _finestre; }
             set {
@@ -31,7 +32,11 @@ namespace client
 
         public MyTable()
         {
+            _finestre = new AsyncObservableCollection<Finestra>();
+
+            // Aggiungi finestra nascosta che racchiude le statistiche di tutto ciò che non è una finestra sul server
             addFinestra(0, "", "Background", 0, 0, null);
+            // Rendi la finestra non visibile
             Finestre.First().Visible = false;
         }
 

@@ -20,5 +20,38 @@ namespace client
         public AutoResetEvent forcedDisconnectionEvent { get; set; }
         public Mutex tableModificationsMutex { get; set; }
         public bool isOnline { get; set; }
+
+        /*
+        public ServerInfo(string serverName, TcpClient server, bool isOnline)
+        {
+            this.serverName = serverName;
+            this.server = server;
+            this.table = new MyTable();
+            disconnectionEvent = new ManualResetEvent(false);
+            forcedDisconnectionEvent = new AutoResetEvent(false);
+            tableModificationsMutex = new Mutex();
+            this.isOnline = isOnline;
+        }
+        */
+
+        public ServerInfo()
+        {
+            serverName = "";
+        }
+
+        ~ServerInfo()
+        {            
+            disconnectionEvent.Close();
+            disconnectionEvent.Dispose();
+
+            forcedDisconnectionEvent.Close();
+            forcedDisconnectionEvent.Dispose();
+
+            tableModificationsMutex.Close();
+            tableModificationsMutex.Dispose();
+
+            statisticThread.Join();
+            notificationsThread.Join();
+        }
     }
 }

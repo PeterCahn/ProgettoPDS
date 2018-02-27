@@ -29,6 +29,8 @@ public:
 	bool validClient();
 	/* Invia un messaggio al client in base al valore di 'operation' */
 	void sendNotificationToClient(HWND hwnd, wstring title, operation op);
+	/* Manda un messaggio breve al client */
+	void sendMessageToClient(const char *);
 	/* Riceve un messaggio dal client */
 	int receiveMessageFromClient(char* buffer, int bufferSize);
 

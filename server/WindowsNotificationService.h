@@ -26,12 +26,13 @@ public:
 	WindowsNotificationService();
 	~WindowsNotificationService();
 	void start();
+	void stop();
 
 private:
 
 	Server server;
 		
-	// "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." 
+	/* "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." */
 	map<HWND, wstring> windows;
 
 	exception_ptr globalExceptionPtr;
