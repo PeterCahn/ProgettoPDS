@@ -187,7 +187,6 @@ namespace WpfApplication1
                 tablesMapsEntryMutex.WaitOne();
 
                 servers.Add(serverName, si);
-
                 tablesMapsEntryMutex.ReleaseMutex();
             }
             catch (AbandonedMutexException ex)
@@ -340,11 +339,9 @@ namespace WpfApplication1
                 {
                     return;
                 }
-
             }
 
             servers[serverName].forcedDisconnectionEvent.Set();
-
         }
 
         /* Viene eseguito in un thread a parte.
@@ -382,59 +379,17 @@ namespace WpfApplication1
                 bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(1);
                 if (!isSignaled)
                 {
-                    // Leggi inizio e dimensione messaggio "--<4 byte int>-" = 7 byte in "buffer"
-                    int remaining = 7;
-                    int msgSize = 0;
-                    int hwnd = 0;
-                    int progNameLength = 0;
-                    byte[] msg = null;
-
-                    int res;
-                    if ((res = readn(server, serverStream, serverName, buffer, 7)) == 0)
-                        continue;
-                    else if (res == -2)
-                    {
-                        servers[serverName].disconnectionEvent.Set();
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                        if (servers[serverName].notificationsThread.IsAlive)
-                            servers[serverName].forcedDisconnectionEvent.WaitOne();
-
-                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
-                        continue;
-                    }
-                        
-                    else if (res < 0)
-                    {
-                        // TODO: prima facevamo già così, ma non dovremmo fare meglio?
-                        // Eccezione scatenata in readn
-                        continue;
-                    }
-
-                    // Leggi la dimensione del messaggio dal buffer
-                    msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
+                    // Iinizio e dimensione messaggio: "--<4 byte int>-" = 7 byte in "buffer"
+                    // Leggi la dimensione del messaggio
+                    if (managedReadn(server, serverStream, serverName, buffer, 7) <= 0)
+                        // Continue anche nei casi di server disconnesso oltre che ai timeout tanto in quei casi la condizione del while al prossimo giro non sarà soddisfatta
+                        continue;   
+                    int msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
 
                     // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
-                    msg = new byte[msgSize];
-                    remaining = msgSize;
-                    if ((res = readn(server, serverStream, serverName, msg, msgSize)) == 0)
+                    byte[] msg = new byte[msgSize];
+                    if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
                         continue;
-                    else if (res == -2)
-                    {
-                        servers[serverName].disconnectionEvent.Set();
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                        if (servers[serverName].notificationsThread.IsAlive)
-                            servers[serverName].forcedDisconnectionEvent.WaitOne();
-
-                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
-                        continue;
-                        
-                    }
-                    else if (res < 0)
-                    {
-                        // TODO: prima facevamo già così, ma non dovremmo fare meglio?
-                        // Eccezione scatenata in readn
-                        continue;
-                    }
 
                     // Estrai operazione => primi 5 byte
                     byte[] op = new byte[5];
@@ -467,10 +422,10 @@ namespace WpfApplication1
                     // Estrai hwnd: successivi 5 byte.
                     byte[] h = new byte[5];
                     Array.Copy(msg, 6, h, 0, 4);
-                    hwnd = BitConverter.ToInt32(msg, 6);
+                    int hwnd = BitConverter.ToInt32(msg, 6);
 
                     // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                    progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
+                    int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
                     // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
                     byte[] pN = new byte[progNameLength];
                     Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
@@ -579,7 +534,6 @@ namespace WpfApplication1
                 }
                 else
                     break;
-
             }
 
         }
@@ -1052,11 +1006,38 @@ namespace WpfApplication1
                     throw e;
                 }
 
-                // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
-                servers[serverName].disconnectionEvent.Set();
-                safePulisciInterfaccia(server, serverStream, serverName, false);
                 return -1;
             }
+        }
+
+
+        private int managedReadn(TcpClient server, NetworkStream serverStream, String serverName, byte[] buffer, int n)
+        {
+            int res;
+            if ((res = readn(server, serverStream, serverName, buffer, n)) == 0)
+            {
+                // È stato superato il timeout senza ricevere niente
+                return res;
+            }
+            else if (res == -2)
+            {
+                // La read ha letto 0 byte, significa che il server non è più raggiungibile, posso chiudere tutto
+                servers[serverName].disconnectionEvent.Set();
+                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                if (servers[serverName].notificationsThread.IsAlive)
+                    servers[serverName].forcedDisconnectionEvent.WaitOne();
+                safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                return res;
+            }
+            else if (res < 0)
+            {
+                // Eccezione scatenata in readn
+                servers[serverName].disconnectionEvent.Set();
+                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                safePulisciInterfaccia(server, serverStream, serverName, false);
+                return res;
+            }
+            return res;
         }
 
         private const int WH_KEYBOARD_LL = 13;
