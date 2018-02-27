@@ -18,7 +18,6 @@ namespace client
     class MyTable : AsyncObservableCollection<Finestra>
     {
         private ObservableCollection<Finestra> _finestre;
-
         public AsyncObservableCollection<Finestra> Finestre {
             get { return (AsyncObservableCollection<Finestra>) _finestre; }
             set {
@@ -29,6 +28,8 @@ namespace client
                 }
             }
         }
+        private DateTime connectionTime;
+        private DateTime lastUpdate { get; set; }
 
         public MyTable()
         {
@@ -36,11 +37,21 @@ namespace client
 
             // Aggiungi finestra nascosta che racchiude le statistiche di tutto ciò che non è una finestra sul server
             addFinestra(0, "", "Background", 0, 0, null);
+
             // Rendi la finestra non visibile
             Finestre.First().Visible = false;
+
+            // Inizializza i tempi per l'aggiornamento delle statistiche
+            connectionTime = DateTime.Now;
+            lastUpdate = DateTime.Now;
         }
 
-        public void addFinestra(Int32 hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
+        ~MyTable()
+        {
+            System.Windows.MessageBox.Show("Distruttore di MyTable chiamato");
+        }
+
+        public void addFinestra(int hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
         {
             lock (this)
             {
@@ -48,7 +59,7 @@ namespace client
             }            
         }
 
-        public void changeFocus(Int32 hwnd)
+        public void changeFocus(int hwnd)
         {
             lock (this)
             {
@@ -63,8 +74,7 @@ namespace client
                     else if (finestra.StatoFinestra.Equals("Focus"))
                         finestra.StatoFinestra = "Background";
                 }
-
-                // 
+                                
                 if (!trovato)
                 {
                     // First() perché il primo elemento sarà sempre la finestra che raccoglie le statistiche di quando niente è in focus.
@@ -74,7 +84,7 @@ namespace client
             }
         }
 
-        public void removeFinestra(Int32 hwnd)
+        public void removeFinestra(int hwnd)
         {
             lock (this)
             {
@@ -85,13 +95,47 @@ namespace client
                         break;
                     }
             }
-        }        
-        
+        }
+           
+        public void cambiaTitoloFinestra(int hwnd, string nomeFinestra)
+        {
+            lock (this)
+            {
+                foreach (Finestra finestra in Finestre)
+                {
+                    if (finestra.Hwnd.Equals(hwnd))
+                    {
+                        finestra.NomeFinestra = nomeFinestra;
+                        break;
+                    }
+                }                
+            }
+        }
+
+        public void aggiornaStatisticheFocus()
+        {
+            lock (this)
+            {
+                foreach (Finestra finestra in Finestre)
+                {
+                    if (finestra.StatoFinestra.Equals("Focus"))
+                    {
+                        finestra.TempoFocus = (DateTime.Now - lastUpdate).TotalMilliseconds + finestra.TempoFocus;
+                        lastUpdate = DateTime.Now;
+                    }
+
+                    // Calcola la percentuale
+                    double perc = (finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds * 100);
+                    finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
+                }
+            }
+        }
+
     }
 
     class Finestra : INotifyPropertyChanged
     {
-        private Int32 _hwnd { get; set; }
+        private int _hwnd { get; set; }
         private string _nomeFinestra { get; set; }
         private string _statoFinestra { get; set; }
         private double _tempoFocusPerc { get; set; }
@@ -99,7 +143,7 @@ namespace client
         private BitmapImage _icona { get; set; }
         private bool _visible { get; set; }
 
-        public Int32 Hwnd
+        public int Hwnd
         {
             get { return _hwnd; }
             set

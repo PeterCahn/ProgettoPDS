@@ -319,7 +319,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 						printMessage(TEXT("\t " + previousTitle));
 						printMessage(TEXT("La finestra ora in focus è: "));
 						printMessage(TEXT("- " + newTitle));
-						server.sendNotificationToClient(pair.first, pair.second, TITLE_CHANGED);
+						server.sendNotificationToClient(pair.first, newTitle, TITLE_CHANGED);
 					}
 				}
 			}

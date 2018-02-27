@@ -266,10 +266,6 @@ namespace WpfApplication1
          */
         private void manageStatistics(string serverName)
         {
-            // Imposta tempo connessione
-            DateTime connectionTime = DateTime.Now;
-            DateTime lastUpdate = connectionTime;
-
             while (true)
             {
                 /* Controlla che 'serverName' non sia stata eliminata */
@@ -288,12 +284,13 @@ namespace WpfApplication1
                 catch (ObjectDisposedException)
                 {
                     // The current instance has already been disposed.                    
-                }
+                }                
                 finally
                 {
                     if (tablesMapsEntryMutex != null)
                         tablesMapsEntryMutex.ReleaseMutex();
                 }
+                
 
                 // il MutualResetEvent disconnectionEvent è usato anche per far attendere il thread 
                 // nell'aggiornare le statistiche. serverName è sicuramente presente
@@ -303,22 +300,7 @@ namespace WpfApplication1
                     if (isSignaled)
                         break;
 
-                    servers[serverName].tableModificationsMutex.WaitOne();
-
-                    foreach (Finestra finestra in servers[serverName].table.Finestre)
-                    {
-                        if (finestra.StatoFinestra.Equals("Focus"))
-                        {
-                            finestra.TempoFocus = (DateTime.Now - lastUpdate).TotalMilliseconds + (double)finestra.TempoFocus;
-                            lastUpdate = DateTime.Now;
-                        }
-
-                        // Calcola la percentuale
-                        double perc = ((double)finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds * 100);
-                        finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
-                    }
-
-                    servers[serverName].tableModificationsMutex.ReleaseMutex();
+                    servers[serverName].table.aggiornaStatisticheFocus();
 
                 }
                 catch (AbandonedMutexException ame)
@@ -341,7 +323,15 @@ namespace WpfApplication1
                 }
             }
 
-            servers[serverName].forcedDisconnectionEvent.Set();
+            try
+            {
+                servers[serverName].forcedDisconnectionEvent.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+                // forcedDisconnectionEvent è stato già Disposed
+                return;
+            }
         }
 
         /* Viene eseguito in un thread a parte.
@@ -452,17 +442,9 @@ namespace WpfApplication1
 
                             break;
                         case "TTCHA":
-                            servers[serverName].tableModificationsMutex.WaitOne();
-                            foreach (Finestra finestra in servers[serverName].table.Finestre)
-                            {
-                                if (finestra.Hwnd.Equals(hwnd))
-                                {
-                                    // TODO: ricezione icona nel caso la finestra aggiornata abbia un'icona diversa
-                                    finestra.NomeFinestra = progName;
-                                    break;
-                                }
-                            }
-                            servers[serverName].tableModificationsMutex.ReleaseMutex();
+                            // Cambia nome il nome della finestra ricevuta
+                            servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
+                                                        
                             break;
                         case "OPENP":
                             try
