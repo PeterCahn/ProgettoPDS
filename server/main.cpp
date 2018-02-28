@@ -12,7 +12,7 @@ int main(int argc, char* argv[])
 
 	}
 	
-	Sleep(10000);
+	system("PAUSE");	
 
 	return 0;
 }

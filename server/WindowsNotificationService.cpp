@@ -2,9 +2,9 @@
 - Deallocazione risorse
 - Verificare se il thread muore davvero in ogni situazione critica
 - Gestione eccezioni
-- Raramente (in condizioni non ben specificate) il server moriva. Non è chiaro se dopo aver definito il
-	server da cui disconnettersi e su cui inviare e ricevere il segnale di close, il problema non si ripete più.
-	(NB: Rientra nella verifica delle eccezioni, se succede qualcosa, reagisci in modo che il client non si blocchi)
+- Si riesce a terminare l'invio di finestre al client corrente e ad aspettare il prossimo,
+	ma non a terminare il server mentre è in attesa sulla accept o sulla lettura della porta.
+	Questo avviene SOLO quando si è già provato a chiudere una connessione.
 */
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -83,6 +83,7 @@ WindowsNotificationService::~WindowsNotificationService()
 
 /* Per uscire dal servizio */
 volatile bool isRunning = true;
+volatile bool closeEverything = false;
 BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
 	switch (dwCtrlType)
 	{
@@ -121,7 +122,7 @@ void WindowsNotificationService::start()
 		
 		/* Setta la control routine per gestire il CTRL-C */
 		if (!SetConsoleCtrlHandler(HandlerRoutine, TRUE)) {
-			printf("\nERROR: Could not set control handler");
+			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
 			return;
 		}
 
@@ -139,7 +140,7 @@ void WindowsNotificationService::start()
 			stopNotificationsThread.set_value(TRUE);
 			notificationsThread.join();
 
-			/* Se un'eccezione si è verificata nel background thread viene rilanciata nel main thread */
+			/* Se un'eccezione si è verificata ed è stata settata nel background thread, viene rilanciata ora nel main thread */
 			if (globalExceptionPtr) rethrow_exception(globalExceptionPtr);
 
 		}
@@ -150,19 +151,17 @@ void WindowsNotificationService::start()
 		}
 		catch (exception &ex)
 		{
-			//wcout << "[" << GetCurrentThreadId() << "] " << "Tentativo riavvio 'notificationsThread' sul client" << endl;
-			server.sendMessageToClient("ERRCL");
-
+			// Si è verificata un'eccezione nei thread che gestiscono la connessione con il client.		
 			continue;
 		}
 		
 		/* Chiudi connessione con il client prima di provare a reiterare sul while */
-		server.chiudiConnessioneClient();
-		printMessage(TEXT("Connessione con il client chiusa."));
+		//server.chiudiConnessioneClient();
+		//printMessage(TEXT("Connessione con il client chiusa."));
 
 		/* Se è stato premuto CTRL-C 'isRunning' è a false e quindi si può evitare di ciclare di nuovo uscendo dal servizio */
-		if (!isRunning) {
-			break;
+		if (isRunning) {
+			continue;
 		}
 	}	
 }
@@ -341,21 +340,24 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 
 			/*  */
 			if (!isRunning) {
-				printMessage(TEXT("Gestione finestre in chiusura...\n"));
+				printMessage(TEXT("Gestione finestre in chiusura..."));
 				server.sendMessageToClient("ERRCL");
-				throw exception("Chiusura forzata.");
+				isRunning = true;
+				return;
+				//throw exception("Chiusura forzata.");
 			}
 		}
 
 	}
-	catch (future_error &fe)
+	catch (future_error)
 	{
 		// cosa fare?
 	}
-	catch (const std::exception &exc)
+	catch (exception)
 	{
 		// catch anything thrown within try block that derives from std::exception			
 		globalExceptionPtr = current_exception();
+		return;
 	}
 	catch (...)
 	{
@@ -376,21 +378,9 @@ void WindowsNotificationService::receiveCommands() {
 	int iResult;
 	do {
 		iResult = server.receiveMessageFromClient(recvbuf, DEFAULT_BUFLEN);
-		if (iResult == 0) {
-			printMessage(TEXT("Chiusura connessione..."));
-			printMessage(TEXT("\n"));
-		}
-		else if (iResult < 0) {
-			int errorCode = WSAGetLastError();
-			if (errorCode == WSAECONNRESET) {
-				printMessage(TEXT("Connessione chiusa dal client."));
-			}else
-				printMessage(TEXT("recv() fallita con errore : " + WSAGetLastError()));
-
-			server.chiudiConnessioneClient();
+		if (iResult <= 0) {	// c'è stato qualche errore nella connessione con il client
 			return;
 		}
-
 		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
 		else if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {
 

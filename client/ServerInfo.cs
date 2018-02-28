@@ -23,22 +23,21 @@ namespace client
         public BackgroundWorker statisticsBw { get; set; }
         public BackgroundWorker notificationsBw { get; set; }
 
-        /*
+        
         public ServerInfo(string serverName, TcpClient server, bool isOnline)
         {
             this.serverName = serverName;
             this.server = server;
-            this.table = new MyTable();
+            this.isOnline = isOnline;
+            table = new MyTable();
             disconnectionEvent = new ManualResetEvent(false);
             forcedDisconnectionEvent = new AutoResetEvent(false);
             tableModificationsMutex = new Mutex();
-            this.isOnline = isOnline;
         }
-        */
 
         public ServerInfo()
         {
-            serverName = "";
+
         }
 
         ~ServerInfo()
@@ -51,9 +50,7 @@ namespace client
 
             tableModificationsMutex.Close();
             tableModificationsMutex.Dispose();
-
-            //statisticThread.Join();
-            //notificationsThread.Join();
+            
         }
     }
 }

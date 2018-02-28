@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,18 +14,15 @@ using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using client;
-using System.Data;
 using System.ComponentModel;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
-using System.Windows.Data;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Icona con sfondo nero 
  * - Modifica controllo numero server connessi. Crash al controllo se serversListBox.Items[0].Equals("Nessun server connesso")
  *  => Aggiungere elemento che viene mostrato solo quando non ci sono server connessi. Così il controllo è solo sulla size della lista.
- * - Sgancia un thread per creare la TcpClient. Join subito dopo. 
  */
 
 namespace WpfApplication1
@@ -187,33 +183,29 @@ namespace WpfApplication1
                 {
                     servers.Remove(serverName);
                     serversListBox.Items.Remove(serverName);
+                    if (serversListBox.Items.Count == 0)
+                    {
+                        // Aggiorna bottoni
+                        buttonDisconnetti.Visibility = Visibility.Hidden;
+                        buttonInvia.IsEnabled = false;
+                        buttonCattura.IsEnabled = false;
+
+                        // non ci sono più server connessi
+                        serversListBox.Items.Add("Nessun server connesso");
+                        serversListBox.SelectedIndex = 0;
+                    }
+                    else
+                    {
+                        // Selezioniamo il primo server della lista
+                        serversListBox.SelectedIndex = 0;
+                    }
                 }
             }            
 
             // Crea ServerInfo per la nuova connessione
-            ServerInfo si = new ServerInfo();
-            si.server = (TcpClient) e.Result;
-            si.serverName = serverName;
-
-            // Setta IsOnline a true per segnalare che il server è attivo e online
-            si.isOnline = true;
-
-            // Aggiorna bottoni
-            buttonDisconnetti.Visibility = Visibility.Visible;
-            textBoxIpAddress.Text = "";
-
-            // Aggiungi MyTable vuota in ServerInfo
-            si.table = new MyTable();
-
-            // ManualResetEvent settato a false perché i thread che verranno creati si blocchino quando chiamano WaitOne.
-            // Necessario per far terminare i thread quando si vuole disconnettere il server.
-            si.disconnectionEvent = new ManualResetEvent(false);
-
-            si.forcedDisconnectionEvent = new AutoResetEvent(false);
-
-            // Inizializzazione mutex per proteggere modifiche alla lista delle finestre
-            si.tableModificationsMutex = new Mutex();
-
+            //ServerInfo si_old = new ServerInfo();
+            ServerInfo si = new ServerInfo(serverName, (TcpClient)e.Result, true);
+            
             lock (servers)
             {
                 servers.Add(serverName, si);
@@ -241,6 +233,10 @@ namespace WpfApplication1
             servers[serverName].notificationsBw.DoWork += new DoWorkEventHandler(riceviNotifiche);
             servers[serverName].notificationsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(riceviNotificheTerminato);
             servers[serverName].notificationsBw.RunWorkerAsync(serverName);
+
+            // Aggiorna bottoni
+            buttonDisconnetti.Visibility = Visibility.Visible;
+            textBoxIpAddress.Text = "";
 
             // Mostra il nuovo elenco
             listView1.ItemsSource = si.table.Finestre;
@@ -580,8 +576,7 @@ namespace WpfApplication1
                     serversListBox.SelectedIndex = 0;
                 }
 
-                // Chiudi e rimuovi disconnectingServer da servers
-                servers[disconnectingServer].server.Close();
+                // Rimuovi disconnectingServer da servers                
                 lock (servers)
                 {
                     servers.Remove(disconnectingServer);
@@ -594,7 +589,7 @@ namespace WpfApplication1
                 // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
                 // ma continuiamo a mostrare le statistiche all'ultima volta che è stato visto online
                 servers[disconnectingServer].isOnline = false;
-
+                
                 if (disconnectingServer.Equals(currentConnectedServer))
                 {
                     // l'elenco finestre disattivo è quello attivo, 
@@ -609,6 +604,10 @@ namespace WpfApplication1
                     buttonDisconnetti.Visibility = Visibility.Hidden;
                 }
             }
+
+            // In ogni caso, chiudi la connessione con il server
+            if (servers[disconnectingServer].server.Connected)
+                servers[disconnectingServer].server.Close();
         }
 
         // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando

@@ -433,8 +433,7 @@ int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 	if (iResult > 0)
 		return iResult;
 	if (iResult == 0) {
-		printMessage(TEXT("Chiusura connessione..."));
-		printMessage(TEXT("\n"));
+		printMessage(TEXT("Connessione chiusa."));		
 	}
 	else if (iResult < 0) {
 		int errorCode = WSAGetLastError();
@@ -442,11 +441,11 @@ int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 			printMessage(TEXT("Connessione chiusa dal client."));
 		}
 		else
-			printMessage(TEXT("recv() fallita con errore : " + WSAGetLastError()));		
+			printMessage(TEXT("recv() fallita con errore : " + WSAGetLastError()));			
 	}
 
-	/* Se si è arrivati qui, c'è stato un problema, quindi chiudi la connessione con il client. */
-	//chiudiConnessioneClient();
+	return iResult;
+
 }
 
 void Server::printMessage(wstring string) {
