@@ -140,7 +140,8 @@
             <Label x:Name="labelServerConnessi" Content="Server connessi" HorizontalAlignment="Center" Margin="0,0,0,0" 
                    VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="0" FontSize="20" FontWeight="Bold"/>
             <ListBox x:Name="serversListBox" BorderThickness="0" Background="{StaticResource LeftMenuBackgroundColor}" 
-                     SelectionChanged="serversListBox_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden">                
+                     SelectionChanged="serversListBox_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">                
                 <ListBox.Resources>
                     <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
                         <Setter Property="SnapsToDevicePixels" Value="true"/>

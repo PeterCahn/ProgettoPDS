@@ -45,8 +45,8 @@ namespace WpfApplication1
         string connectingIp;
         int connectingPort;
 
-        /* Mutex necessario alla gestione delle modifiche nella listView1 perchè i thread statistics and notifications
-         * accedono alla stessa variabile 'servers'
+        /* Mutex necessario alla gestione delle modifiche nella listView1 perchè 
+         * i thread accedono alla stessa variabile 'servers'.
          */
         private static Mutex tablesMapsEntryMutex = new Mutex();
 
@@ -63,6 +63,7 @@ namespace WpfApplication1
 
             disabilitaERimuoviCatturaComando();
 
+            // Aggiunge gli event handler al BackgroundWorker che gestisce il tentativo di connessione a un nuovo server
             bw.DoWork += new DoWorkEventHandler(provaConnessione);
             bw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(finalizzaConnessione);
 
@@ -89,15 +90,10 @@ namespace WpfApplication1
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
         {
-            // Problema di accesso agli elementi della UI se si lancia un thread
-            //Thread connecting;
-            //connecting = new Thread(() => { } );      // lambda perchè è necessario anche passare il parametro
-            //connecting.IsBackground = true;
-            //connecting.Start();
 
-            //connettiAlServer();
+            //connettiAlServer();   // connessione sincrona
 
-            iniziaConnessione();
+            iniziaConnessione();    // connessione asincrona
         }
 
         private void iniziaConnessione()
@@ -147,8 +143,6 @@ namespace WpfApplication1
 
         private void provaConnessione(object sender, DoWorkEventArgs e)
         {
-            // TODO: controlla eccezioni tramite metodi BackgroundWorker 
-
             try
             {
                 e.Result = new TcpClient(connectingIp, connectingPort);
@@ -249,592 +243,391 @@ namespace WpfApplication1
 
             try
             {
-                // ThreadStateException e InvalidOperationException non scatenabili perché sono nuovi thread
+                // Aggiorna statistiche
+                servers[serverName].statisticsBw = new BackgroundWorker();
+                servers[serverName].statisticsBw.WorkerSupportsCancellation = true;
+                servers[serverName].statisticsBw.DoWork += new DoWorkEventHandler(aggiornaStatistiche);
+                servers[serverName].statisticsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(aggiornaStatisticheTerminato);
 
-                // Avvia thread per notifiche
-                servers[serverName].notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
-                servers[serverName].notificationsThread.IsBackground = true;
-                servers[serverName].notificationsThread.Name = "notif_thread_" + serverName;
-                servers[serverName].notificationsThread.Start();
-
-                // Avvia thread per statistiche live
-                servers[serverName].statisticThread = new Thread(() => manageStatistics(serverName));
-                servers[serverName].statisticThread.IsBackground = true;
-                servers[serverName].statisticThread.Name = "stats_thread_" + serverName;
-                servers[serverName].statisticThread.Start();
-            }
-            catch (ArgumentNullException)
-            {
-                // La lambda nella generazione della funzione da passare ai thread ritorna null
-                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
-                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
-                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
-
-                return;
-            }
-            catch (OutOfMemoryException)
-            {
-                // There is not enough memory available to start this thread.
-                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
-                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
-                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
-
-                return;
-            }
-
-            // Mostra la nuova tavola
-            listView1.ItemsSource = si.table.Finestre;
-
-            // Aggiungi il nuovo server alla lista di server nella lista combo box
-            if (serversListBox.Items[0].Equals("Nessun server connesso")) // se c'è solo l'elemento "Nessun server connesso" (è il primo)
-                serversListBox.Items.RemoveAt(0); // rimuovi primo elemento
-
-            // Cambia la selezione della serversListBox al server appena connesso
-            int index = serversListBox.Items.Add(serverName);
-            serversListBox.SelectedIndex = index;
-            currentConnectedServer = serversListBox.Items[index] as string;
-
-            // Cambia la label per mostrare quale server si è appena connesso
-            indirizzoServerConnesso.Content = serverName;
-            listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
-
-        }
-
-        private void connettiAlServer()
-        {
-            IPEndPoint ipPort = null;
-            string ipAddress = null;
-            int port = -1;
-            string serverName = null;
-            TcpClient server = null;
-
-            /* Ottieni il l'indirizzo IP e la porta a cui connettersi. */
-            ipPort = parseHostPort(textBoxIpAddress.Text);
-            if (ipPort == null)
-            {
-                System.Windows.MessageBox.Show("Formato ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]");
-                return;
-            }
-
-            ipAddress = ipPort.Address.ToString();
-            port = ipPort.Port;
-
-            serverName = ipAddress + ":" + port;
-
-            /* Controlla che non ci sia già serverName tra i server a cui si è connessi */
-            lock (servers)
-            {
-                if (servers.ContainsKey(serverName))
+                if (servers[serverName].statisticsBw.IsBusy != true)
                 {
-                    if (servers[serverName].isOnline)
-                    {
-                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
-                        return;
-                    }
-                }
-            }
-
-            try
-            {
-                server = new TcpClient(ipAddress, port);
-                /* ArgumentNullException: hostname is null
-                 * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
-
-                // Se già è presente una connessione a quel server ma era offline, rimuovi i suoi riferimenti
-                // che erano già stati precedentemente invalidati, in modo da poterlo riaggiungere alla lista
-                lock (servers)
-                {
-                    if (servers.ContainsKey(serverName) && !servers[serverName].isOnline)
-                    {
-                        servers.Remove(serverName);
-                        serversListBox.Items.Remove(serverName);
-                    }
-                }
-            }
-            catch (SocketException se)
-            {
-                int errorCode = se.ErrorCode;
-                if (errorCode.Equals(SocketError.TimedOut))
-                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + serverName + " scaduto.");
-                else
-                    System.Windows.MessageBox.Show("Connessione al server " + serverName + " fallita.");
-
-                return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
-            }
-
-            // Crea ServerInfo per la nuova connessione
-            ServerInfo si = new ServerInfo();
-            si.server = server;
-            si.serverName = serverName;
-
-            // Setta IsOnline a true per segnalare che il server è attivo e online
-            si.isOnline = true;
-
-            // Aggiorna bottoni
-            buttonDisconnetti.Visibility = Visibility.Visible;
-            textBoxIpAddress.Text = "";
-
-            // Aggiungi MyTable vuota in ServerInfo
-            si.table = new MyTable();
-
-            // ManualResetEvent settato a false perché i thread che verranno creati si blocchino quando chiamano WaitOne.
-            // Necessario per far terminare i thread quando si vuole disconnettere il server.
-            si.disconnectionEvent = new ManualResetEvent(false);
-
-            si.forcedDisconnectionEvent = new AutoResetEvent(false);
-
-            // Inizializzazione mutex per proteggere modifiche alla lista delle finestre
-            si.tableModificationsMutex = new Mutex();
-
-            try
-            {
-                // Acquisisci il mutex per aggiungere i dati alla lista dei server                
-                tablesMapsEntryMutex.WaitOne();
-
-                servers.Add(serverName, si);
-                tablesMapsEntryMutex.ReleaseMutex();
-            }
-            catch (AbandonedMutexException ex)
-            {
-                // Qualcuno deteneva il mutex e non lo ha rilasciato
-                if (ex.Mutex != null) ex.Mutex.ReleaseMutex();  // rilascia il mutex per poter essere usato ancora
-                servers.Add(serverName, si);                    // aggiungi il server e continua
-            }
-            catch (ObjectDisposedException)
-            {
-                // The current instance has already been disposed.
-                return;
-            }
-
-            /* Lancio dei thread posticipato a quando la chiave "serverName" è effettivamente inserita
-             * per evitare che i thread riferiscano ad una chiave ancora non esistente. 
-             * Una volta partiti tutto il necessario sarà presente in servers[serverName].
-             * I riferimenti dei thread per monitorare l'uscita sono legati direttamente nel ServerInfo alla creazione dei thread stessi.
-             */
-
-            try
-            {
-                // ThreadStateException e InvalidOperationException non scatenabili perché sono nuovi thread
-
-                // Avvia thread per notifiche
-                servers[serverName].notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
-                servers[serverName].notificationsThread.IsBackground = true;
-                servers[serverName].notificationsThread.Name = "notif_thread_" + serverName;
-                servers[serverName].notificationsThread.Start();
-
-                // Avvia thread per statistiche live
-                servers[serverName].statisticThread = new Thread(() => manageStatistics(serverName));
-                servers[serverName].statisticThread.IsBackground = true;
-                servers[serverName].statisticThread.Name = "stats_thread_" + serverName;
-                servers[serverName].statisticThread.Start();
-            }
-            catch (ArgumentNullException)
-            {
-                // La lambda nella generazione della funzione da passare ai thread ritorna null
-                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
-                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
-                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
-
-                return;
-            }
-            catch (OutOfMemoryException)
-            {
-                // There is not enough memory available to start this thread.
-                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
-                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
-                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
-
-                return;
-            }
-
-            // Mostra la nuova tavola
-            listView1.ItemsSource = si.table.Finestre;
-
-            // Aggiungi il nuovo server alla lista di server nella lista combo box
-            if (serversListBox.Items[0].Equals("Nessun server connesso")) // se c'è solo l'elemento "Nessun server connesso" (è il primo)
-                serversListBox.Items.RemoveAt(0); // rimuovi primo elemento
-
-            // Cambia la selezione della serversListBox al server appena connesso
-            int index = serversListBox.Items.Add(serverName);
-            serversListBox.SelectedIndex = index;
-            currentConnectedServer = serversListBox.Items[index] as string;
-
-            // Cambia la label per mostrare quale server si è appena connesso
-            indirizzoServerConnesso.Content = serverName;
-            listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
-
-        }
-
-        /* Viene eseguito in un thread a parte.
-         * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
-         * In questo modo abbiamo statistiche "live"
-         */
-        private void manageStatistics(string serverName)
-        {
-            while (true)
-            {
-                /* Controlla che 'serverName' non sia stata eliminata */
-                try
-                {
-                    // Accesso a 'servers'
-                    // TODO: riduce parallelismo: è accettabile?
-                    tablesMapsEntryMutex.WaitOne();
-                    if (!servers.ContainsKey(serverName)) // l'argomento non può essere null perché validato
-                        break;
-                }
-                catch (AbandonedMutexException)
-                {
-                    // Qualcuno deteneva il mutex e non lo ha rilasciato                    
-                }
-                catch (ObjectDisposedException)
-                {
-                    // The current instance has already been disposed.                    
-                }                
-                finally
-                {
-                    if (tablesMapsEntryMutex != null)
-                        tablesMapsEntryMutex.ReleaseMutex();
+                    servers[serverName].statisticsBw.RunWorkerAsync(serverName);
                 }
                 
+                // Gestisci notifiche
+                servers[serverName].notificationsBw = new BackgroundWorker();
+                servers[serverName].notificationsBw.WorkerSupportsCancellation = true;
+                servers[serverName].notificationsBw.DoWork += new DoWorkEventHandler(riceviNotifiche);
+                servers[serverName].notificationsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(riceviNotificheTerminato);
 
-                // il MutualResetEvent disconnectionEvent è usato anche per far attendere il thread 
-                // nell'aggiornare le statistiche. serverName è sicuramente presente
-                try
+                if (servers[serverName].notificationsBw.IsBusy != true)
                 {
-                    bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
-                    if (isSignaled)
-                        break;
-
-                    servers[serverName].table.aggiornaStatisticheFocus();
-
-                }
-                catch (AbandonedMutexException ame)
-                {
-                    if (ame != null) ame.Mutex.ReleaseMutex();
-                    break;
-                }
-                catch (ObjectDisposedException)
-                {
-                    // il disconnectionEvent è stato "disposed"
-                    break;
-                }
-                catch (KeyNotFoundException)
-                {
-                    return;
-                }
-                catch (Exception)
-                {
-                    return;
+                    servers[serverName].notificationsBw.RunWorkerAsync(serverName);
                 }
             }
+            catch (ArgumentNullException)
+            {
+                // La lambda nella generazione della funzione da passare ai thread ritorna null
+                //servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
+                //servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
+                //servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
 
-            try
-            {
-                servers[serverName].forcedDisconnectionEvent.Set();
-            }
-            catch (ObjectDisposedException)
-            {
-                // forcedDisconnectionEvent è stato già Disposed
+                servers[serverName].statisticsBw.CancelAsync();
+                servers[serverName].notificationsBw.CancelAsync();
+
                 return;
+            }
+            catch (OutOfMemoryException)
+            {
+                // There is not enough memory available to start this thread.
+                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
+                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
+                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
+
+                return;
+            }
+
+            // Mostra la nuova tavola
+            listView1.ItemsSource = si.table.Finestre;
+
+            // Aggiungi il nuovo server alla lista di server nella lista combo box
+            if (serversListBox.Items[0].Equals("Nessun server connesso")) // se c'è solo l'elemento "Nessun server connesso" (è il primo)
+                serversListBox.Items.RemoveAt(0); // rimuovi primo elemento
+
+            // Cambia la selezione della serversListBox al server appena connesso
+            int index = serversListBox.Items.Add(serverName);
+            serversListBox.SelectedIndex = index;
+            currentConnectedServer = serversListBox.Items[index] as string;
+
+            // Cambia la label per mostrare quale server si è appena connesso
+            indirizzoServerConnesso.Content = serverName;
+            listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
+
+        }
+
+        /* Come manageStatistics ma da eseguire in un BackgroundWorker */
+        private void aggiornaStatistiche(object sender, DoWorkEventArgs e)
+        {
+            string serverName = (string) e.Argument;
+            BackgroundWorker worker = sender as BackgroundWorker;
+
+            while (true)
+            {
+                // Controlla se è stata chiamata CancelAsync() sul BackgroundThread che esegue aggiornaStatistiche
+                if (worker.CancellationPending == true)
+                {
+                    e.Cancel = true;
+                    break;
+                }
+                else
+                {
+                    /* Controlla che 'serverName' non sia stata eliminata */
+                    try
+                    {
+                        // Accesso a 'servers'
+                        // TODO: riduce parallelismo: è accettabile?
+                        tablesMapsEntryMutex.WaitOne();
+                        if (servers.ContainsKey(serverName)) // l'argomento non può essere null perché validato
+                        {                            
+                            servers[serverName].table.aggiornaStatisticheFocus();
+                        }
+                    }
+                    catch (AbandonedMutexException)
+                    {
+                        // Qualcuno deteneva il mutex e non lo ha rilasciato                    
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // The current instance has already been disposed.                    
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                        /* Eccezione scatenata se serverName non c'è più in 'servers' */
+                        System.Windows.MessageBox.Show("Problema interno inaspettato.\nArresto gestione statistiche per il server " + serverName + ".");
+                        servers[serverName].notificationsBw.CancelAsync();
+                        servers[serverName].statisticsBw.CancelAsync();
+                        
+                    }
+                    catch (Exception)
+                    {
+                        System.Windows.MessageBox.Show("Problema inaspettato durante l'aggiornamento statistiche.\nArresto gestione statistiche per il server " + serverName + ".");
+                        servers[serverName].notificationsBw.CancelAsync();
+                        servers[serverName].statisticsBw.CancelAsync();
+                        
+                    }
+                    finally
+                    {
+                        if (tablesMapsEntryMutex != null)
+                            tablesMapsEntryMutex.ReleaseMutex();
+                    }
+                }
+                Thread.Sleep(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
             }
         }
 
-        /* Viene eseguito in un thread a parte.
-         * Si occupa della ricezione e gestione delle notifiche.
-         */
-        private void manageNotifications(string serverName)
+        /* Chiamato al termine di aggiornaStatistiche */
+        private void aggiornaStatisticheTerminato(object sender, RunWorkerCompletedEventArgs e)
         {
+            if (e.Cancelled == true)
+            {
+                System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche cancellato.");
+            }
+
+            else if (e.Error != null)
+            {
+                System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato con errori.");
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato normalmente.");
+            }
+        }
+        
+        /* Come manageNotifications ma da eseguire in un BackgroundWorker */
+        private void riceviNotifiche(object sender, DoWorkEventArgs e)
+        {
+            string serverName = (string) e.Argument;
+            BackgroundWorker worker = sender as BackgroundWorker;
+            TcpClient server = null;
+
             NetworkStream serverStream = null;
             byte[] buffer = new byte[7];
             Array.Clear(buffer, 0, 7);
-
-            tablesMapsEntryMutex.WaitOne();
-            if (!servers.ContainsKey(serverName))
+            
+            try
             {
-                tablesMapsEntryMutex.ReleaseMutex();
+                server = servers[serverName].server;
+                serverStream = server.GetStream();
+            }
+            catch (KeyNotFoundException)
+            {
+                /* Eccezione scatenata se serverName non c'è più in 'servers' */
+                System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".");
+                servers[serverName].notificationsBw.CancelAsync();
+                servers[serverName].statisticsBw.CancelAsync();
+
+                // TODO: Pulisci interfaccia in questo caso
+                //safePulisciInterfacciaWithBW(null, null, serverName, false);
+
                 return;
             }
-            TcpClient server = servers[serverName].server;
-            tablesMapsEntryMutex.ReleaseMutex();
+            catch(Exception)
+            {
+                /* Eccezione scatenata se serverName non c'è più in 'servers' */
+                System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".");
+                servers[serverName].notificationsBw.CancelAsync();
+                servers[serverName].statisticsBw.CancelAsync();
 
-            serverStream = server.GetStream();
+                // TODO: Pulisci interfaccia in questo caso
+                //safePulisciInterfacciaWithBW(null, null, serverName, false);
+
+                return;
+            }            
 
             string operation = null;
             string progName = null;
-
-            // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
-            // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
-            // Available() ritorna il numero di dati da leggere
-            // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
-
-            //while(!((servers[serverName].socket.Poll(1000, SelectMode.SelectRead) && (servers[serverName].socket.Available == 0)) || !servers[serverName].socket.Connected))
+            
             while (serverStream.CanRead && server.Connected)
             {
-                // Aspetto se si sta settando il disconnectionEvent, altrimenti leggo i dati ricevuti.                     
-                bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(1);
-                if (!isSignaled)
+                // Controlla se è stata chiamata CancelAsync() sul BackgroundThread che esegue riceiNotifiche 
+                if (worker.CancellationPending == true)
                 {
-                    // Iinizio e dimensione messaggio: "--<4 byte int>-" = 7 byte in "buffer"
-                    // Leggi la dimensione del messaggio
-                    if (managedReadn(server, serverStream, serverName, buffer, 7) <= 0)
-                        // Continue anche nei casi di server disconnesso oltre che ai timeout tanto in quei casi la condizione del while al prossimo giro non sarà soddisfatta
-                        continue;   
-                    int msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
-
-                    // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
-                    byte[] msg = new byte[msgSize];
-                    if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
-                        continue;
-
-                    // Estrai operazione => primi 5 byte
-                    byte[] op = new byte[5];
-                    Array.Copy(msg, 0, op, 0, 5);
-                    operation = Encoding.ASCII.GetString(op);
-
-                    if (operation == "OKCLO")
-                    {
-                        servers[serverName].disconnectionEvent.Set();
-                        safePulisciInterfaccia(server, serverStream, serverName, true);
-                        continue;
-                    }
-
-                    if (operation == "RETRY")
-                    {
-                        continue;
-                    }
-
-                    if (operation == "ERRCL")
-                    {
-                        servers[serverName].disconnectionEvent.Set();
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                        if (servers[serverName].statisticThread.IsAlive)
-                            servers[serverName].forcedDisconnectionEvent.WaitOne();
-
-                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
-                        continue;
-                    }
-
-                    // Estrai hwnd: successivi 5 byte.
-                    byte[] h = new byte[5];
-                    Array.Copy(msg, 6, h, 0, 4);
-                    int hwnd = BitConverter.ToInt32(msg, 6);
-
-                    // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                    int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                    // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                    byte[] pN = new byte[progNameLength];
-                    Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                    progName = Encoding.Unicode.GetString(pN);
-
-
-                    /* Possibili valori ricevuti:
-                        * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
-                        * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
-                        * --<4B dimensione messaggio>-TTCHA-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_con_nuovo_nome>
-                        * --<4B dimensione messaggio>-OPENP-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<icona>
-                        */
-
-                    switch (operation)
-                    {
-                        case "FOCUS":
-                            // Cambia programma col focus                            
-                            servers[serverName].table.changeFocus(hwnd);
-
-                            break;
-                        case "CLOSE":
-                            // Rimuovi programma dalla listView                            
-                            servers[serverName].table.removeFinestra(hwnd);
-
-                            break;
-                        case "TTCHA":
-                            // Cambia nome il nome della finestra ricevuta
-                            servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
-                                                        
-                            break;
-                        case "OPENP":
-                            try
-                            {
-                                /* Ricevi icona processo */
-                                Bitmap bitmap = new Bitmap(64, 64);
-                                bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                                                                                             //bitmap.SetTransparencyKey(Color.White);
-
-                                // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
-                                // 4 byte di dimensione icona e il trattino
-                                int notBmpData = 16 + progNameLength + 1 + 4 + 1;
-                                int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
-
-                                /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
-                                byte[] bmpData = new byte[bmpLength];
-                                Array.Clear(bmpData, 0, bmpLength);
-
-                                // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
-                                // partendo dal source offset "notBmpData"
-                                Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
-
-                                /* Crea la bitmap a partire dal byte array */
-                                bitmap = CopyDataToBitmap(bmpData);
-                                /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
-                                bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
-
-                                BitmapImage bmpImage;
-                                using (var b = new Bitmap(bitmap.Width, bitmap.Height))
-                                {
-                                    b.SetResolution(bitmap.HorizontalResolution, bitmap.VerticalResolution);
-
-                                    using (var g = Graphics.FromImage(b))
-                                    {
-                                        // Clears the entire drawing surface and fills it with the specified background color
-                                        g.Clear(Color.White);
-                                        // Draws the specified image using its original physical size at the location specified by a coordinate pair
-                                        g.DrawImageUnscaled(bitmap, 0, 0, bitmap.Width, bitmap.Height);
-                                    }
-
-                                    // Now save b like you normally would
-                                    using (MemoryStream stream = new MemoryStream())
-                                    {
-                                        b.Save(stream, ImageFormat.Bmp);
-                                        stream.Position = 0;
-                                        bmpImage = new BitmapImage();
-                                        bmpImage.BeginInit();
-                                        // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
-                                        // Force the bitmap to load right now so we can dispose the stream.
-                                        bmpImage.CacheOption = BitmapCacheOption.OnLoad;
-                                        bmpImage.StreamSource = stream;
-                                        bmpImage.EndInit();
-                                        bmpImage.Freeze();
-                                    }
-
-                                    // Aggiungi il nuovo elemento all'elenco delle tabelle
-                                    servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bmpImage);
-
-                                }
-                            }
-                            catch (Exception)
-                            {
-                                // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
-                                // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre                                    
-                            }
-
-                            break;
-                    }
-                }
-                else
+                    e.Cancel = true;
                     break;
-            }
+                }
+                                
+                // Iinizio e dimensione messaggio: "--<4 byte int>-" = 7 byte in "buffer"
+                // Leggi la dimensione del messaggio
+                if (managedReadnWithBW(server, serverStream, serverName, buffer, 7) <= 0)
+                    // Continue anche nei casi di server disconnesso oltre che ai timeout tanto in quei casi la condizione del while al prossimo giro non sarà soddisfatta
+                    continue;
+                int msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
 
+                // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
+                byte[] msg = new byte[msgSize];
+                if (managedReadnWithBW(server, serverStream, serverName, msg, msgSize) <= 0)
+                    continue;
+
+                // Estrai operazione => primi 5 byte
+                byte[] op = new byte[5];
+                Array.Copy(msg, 0, op, 0, 5);
+                operation = Encoding.ASCII.GetString(op);
+
+                if (operation == "OKCLO")
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+
+                    safePulisciInterfacciaWithBW(serverName, true);
+                    continue;   // continua perché venga visto alla prossima iterazione la CancellationPending == true
+                }
+
+                if (operation == "RETRY")
+                {
+                    continue;
+                }
+
+                if (operation == "ERRCL")
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+                    System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                    
+                    safePulisciInterfacciaWithBW(serverName, false);
+                    continue;
+                }
+
+                // Estrai hwnd: successivi 5 byte.
+                byte[] h = new byte[5];
+                Array.Copy(msg, 6, h, 0, 4);
+                int hwnd = BitConverter.ToInt32(msg, 6);
+
+                // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
+                // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                byte[] pN = new byte[progNameLength];
+                Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
+                progName = Encoding.Unicode.GetString(pN);
+
+                /* Possibili valori ricevuti:
+                    * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
+                    * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
+                    * --<4B dimensione messaggio>-TTCHA-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_con_nuovo_nome>
+                    * --<4B dimensione messaggio>-OPENP-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<icona>
+                    */
+
+                switch (operation)
+                {
+                    case "FOCUS":
+                        // Cambia programma col focus                            
+                        servers[serverName].table.changeFocus(hwnd);
+
+                        break;
+                    case "CLOSE":
+                        // Rimuovi programma dalla listView                            
+                        servers[serverName].table.removeFinestra(hwnd);
+
+                        break;
+                    case "TTCHA":
+                        // Cambia nome il nome della finestra ricevuta
+                        servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
+
+                        break;
+                    case "OPENP":
+                        try
+                        {
+                            /* Ricevi icona processo */
+                            Bitmap bitmap = new Bitmap(64, 64);
+                            bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                                                                                            //bitmap.SetTransparencyKey(Color.White);
+
+                            // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
+                            // 4 byte di dimensione icona e il trattino
+                            int notBmpData = 16 + progNameLength + 1 + 4 + 1;
+                            int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
+
+                            /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
+                            byte[] bmpData = new byte[bmpLength];
+                            Array.Clear(bmpData, 0, bmpLength);
+
+                            // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
+                            // partendo dal source offset "notBmpData"
+                            Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
+
+                            /* Crea la bitmap a partire dal byte array */
+                            bitmap = CopyDataToBitmap(bmpData);
+                            /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+                            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+
+                            BitmapImage bmpImage;
+                            using (var b = new Bitmap(bitmap.Width, bitmap.Height))
+                            {
+                                b.SetResolution(bitmap.HorizontalResolution, bitmap.VerticalResolution);
+
+                                using (var g = Graphics.FromImage(b))
+                                {
+                                    // Clears the entire drawing surface and fills it with the specified background color
+                                    g.Clear(Color.White);
+                                    // Draws the specified image using its original physical size at the location specified by a coordinate pair
+                                    g.DrawImageUnscaled(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+                                }
+
+                                // Now save b like you normally would
+                                using (MemoryStream stream = new MemoryStream())
+                                {
+                                    b.Save(stream, ImageFormat.Bmp);
+                                    stream.Position = 0;
+                                    bmpImage = new BitmapImage();
+                                    bmpImage.BeginInit();
+                                    // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
+                                    // Force the bitmap to load right now so we can dispose the stream.
+                                    bmpImage.CacheOption = BitmapCacheOption.OnLoad;
+                                    bmpImage.StreamSource = stream;
+                                    bmpImage.EndInit();
+                                    bmpImage.Freeze();
+                                }
+
+                                // Aggiungi il nuovo elemento all'elenco delle tabelle
+                                servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bmpImage);
+
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
+                            // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre                                    
+                        }
+
+                        break;
+                }
+                
+            }
         }
 
-        public Bitmap CopyDataToBitmap(byte[] data)
+        /* Chiamato al termine di aggiornaStatistiche */
+        private void riceviNotificheTerminato(object sender, RunWorkerCompletedEventArgs e)
         {
-            // Here create the Bitmap to the know height, width and format
-            Bitmap bmp = new Bitmap(256, 256, PixelFormat.Format32bppRgb);
-
-            // Create a BitmapData and Lock all pixels to be written 
-            BitmapData bmpData = bmp.LockBits(
-                                 new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
-                                 ImageLockMode.WriteOnly, bmp.PixelFormat);
-
-            // Copy the data from the byte array into BitmapData.Scan0
-            Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
-
-            // Unlock the pixels
-            bmp.UnlockBits(bmpData);
-
-            //Return the bitmap 
-            return bmp;
+            if (e.Cancelled == true)
+            {
+                System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche cancellato.");
+            }
+            else if (e.Error != null)
+            {
+                System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato con errori.");
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato normalmente.");
+            }           
+            
         }
 
         delegate void PulisciInterfacciaDelegate(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose);
-
-        private void disconnettiDalServer()
-        {
-            NetworkStream serverStream = null;
-
-            TcpClient server = null;
-
-            // definisci il server da disconnettere. 
-            // Le strutture dati del server connesso in questo momento sono per forza lì, solo disconnettiDalServer le può rimuovere.
-            // CurrentConnectedServer può essere però cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
-            string disconnectingServer = currentConnectedServer;
-
-            try
-            {
-                byte[] buffer = new byte[9];
-                Array.Clear(buffer, 0, 9);
-
-                server = servers[disconnectingServer].server;
-                serverStream = server.GetStream();
-
-                // Prepara messaggio da inviare
-                StringBuilder sb = new StringBuilder();
-                sb.Append("--CLSCN-");
-                Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
-                //buffer = Encoding.ASCII.GetBytes(sb.ToString());
-                buffer[8] = (byte)'\0';
-                // Invia richiesta chiusura
-                serverStream.Write(buffer, 0, 9);
-
-                // Aspetto che il thread manageNotifications() finisca
-                servers[disconnectingServer].notificationsThread.Join();
-
-                // Aspetto che il thread manageStatistics() finisca
-                servers[disconnectingServer].statisticThread.Join();
-                server.Close();
-
-            }
-            catch (InvalidOperationException) // include ObjectDisposedException
-            {
-                // C'è stato un problema con il NetworkStream.
-                // Quindi setto il disconnectionEvent ora in modo che, al prossimo ciclo while, i thread escano.
-                // Se il NetworkStream non è accessibile, anche il notificationThread se ne accorge e scatena l'eccezione.
-                servers[disconnectingServer].disconnectionEvent.Set();
-            }
-            catch (IOException)
-            {
-                // Sblocca il server manualmente e continua sul finally.
-                // StatisticsThread si chiude dopo la sola Set().
-                // NotificationsThread vedrà che il networkStream verrà chiuso e l'eccezione generata verrà in questo senso
-                //      propagata anche a quel thread che uscirà dalla sua esecuzione.
-                servers[disconnectingServer].disconnectionEvent.Set();
-
-            }
-
-        }
+        delegate void PulisciInterfacciaDelegateClean(string disconnectingServer, bool onPurpose);
 
         /* Pulisce l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke)
          * Seleziona la listView adatta da visualizzare, con distinzione tra pulizia dovuta a disconnessione volontaria
          *      o pulizia dovuta a eccezzione scatenata (parametro onPurpose)
          * Disconnessione volontaria:   rimuove l'elenco delle finestre di quel server e la voce nella ListBox
-         * Disconnessione forzata:      non rimuove l'elenco delle finestre di quel server né la voce nella ListBox 
-         * TODO: gestione riconnessione a server già presente nell'elenco e in 'servers'
+         * Disconnessione forzata:      non rimuove l'elenco delle finestre di quel server né la voce nella ListBox          
          */
-        private void safePulisciInterfaccia(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose)
+        private void safePulisciInterfacciaWithBW(string disconnectingServer, bool onPurpose)
         {
             if (!listView1.Dispatcher.CheckAccess())
             {
                 // Non mi trovo sul main thread
-                PulisciInterfacciaDelegate d = new PulisciInterfacciaDelegate(pulisciInterfacciaDopoDisconnessione);
-                Dispatcher.BeginInvoke(d, new object[] { server, serverStream, disconnectingServer, onPurpose });
+                PulisciInterfacciaDelegateClean d = new PulisciInterfacciaDelegateClean(pulisciInterfacciaDopoDisconnessioneWithBW);
+                Dispatcher.BeginInvoke(d, new object[] { disconnectingServer, onPurpose });
             }
             else
             {
                 // Mi trovo sul main thread e posso chiamare direttamente la funzione per aggiornare l'interfaccia
-                pulisciInterfacciaDopoDisconnessione(server, serverStream, disconnectingServer, onPurpose);
+                pulisciInterfacciaDopoDisconnessioneWithBW(disconnectingServer, onPurpose);
             }
         }
 
-        private void pulisciInterfacciaDopoDisconnessione(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose)
+        private void pulisciInterfacciaDopoDisconnessioneWithBW(string disconnectingServer, bool onPurpose)
         {
-            if (serverStream != null)
-                serverStream.Close();
-            if (server != null)
-                server.Close(); // TODO: Non avviene nessun errore. Ma si può fare Close() dopo averlo già fatto? Check.
-            
-            // Rilascia risorse del ManualResetEvent e del Mutex
-            servers[disconnectingServer].disconnectionEvent.Close();
-            servers[disconnectingServer].tableModificationsMutex.Dispose();
-
             if (onPurpose)
             {
                 // Disconnessione volontaria: rimuovi voce server dalla ListBox e sposta selezione al primo elemento in lista
@@ -856,11 +649,14 @@ namespace WpfApplication1
                     serversListBox.SelectedIndex = 0;
                 }
 
-                // Rimuovi disconnectingServer da servers
+                // Chiudi e rimuovi disconnectingServer da servers
+                servers[disconnectingServer].server.Close();
+                tablesMapsEntryMutex.WaitOne();
                 servers.Remove(disconnectingServer);
-                
+                tablesMapsEntryMutex.ReleaseMutex();
+
             }
-            else
+            else if(!servers.ContainsKey(disconnectingServer) || !onPurpose)
             {
                 // Disconnessione forzata: non eliminare voce dalla ListBox né l'elenco delle finestre. Disabilita solo tasti cattura.
                 // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
@@ -940,6 +736,26 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = false;
         }
 
+        public Bitmap CopyDataToBitmap(byte[] data)
+        {
+            // Here create the Bitmap to the know height, width and format
+            Bitmap bmp = new Bitmap(256, 256, PixelFormat.Format32bppRgb);
+
+            // Create a BitmapData and Lock all pixels to be written 
+            BitmapData bmpData = bmp.LockBits(
+                                 new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
+                                 ImageLockMode.WriteOnly, bmp.PixelFormat);
+
+            // Copy the data from the byte array into BitmapData.Scan0
+            Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
+
+            // Unlock the pixels
+            bmp.UnlockBits(bmpData);
+
+            //Return the bitmap 
+            return bmp;
+        }
+
         // Chiamato quando il server è online e si possono inviare comandi
         private void mostraCatturaComando()
         {
@@ -961,7 +777,51 @@ namespace WpfApplication1
 
         private void buttonDisconnetti_Click(object sender, RoutedEventArgs e)
         {
-            disconnettiDalServer();
+            disconnettiDalServerWithBW();
+            //disconnettiDalServer();
+        }
+
+        private void disconnettiDalServerWithBW()
+        {
+            NetworkStream serverStream = null;
+            TcpClient server = null;
+
+            // Definisci il server da disconnettere. 
+            // Le strutture dati del server connesso in questo momento sono per forza lì, solo disconnettiDalServerWithBW le può rimuovere.
+            // CurrentConnectedServer può essere però cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
+            string disconnectingServer = currentConnectedServer;
+
+            try
+            {
+                byte[] buffer = new byte[9];
+                Array.Clear(buffer, 0, 9);
+
+                server = servers[disconnectingServer].server;
+                serverStream = server.GetStream();
+
+                // Prepara messaggio da inviare
+                StringBuilder sb = new StringBuilder();
+                sb.Append("--CLSCN-");
+                Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
+                //buffer = Encoding.ASCII.GetBytes(sb.ToString());
+                buffer[8] = (byte)'\0';
+                // Invia richiesta chiusura
+                serverStream.Write(buffer, 0, 9);
+
+            }
+            catch (InvalidOperationException) // include ObjectDisposedException
+            {
+                // C'è stato un problema con il NetworkStream o nella CancenAsync().                
+                // Sblocca il server manualmente chiamando CancelAsync().
+                servers[disconnectingServer].notificationsBw.CancelAsync();
+                servers[disconnectingServer].statisticsBw.CancelAsync();
+            }
+            catch (IOException)
+            {
+                // Sblocca il server manualmente chiamando CancelAsync().                
+                servers[disconnectingServer].notificationsBw.CancelAsync();
+                servers[disconnectingServer].statisticsBw.CancelAsync();
+            }
         }
 
         private void buttonChiudiServerDisconnesso_Click(object sender, RoutedEventArgs e)
@@ -1070,7 +930,6 @@ namespace WpfApplication1
             disabilitaCatturaComando();
 
             //UnhookWindowsHookEx(_hookID);
-
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1197,6 +1056,227 @@ namespace WpfApplication1
             }
         }
 
+        private int managedReadnWithBW(TcpClient server, NetworkStream serverStream, String serverName, byte[] buffer, int n)
+        {
+            int res;
+            if ((res = readn(server, serverStream, serverName, buffer, n)) == 0)
+            {
+                // È stato superato il timeout senza ricevere niente
+                return res;
+            }
+            else if (res == -2)
+            {
+                // La read ha letto 0 byte, significa che il server non è più raggiungibile, posso chiudere tutto                
+                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                servers[serverName].statisticsBw.CancelAsync();
+                servers[serverName].notificationsBw.CancelAsync();
+
+                safePulisciInterfacciaWithBW(serverName, false);
+                return res;
+            }
+            else if (res < 0)
+            {
+                // Eccezione scatenata in readn
+                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                servers[serverName].statisticsBw.CancelAsync();
+                servers[serverName].notificationsBw.CancelAsync();
+
+                safePulisciInterfacciaWithBW(serverName, false);
+                return res;
+            }
+            return res;
+        }
+
+        /* FUNZIONI RELATIVE ALLA CREAZIONE MANUALE DEI THREAD */
+
+        private void connettiAlServer()
+        {
+            IPEndPoint ipPort = null;
+            string ipAddress = null;
+            int port = -1;
+            string serverName = null;
+            TcpClient server = null;
+
+            /* Ottieni il l'indirizzo IP e la porta a cui connettersi. */
+            ipPort = parseHostPort(textBoxIpAddress.Text);
+            if (ipPort == null)
+            {
+                System.Windows.MessageBox.Show("Formato ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]");
+                return;
+            }
+
+            ipAddress = ipPort.Address.ToString();
+            port = ipPort.Port;
+
+            serverName = ipAddress + ":" + port;
+
+            /* Controlla che non ci sia già serverName tra i server a cui si è connessi */
+            lock (servers)
+            {
+                if (servers.ContainsKey(serverName))
+                {
+                    if (servers[serverName].isOnline)
+                    {
+                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
+                        return;
+                    }
+                }
+            }
+
+            try
+            {
+                server = new TcpClient(ipAddress, port);
+                /* ArgumentNullException: hostname is null
+                 * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
+
+                // Se già è presente una connessione a quel server ma era offline, rimuovi i suoi riferimenti
+                // che erano già stati precedentemente invalidati, in modo da poterlo riaggiungere alla lista
+                lock (servers)
+                {
+                    if (servers.ContainsKey(serverName) && !servers[serverName].isOnline)
+                    {
+                        servers.Remove(serverName);
+                        serversListBox.Items.Remove(serverName);
+                    }
+                }
+            }
+            catch (SocketException se)
+            {
+                int errorCode = se.ErrorCode;
+                if (errorCode.Equals(SocketError.TimedOut))
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + serverName + " scaduto.");
+                else
+                    System.Windows.MessageBox.Show("Connessione al server " + serverName + " fallita.");
+
+                return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
+            }
+
+            // Crea ServerInfo per la nuova connessione
+            ServerInfo si = new ServerInfo();
+            si.server = server;
+            si.serverName = serverName;
+
+            // Setta IsOnline a true per segnalare che il server è attivo e online
+            si.isOnline = true;
+
+            // Aggiorna bottoni
+            buttonDisconnetti.Visibility = Visibility.Visible;
+            textBoxIpAddress.Text = "";
+
+            // Aggiungi MyTable vuota in ServerInfo
+            si.table = new MyTable();
+
+            // ManualResetEvent settato a false perché i thread che verranno creati si blocchino quando chiamano WaitOne.
+            // Necessario per far terminare i thread quando si vuole disconnettere il server.
+            si.disconnectionEvent = new ManualResetEvent(false);
+
+            si.forcedDisconnectionEvent = new AutoResetEvent(false);
+
+            // Inizializzazione mutex per proteggere modifiche alla lista delle finestre
+            si.tableModificationsMutex = new Mutex();
+
+            try
+            {
+                // Acquisisci il mutex per aggiungere i dati alla lista dei server                
+                tablesMapsEntryMutex.WaitOne();
+
+                servers.Add(serverName, si);
+                tablesMapsEntryMutex.ReleaseMutex();
+            }
+            catch (AbandonedMutexException ex)
+            {
+                // Qualcuno deteneva il mutex e non lo ha rilasciato
+                if (ex.Mutex != null) ex.Mutex.ReleaseMutex();  // rilascia il mutex per poter essere usato ancora
+                servers.Add(serverName, si);                    // aggiungi il server e continua
+            }
+            catch (ObjectDisposedException)
+            {
+                // The current instance has already been disposed.
+                return;
+            }
+
+            /* Lancio dei thread posticipato a quando la chiave "serverName" è effettivamente inserita
+             * per evitare che i thread riferiscano ad una chiave ancora non esistente. 
+             * Una volta partiti tutto il necessario sarà presente in servers[serverName].
+             * I riferimenti dei thread per monitorare l'uscita sono legati direttamente nel ServerInfo alla creazione dei thread stessi.
+             */
+            try
+            {
+                // Aggiorna statistiche
+                servers[serverName].statisticsBw = new BackgroundWorker();
+                servers[serverName].statisticsBw.DoWork += new DoWorkEventHandler(aggiornaStatistiche);
+                servers[serverName].statisticsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(aggiornaStatisticheTerminato);
+
+                if (servers[serverName].statisticsBw.IsBusy != true)
+                {
+                    servers[serverName].statisticsBw.RunWorkerAsync(serverName);
+                }
+
+                //servers[serverName].statisticsBw.RunWorkerAsync(serverName);
+
+                // Gestisci notifiche
+                servers[serverName].notificationsBw = new BackgroundWorker();
+                servers[serverName].notificationsBw.DoWork += new DoWorkEventHandler(riceviNotifiche);
+                servers[serverName].notificationsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(riceviNotificheTerminato);
+
+                if (servers[serverName].notificationsBw.IsBusy != true)
+                {
+                    servers[serverName].notificationsBw.RunWorkerAsync(serverName);
+                }
+
+                /*
+                // ThreadStateException e InvalidOperationException non scatenabili perché sono nuovi thread
+                // Avvia thread per notifiche
+                servers[serverName].notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
+                servers[serverName].notificationsThread.IsBackground = true;
+                servers[serverName].notificationsThread.Name = "notif_thread_" + serverName;
+                servers[serverName].notificationsThread.Start();
+                */
+
+                /*
+                // Avvia thread per statistiche live
+                servers[serverName].statisticThread = new Thread(() => manageStatistics(serverName));
+                servers[serverName].statisticThread.IsBackground = true;
+                servers[serverName].statisticThread.Name = "stats_thread_" + serverName;
+                servers[serverName].statisticThread.Start();
+                */
+            }
+            catch (ArgumentNullException)
+            {
+                // La lambda nella generazione della funzione da passare ai thread ritorna null
+                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
+                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
+                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
+
+                return;
+            }
+            catch (OutOfMemoryException)
+            {
+                // There is not enough memory available to start this thread.
+                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
+                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
+                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
+
+                return;
+            }
+
+            // Mostra la nuova tavola
+            listView1.ItemsSource = si.table.Finestre;
+
+            // Aggiungi il nuovo server alla lista di server nella lista combo box
+            if (serversListBox.Items[0].Equals("Nessun server connesso")) // se c'è solo l'elemento "Nessun server connesso" (è il primo)
+                serversListBox.Items.RemoveAt(0); // rimuovi primo elemento
+
+            // Cambia la selezione della serversListBox al server appena connesso
+            int index = serversListBox.Items.Add(serverName);
+            serversListBox.SelectedIndex = index;
+            currentConnectedServer = serversListBox.Items[index] as string;
+
+            // Cambia la label per mostrare quale server si è appena connesso
+            indirizzoServerConnesso.Content = serverName;
+            listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
+
+        }
 
         private int managedReadn(TcpClient server, NetworkStream serverStream, String serverName, byte[] buffer, int n)
         {
@@ -1226,6 +1306,397 @@ namespace WpfApplication1
             }
             return res;
         }
+
+        private void pulisciInterfacciaDopoDisconnessione(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose)
+        {
+            if (serverStream != null)
+                serverStream.Close();
+            if (server != null)
+                server.Close(); // TODO: Non avviene nessun errore. Ma si può fare Close() dopo averlo già fatto? Check.
+
+            // Rilascia risorse del ManualResetEvent e del Mutex
+            servers[disconnectingServer].disconnectionEvent.Close();
+            servers[disconnectingServer].tableModificationsMutex.Dispose();
+
+            if (onPurpose)
+            {
+                // Disconnessione volontaria: rimuovi voce server dalla ListBox e sposta selezione al primo elemento in lista
+                serversListBox.Items.Remove(disconnectingServer);
+                if (serversListBox.Items.Count == 0)
+                {
+                    // Aggiorna bottoni
+                    buttonDisconnetti.Visibility = Visibility.Hidden;
+                    buttonInvia.IsEnabled = false;
+                    buttonCattura.IsEnabled = false;
+
+                    // non ci sono più server connessi
+                    serversListBox.Items.Add("Nessun server connesso");
+                    serversListBox.SelectedIndex = 0;
+                }
+                else
+                {
+                    // Selezioniamo il primo server della lista
+                    serversListBox.SelectedIndex = 0;
+                }
+
+                // Rimuovi disconnectingServer da servers
+                servers.Remove(disconnectingServer);
+
+            }
+            else
+            {
+                // Disconnessione forzata: non eliminare voce dalla ListBox né l'elenco delle finestre. Disabilita solo tasti cattura.
+                // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
+                // ma continuiamo a mostrare le statistiche all'ultima volta che è stato visto online
+                servers[disconnectingServer].isOnline = false;
+
+                if (disconnectingServer.Equals(currentConnectedServer))
+                {
+                    // l'elenco finestre disattivo è quello attivo, 
+                    // quindi mostra la label "Disconnesso", disabilita e nascondi cattura comando e permetti la chiusura dell'elenco finestre
+                    labelDisconnesso.Visibility = Visibility.Visible;
+                    disabilitaERimuoviCatturaComando();
+
+                    // Server non online: posso abilitare il pulsante "Chiudi server"
+                    buttonChiudiServer.IsEnabled = true;
+                    buttonChiudiServer.Visibility = Visibility.Visible;
+                    buttonDisconnetti.IsEnabled = false;
+                    buttonDisconnetti.Visibility = Visibility.Hidden;
+                }
+            }
+        }
+
+        private void safePulisciInterfaccia(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose)
+        {
+            if (!listView1.Dispatcher.CheckAccess())
+            {
+                // Non mi trovo sul main thread
+                PulisciInterfacciaDelegate d = new PulisciInterfacciaDelegate(pulisciInterfacciaDopoDisconnessione);
+                Dispatcher.BeginInvoke(d, new object[] { server, serverStream, disconnectingServer, onPurpose });
+            }
+            else
+            {
+                // Mi trovo sul main thread e posso chiamare direttamente la funzione per aggiornare l'interfaccia
+                pulisciInterfacciaDopoDisconnessione(server, serverStream, disconnectingServer, onPurpose);
+            }
+        }
+
+        private void disconnettiDalServer()
+        {
+            NetworkStream serverStream = null;
+
+            TcpClient server = null;
+
+            // definisci il server da disconnettere. 
+            // Le strutture dati del server connesso in questo momento sono per forza lì, solo disconnettiDalServer le può rimuovere.
+            // CurrentConnectedServer può essere però cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
+            string disconnectingServer = currentConnectedServer;
+
+            try
+            {
+                byte[] buffer = new byte[9];
+                Array.Clear(buffer, 0, 9);
+
+                server = servers[disconnectingServer].server;
+                serverStream = server.GetStream();
+
+                // Prepara messaggio da inviare
+                StringBuilder sb = new StringBuilder();
+                sb.Append("--CLSCN-");
+                Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
+                //buffer = Encoding.ASCII.GetBytes(sb.ToString());
+                buffer[8] = (byte)'\0';
+                // Invia richiesta chiusura
+                serverStream.Write(buffer, 0, 9);
+
+                // Aspetto che il thread manageNotifications() finisca
+                servers[disconnectingServer].notificationsThread.Join();
+
+                // Aspetto che il thread manageStatistics() finisca
+                servers[disconnectingServer].statisticThread.Join();
+                server.Close();
+
+            }
+            catch (InvalidOperationException) // include ObjectDisposedException
+            {
+                // C'è stato un problema con il NetworkStream.
+                // Quindi setto il disconnectionEvent ora in modo che, al prossimo ciclo while, i thread escano.
+                // Se il NetworkStream non è accessibile, anche il notificationThread se ne accorge e scatena l'eccezione.
+                servers[disconnectingServer].disconnectionEvent.Set();
+            }
+            catch (IOException)
+            {
+                // Sblocca il server manualmente e continua sul finally.
+                // StatisticsThread si chiude dopo la sola Set().
+                // NotificationsThread vedrà che il networkStream verrà chiuso e l'eccezione generata verrà in questo senso
+                //      propagata anche a quel thread che uscirà dalla sua esecuzione.
+                servers[disconnectingServer].disconnectionEvent.Set();
+
+            }
+
+        }
+
+        /* Viene eseguito in un thread a parte.
+         * Si occupa della gestione delle statistiche, aggiornando le percentuali di Focus ogni 500ms.
+         * In questo modo abbiamo statistiche "live"
+         */
+        private void manageStatistics(string serverName)
+        {
+            while (true)
+            {
+                /* Controlla che 'serverName' non sia stata eliminata */
+                try
+                {
+                    // Accesso a 'servers'
+                    // TODO: riduce parallelismo: è accettabile?
+                    tablesMapsEntryMutex.WaitOne();
+                    if (!servers.ContainsKey(serverName)) // l'argomento non può essere null perché validato
+                        break;
+                }
+                catch (AbandonedMutexException)
+                {
+                    // Qualcuno deteneva il mutex e non lo ha rilasciato                    
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The current instance has already been disposed.                    
+                }
+                finally
+                {
+                    if (tablesMapsEntryMutex != null)
+                        tablesMapsEntryMutex.ReleaseMutex();
+                }
+
+
+                // il MutualResetEvent disconnectionEvent è usato anche per far attendere il thread 
+                // nell'aggiornare le statistiche. serverName è sicuramente presente
+                try
+                {
+                    bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
+                    if (isSignaled)
+                        break;
+
+                    servers[serverName].table.aggiornaStatisticheFocus();
+
+                }
+                catch (AbandonedMutexException ame)
+                {
+                    if (ame != null) ame.Mutex.ReleaseMutex();
+                    break;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // il disconnectionEvent è stato "disposed"
+                    break;
+                }
+                catch (KeyNotFoundException)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    return;
+                }
+            }
+
+            try
+            {
+                servers[serverName].forcedDisconnectionEvent.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+                // forcedDisconnectionEvent è stato già Disposed
+                return;
+            }
+        }
+
+        /* Viene eseguito in un thread a parte.
+         * Si occupa della ricezione e gestione delle notifiche.
+         */
+        private void manageNotifications(string serverName)
+        {
+            NetworkStream serverStream = null;
+            byte[] buffer = new byte[7];
+            Array.Clear(buffer, 0, 7);
+
+            tablesMapsEntryMutex.WaitOne();
+            if (!servers.ContainsKey(serverName))
+            {
+                tablesMapsEntryMutex.ReleaseMutex();
+                return;
+            }
+            TcpClient server = servers[serverName].server;
+            tablesMapsEntryMutex.ReleaseMutex();
+
+            serverStream = server.GetStream();
+
+            string operation = null;
+            string progName = null;
+
+            // Vecchia condizione: !((sock.Poll(1000, SelectMode.SelectRead) && (sock.Available == 0)) || !sock.Connected
+            // Poll() ritorna true se la connessione è chiusa, resettata, terminata o in attesa (non attiva), oppure se è attiva e ci sono dati da leggere
+            // Available() ritorna il numero di dati da leggere
+            // Se Available() è 0 e Poll() ritorna true, la connessione è chiusa
+
+            //while(!((servers[serverName].socket.Poll(1000, SelectMode.SelectRead) && (servers[serverName].socket.Available == 0)) || !servers[serverName].socket.Connected))
+            while (serverStream.CanRead && server.Connected)
+            {
+                // Aspetto se si sta settando il disconnectionEvent, altrimenti leggo i dati ricevuti.                     
+                bool isSignaled = servers[serverName].disconnectionEvent.WaitOne(1);
+                if (!isSignaled)
+                {
+                    // Iinizio e dimensione messaggio: "--<4 byte int>-" = 7 byte in "buffer"
+                    // Leggi la dimensione del messaggio
+                    if (managedReadn(server, serverStream, serverName, buffer, 7) <= 0)
+                        // Continue anche nei casi di server disconnesso oltre che ai timeout tanto in quei casi la condizione del while al prossimo giro non sarà soddisfatta
+                        continue;
+                    int msgSize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(buffer, 2));
+
+                    // Leggi tutto il messaggio in "msg" => dimensione "msgSize"
+                    byte[] msg = new byte[msgSize];
+                    if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
+                        continue;
+
+                    // Estrai operazione => primi 5 byte
+                    byte[] op = new byte[5];
+                    Array.Copy(msg, 0, op, 0, 5);
+                    operation = Encoding.ASCII.GetString(op);
+
+                    if (operation == "OKCLO")
+                    {
+                        servers[serverName].disconnectionEvent.Set();
+                        safePulisciInterfaccia(server, serverStream, serverName, true);
+                        continue;
+                    }
+
+                    if (operation == "RETRY")
+                    {
+                        continue;
+                    }
+
+                    if (operation == "ERRCL")
+                    {
+                        servers[serverName].disconnectionEvent.Set();
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        if (servers[serverName].statisticThread.IsAlive)
+                            servers[serverName].forcedDisconnectionEvent.WaitOne();
+
+                        safePulisciInterfaccia(servers[serverName].server, serverStream, serverName, false);
+                        continue;
+                    }
+
+                    // Estrai hwnd: successivi 5 byte.
+                    byte[] h = new byte[5];
+                    Array.Copy(msg, 6, h, 0, 4);
+                    int hwnd = BitConverter.ToInt32(msg, 6);
+
+                    // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                    int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
+                    // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                    byte[] pN = new byte[progNameLength];
+                    Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
+                    progName = Encoding.Unicode.GetString(pN);
+
+
+                    /* Possibili valori ricevuti:
+                        * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
+                        * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
+                        * --<4B dimensione messaggio>-TTCHA-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_con_nuovo_nome>
+                        * --<4B dimensione messaggio>-OPENP-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<icona>
+                        */
+
+                    switch (operation)
+                    {
+                        case "FOCUS":
+                            // Cambia programma col focus                            
+                            servers[serverName].table.changeFocus(hwnd);
+
+                            break;
+                        case "CLOSE":
+                            // Rimuovi programma dalla listView                            
+                            servers[serverName].table.removeFinestra(hwnd);
+
+                            break;
+                        case "TTCHA":
+                            // Cambia nome il nome della finestra ricevuta
+                            servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
+
+                            break;
+                        case "OPENP":
+                            try
+                            {
+                                /* Ricevi icona processo */
+                                Bitmap bitmap = new Bitmap(64, 64);
+                                bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                                                                                             //bitmap.SetTransparencyKey(Color.White);
+
+                                // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
+                                // 4 byte di dimensione icona e il trattino
+                                int notBmpData = 16 + progNameLength + 1 + 4 + 1;
+                                int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
+
+                                /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
+                                byte[] bmpData = new byte[bmpLength];
+                                Array.Clear(bmpData, 0, bmpLength);
+
+                                // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
+                                // partendo dal source offset "notBmpData"
+                                Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
+
+                                /* Crea la bitmap a partire dal byte array */
+                                bitmap = CopyDataToBitmap(bmpData);
+                                /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+                                bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+
+                                BitmapImage bmpImage;
+                                using (var b = new Bitmap(bitmap.Width, bitmap.Height))
+                                {
+                                    b.SetResolution(bitmap.HorizontalResolution, bitmap.VerticalResolution);
+
+                                    using (var g = Graphics.FromImage(b))
+                                    {
+                                        // Clears the entire drawing surface and fills it with the specified background color
+                                        g.Clear(Color.White);
+                                        // Draws the specified image using its original physical size at the location specified by a coordinate pair
+                                        g.DrawImageUnscaled(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+                                    }
+
+                                    // Now save b like you normally would
+                                    using (MemoryStream stream = new MemoryStream())
+                                    {
+                                        b.Save(stream, ImageFormat.Bmp);
+                                        stream.Position = 0;
+                                        bmpImage = new BitmapImage();
+                                        bmpImage.BeginInit();
+                                        // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
+                                        // Force the bitmap to load right now so we can dispose the stream.
+                                        bmpImage.CacheOption = BitmapCacheOption.OnLoad;
+                                        bmpImage.StreamSource = stream;
+                                        bmpImage.EndInit();
+                                        bmpImage.Freeze();
+                                    }
+
+                                    // Aggiungi il nuovo elemento all'elenco delle tabelle
+                                    servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bmpImage);
+
+                                }
+                            }
+                            catch (Exception)
+                            {
+                                // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
+                                // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre                                    
+                            }
+
+                            break;
+                    }
+                }
+                else
+                    break;
+            }
+
+        }
+
+        /* FINE SEZIONE FUNZIONI CHE USANO I THREAD */
 
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;

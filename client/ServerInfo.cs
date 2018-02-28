@@ -1,10 +1,9 @@
-﻿using System;
+﻿using System.ComponentModel;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-using System.Net;
 using System.Threading;
+using System.Net;
 using System.Net.Sockets;
 
 namespace client
@@ -20,6 +19,9 @@ namespace client
         public AutoResetEvent forcedDisconnectionEvent { get; set; }
         public Mutex tableModificationsMutex { get; set; }
         public bool isOnline { get; set; }
+
+        public BackgroundWorker statisticsBw { get; set; }
+        public BackgroundWorker notificationsBw { get; set; }
 
         /*
         public ServerInfo(string serverName, TcpClient server, bool isOnline)
@@ -50,8 +52,8 @@ namespace client
             tableModificationsMutex.Close();
             tableModificationsMutex.Dispose();
 
-            statisticThread.Join();
-            notificationsThread.Join();
+            //statisticThread.Join();
+            //notificationsThread.Join();
         }
     }
 }
