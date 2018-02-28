@@ -38,6 +38,13 @@ namespace WpfApplication1
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
 
+        /* BackgroundWorker necessario per evitare che il main thread si blocchi 
+         * mentre aspetta che si instauri la connessione con un nuovo server. 
+         * Situazione tipo: non è possibile connettersi al server finché non scade il timeout di connessione nella TcpClient. */
+        BackgroundWorker bw = new BackgroundWorker();
+        string connectingIp;
+        int connectingPort;
+
         /* Mutex necessario alla gestione delle modifiche nella listView1 perchè i thread statistics and notifications
          * accedono alla stessa variabile 'servers'
          */
@@ -56,6 +63,9 @@ namespace WpfApplication1
 
             disabilitaERimuoviCatturaComando();
 
+            bw.DoWork += new DoWorkEventHandler(provaConnessione);
+            bw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(finalizzaConnessione);
+
         }
 
         public IPEndPoint parseHostPort(string hostPort)
@@ -73,7 +83,7 @@ namespace WpfApplication1
         {
             if (e.Key == Key.Return)
             {
-                connettiAlServer();
+                iniziaConnessione();
             }
         }
 
@@ -85,7 +95,209 @@ namespace WpfApplication1
             //connecting.IsBackground = true;
             //connecting.Start();
 
-            connettiAlServer();
+            //connettiAlServer();
+
+            iniziaConnessione();
+        }
+
+        private void iniziaConnessione()
+        {
+            IPEndPoint ipPort = null;
+            string ipAddress = null;
+            int port = -1;
+            string serverName = null;            
+
+            /* Ottieni il l'indirizzo IP e la porta a cui connettersi. */
+            ipPort = parseHostPort(textBoxIpAddress.Text);
+            if (ipPort == null)
+            {
+                System.Windows.MessageBox.Show("Formato ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]");
+                return;
+            }
+
+            ipAddress = ipPort.Address.ToString();
+            port = ipPort.Port;
+
+            serverName = ipAddress + ":" + port;
+
+            /* Controlla che non ci sia già serverName tra i server a cui si è connessi */
+            lock (servers)
+            {
+                if (servers.ContainsKey(serverName))
+                {
+                    if (servers[serverName].isOnline)
+                    {
+                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
+                        return;
+                    }
+                }
+            }
+
+            if (bw.IsBusy != true)
+            {
+                connectingIp = ipAddress;
+                connectingPort = port;
+
+                textBoxIpAddress.IsEnabled = false;
+                buttonConnetti.IsEnabled = false;
+
+                bw.RunWorkerAsync();
+            }
+        }
+
+        private void provaConnessione(object sender, DoWorkEventArgs e)
+        {
+            // TODO: controlla eccezioni tramite metodi BackgroundWorker 
+
+            try
+            {
+                e.Result = new TcpClient(connectingIp, connectingPort);
+                /* ArgumentNullException: hostname is null
+                 * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
+                 
+            }
+            catch (SocketException se)
+            {
+                int errorCode = se.ErrorCode;
+                if (errorCode.Equals(SocketError.TimedOut))
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp+":"+connectingPort + " scaduto.");
+                else
+                    System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.");
+
+                return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
+            }
+        }
+
+        private void finalizzaConnessione(object sender, RunWorkerCompletedEventArgs e)
+        {
+            TcpClient s = (TcpClient) e.Result;
+            if (s == null)
+            {
+                textBoxIpAddress.IsEnabled = true;
+                buttonConnetti.IsEnabled = true;
+                return;
+            }
+            else
+            {
+                textBoxIpAddress.IsEnabled = true;
+                buttonConnetti.IsEnabled = true;
+            }
+
+            string serverName = connectingIp + ":" + connectingPort;
+            
+            // Se già è presente una connessione a quel server ma era offline, rimuovi i suoi riferimenti
+            // che erano già stati precedentemente invalidati, in modo da poterlo riaggiungere alla lista
+            lock (servers)
+            {
+                if (servers.ContainsKey(serverName) && !servers[serverName].isOnline)
+                {
+                    servers.Remove(serverName);
+                    serversListBox.Items.Remove(serverName);
+                }
+            }
+            
+
+            // Crea ServerInfo per la nuova connessione
+            ServerInfo si = new ServerInfo();
+            si.server = (TcpClient) e.Result;
+            si.serverName = serverName;
+
+            // Setta IsOnline a true per segnalare che il server è attivo e online
+            si.isOnline = true;
+
+            // Aggiorna bottoni
+            buttonDisconnetti.Visibility = Visibility.Visible;
+            textBoxIpAddress.Text = "";
+
+            // Aggiungi MyTable vuota in ServerInfo
+            si.table = new MyTable();
+
+            // ManualResetEvent settato a false perché i thread che verranno creati si blocchino quando chiamano WaitOne.
+            // Necessario per far terminare i thread quando si vuole disconnettere il server.
+            si.disconnectionEvent = new ManualResetEvent(false);
+
+            si.forcedDisconnectionEvent = new AutoResetEvent(false);
+
+            // Inizializzazione mutex per proteggere modifiche alla lista delle finestre
+            si.tableModificationsMutex = new Mutex();
+
+            try
+            {
+                // Acquisisci il mutex per aggiungere i dati alla lista dei server                
+                tablesMapsEntryMutex.WaitOne();
+
+                servers.Add(serverName, si);
+                tablesMapsEntryMutex.ReleaseMutex();
+            }
+            catch (AbandonedMutexException ex)
+            {
+                // Qualcuno deteneva il mutex e non lo ha rilasciato
+                if (ex.Mutex != null) ex.Mutex.ReleaseMutex();  // rilascia il mutex per poter essere usato ancora
+                servers.Add(serverName, si);                    // aggiungi il server e continua
+            }
+            catch (ObjectDisposedException)
+            {
+                // The current instance has already been disposed.
+                return;
+            }
+
+            /* Lancio dei thread posticipato a quando la chiave "serverName" è effettivamente inserita
+             * per evitare che i thread riferiscano ad una chiave ancora non esistente. 
+             * Una volta partiti tutto il necessario sarà presente in servers[serverName].
+             * I riferimenti dei thread per monitorare l'uscita sono legati direttamente nel ServerInfo alla creazione dei thread stessi.
+             */
+
+            try
+            {
+                // ThreadStateException e InvalidOperationException non scatenabili perché sono nuovi thread
+
+                // Avvia thread per notifiche
+                servers[serverName].notificationsThread = new Thread(() => manageNotifications(serverName));      // lambda perchè è necessario anche passare il parametro
+                servers[serverName].notificationsThread.IsBackground = true;
+                servers[serverName].notificationsThread.Name = "notif_thread_" + serverName;
+                servers[serverName].notificationsThread.Start();
+
+                // Avvia thread per statistiche live
+                servers[serverName].statisticThread = new Thread(() => manageStatistics(serverName));
+                servers[serverName].statisticThread.IsBackground = true;
+                servers[serverName].statisticThread.Name = "stats_thread_" + serverName;
+                servers[serverName].statisticThread.Start();
+            }
+            catch (ArgumentNullException)
+            {
+                // La lambda nella generazione della funzione da passare ai thread ritorna null
+                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
+                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
+                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
+
+                return;
+            }
+            catch (OutOfMemoryException)
+            {
+                // There is not enough memory available to start this thread.
+                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
+                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
+                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
+
+                return;
+            }
+
+            // Mostra la nuova tavola
+            listView1.ItemsSource = si.table.Finestre;
+
+            // Aggiungi il nuovo server alla lista di server nella lista combo box
+            if (serversListBox.Items[0].Equals("Nessun server connesso")) // se c'è solo l'elemento "Nessun server connesso" (è il primo)
+                serversListBox.Items.RemoveAt(0); // rimuovi primo elemento
+
+            // Cambia la selezione della serversListBox al server appena connesso
+            int index = serversListBox.Items.Add(serverName);
+            serversListBox.SelectedIndex = index;
+            currentConnectedServer = serversListBox.Items[index] as string;
+
+            // Cambia la label per mostrare quale server si è appena connesso
+            indirizzoServerConnesso.Content = serverName;
+            listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
+
         }
 
         private void connettiAlServer()
@@ -124,13 +336,6 @@ namespace WpfApplication1
 
             try
             {
-                /*
-                Thread connecting;
-                connecting = new Thread(() => { });      // lambda perchè è necessario anche passare il parametro
-                connecting.IsBackground = true;
-                connecting.Start();
-                */
-
                 server = new TcpClient(ipAddress, port);
                 /* ArgumentNullException: hostname is null
                  * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
@@ -891,7 +1096,7 @@ namespace WpfApplication1
                     buttonChiudiServer.IsEnabled = false;
                     buttonChiudiServer.Visibility = Visibility.Hidden;
 
-                    textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    //textBoxIpAddress.Text = "";     // per connessione a un nuovo server
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
 
                     labelDisconnesso.Visibility = Visibility.Hidden;
@@ -911,7 +1116,7 @@ namespace WpfApplication1
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
 
-                    textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    //textBoxIpAddress.Text = "";     // per connessione a un nuovo server
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
 
                     labelDisconnesso.Visibility = Visibility.Visible;
@@ -932,7 +1137,7 @@ namespace WpfApplication1
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
 
-                    textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    //textBoxIpAddress.Text = "";     // per connessione a un nuovo server
                     indirizzoServerConnesso.Content = "Nessun server connesso";
 
                     // Nascondi label "Disconnesso"
