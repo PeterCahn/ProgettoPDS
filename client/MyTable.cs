@@ -48,7 +48,7 @@ namespace client
 
         ~MyTable()
         {
-            System.Windows.MessageBox.Show("Distruttore di MyTable chiamato");
+            System.Windows.MessageBox.Show("Distruttore di MyTable chiamato");            
         }
 
         public void addFinestra(int hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
@@ -64,23 +64,36 @@ namespace client
             lock (this)
             {
                 bool trovato = false;
+                int indexOfFocus = -1;
                 foreach (Finestra finestra in Finestre)
                 {
                     if (finestra.Hwnd.Equals(hwnd))
                     {
                         finestra.StatoFinestra = "Focus";
+                        indexOfFocus = Finestre.IndexOf(finestra);
                         trovato = true;
                     }
                     else if (finestra.StatoFinestra.Equals("Focus"))
                         finestra.StatoFinestra = "Background";
                 }
-                                
+
                 if (!trovato)
                 {
                     // First() perché il primo elemento sarà sempre la finestra che raccoglie le statistiche di quando niente è in focus.
                     // Questa finestra non verrà mai eliminata durante l'esecuzione, quindi sarà sempre la prima.
                     Finestre.First().StatoFinestra = "Focus";
                 }
+                else
+                {
+                    // Mette in cima la finestra che è in focus
+                    Finestre.Move(indexOfFocus, 0);
+
+                    // Ordina le finestre in base al tempo in cui sono state in focus.
+                    // Chiamata qui in modo che venga chimata meno spesso 
+                    // rispetto a ogni mezzo secondo di aggiornamento statistiche del tempo in focus
+                    Finestre.OrderBy(f => f.TempoFocus);
+                }
+
             }
         }
 
@@ -105,7 +118,7 @@ namespace client
                 {
                     if (finestra.Hwnd.Equals(hwnd))
                     {
-                        finestra.NomeFinestra = nomeFinestra;
+                        finestra.NomeFinestra = nomeFinestra;                        
                         break;
                     }
                 }                
@@ -303,7 +316,7 @@ namespace client
 
         private void RaisePropertyChanged(object param)
         {
-            // We are in the creator thread, call the base implementation directly
+            // We are in the creator thread, call the base implementation directly            
             base.OnPropertyChanged((PropertyChangedEventArgs)param);
         }
     }

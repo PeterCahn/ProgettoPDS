@@ -19,11 +19,11 @@ using System.Data;
 using System.ComponentModel;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
+using System.Windows.Data;
 
 /* TODO:
  * - Distruttore (utile ad esempio per fare Mutex.Dispose())
  * - Icona con sfondo nero 
- * - Ordinare l'elenco delle finestre per percentuale focus, o in modo da mettere in alto la finestra in focus
  * - Modifica controllo numero server connessi. Crash al controllo se serversListBox.Items[0].Equals("Nessun server connesso")
  *  => Aggiungere elemento che viene mostrato solo quando non ci sono server connessi. Così il controllo è solo sulla size della lista.
  * - Sgancia un thread per creare la TcpClient. Join subito dopo. 
@@ -127,7 +127,7 @@ namespace WpfApplication1
                 /*
                 Thread connecting;
                 connecting = new Thread(() => { });      // lambda perchè è necessario anche passare il parametro
-                connecting.IsBackground = true;                
+                connecting.IsBackground = true;
                 connecting.Start();
                 */
 

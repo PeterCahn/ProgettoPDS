@@ -192,7 +192,8 @@
         </TextBlock>
 
         <ListView x:Name="listView1" Grid.Column="1" ItemsSource="{Binding}" HorizontalAlignment="Left" Height="366" Width="540"
-                  Margin="26,111,0,0" VerticalAlignment="Top" Foreground="Black" ScrollViewer.HorizontalScrollBarVisibility="Hidden">
+                  Margin="26,111,0,0" VerticalAlignment="Top" Foreground="Black" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                  SelectionMode="Single">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Width="40" Header="Icona">
@@ -211,19 +212,22 @@
                     <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='TempoFocusPerc'}" Width="130" />
                 </GridView>
             </ListView.View>
-            <ListView.Resources>
+            <ListView.Resources>                
                 <Style TargetType="{x:Type ListViewItem}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding 'StatoFinestra'}" Value="Focus">
                             <Setter Property="Background" Value="LightBlue"/>
-                            <Setter Property="Height" Value="40"/>                            
+                            <Setter Property="Height" Value="40"/>
+                            <Setter Property="IsHitTestVisible" Value="False"/>
                         </DataTrigger>
                         <DataTrigger Binding="{Binding 'Visible'}" Value="False">
                             <Setter Property="Visibility" Value="Collapsed"/>                            
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
+                
             </ListView.Resources>
+                
         </ListView>
 
         <Label x:Name="labelComando" Grid.Column="1" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="26,481,0,0" VerticalAlignment="Top" Foreground="#FFECECEC"/>
