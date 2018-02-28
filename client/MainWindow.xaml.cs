@@ -188,8 +188,7 @@ namespace WpfApplication1
                     servers.Remove(serverName);
                     serversListBox.Items.Remove(serverName);
                 }
-            }
-            
+            }            
 
             // Crea ServerInfo per la nuova connessione
             ServerInfo si = new ServerInfo();
@@ -215,79 +214,35 @@ namespace WpfApplication1
             // Inizializzazione mutex per proteggere modifiche alla lista delle finestre
             si.tableModificationsMutex = new Mutex();
 
-            try
+            lock (servers)
             {
-                // Acquisisci il mutex per aggiungere i dati alla lista dei server                
-                tablesMapsEntryMutex.WaitOne();
-
                 servers.Add(serverName, si);
-                tablesMapsEntryMutex.ReleaseMutex();
-            }
-            catch (AbandonedMutexException ex)
-            {
-                // Qualcuno deteneva il mutex e non lo ha rilasciato
-                if (ex.Mutex != null) ex.Mutex.ReleaseMutex();  // rilascia il mutex per poter essere usato ancora
-                servers.Add(serverName, si);                    // aggiungi il server e continua
-            }
-            catch (ObjectDisposedException)
-            {
-                // The current instance has already been disposed.
-                return;
             }
 
             /* Lancio dei thread posticipato a quando la chiave "serverName" è effettivamente inserita
-             * per evitare che i thread riferiscano ad una chiave ancora non esistente. 
+             * per evitare che i thread riferiscano ad una chiave ancora non esistente.
              * Una volta partiti tutto il necessario sarà presente in servers[serverName].
              * I riferimenti dei thread per monitorare l'uscita sono legati direttamente nel ServerInfo alla creazione dei thread stessi.
              */
 
-            try
-            {
-                // Aggiorna statistiche
-                servers[serverName].statisticsBw = new BackgroundWorker();
-                servers[serverName].statisticsBw.WorkerSupportsCancellation = true;
-                servers[serverName].statisticsBw.DoWork += new DoWorkEventHandler(aggiornaStatistiche);
-                servers[serverName].statisticsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(aggiornaStatisticheTerminato);
+            // I metodi di BackgroundWorker qui chiamati non lanciano eccezioni rilevanti.
+            // RunWorkerAsync lancia InvalidOperationException se il metodo IsBusy è true, ma il thread è stato appena creato.
 
-                if (servers[serverName].statisticsBw.IsBusy != true)
-                {
-                    servers[serverName].statisticsBw.RunWorkerAsync(serverName);
-                }
-                
-                // Gestisci notifiche
-                servers[serverName].notificationsBw = new BackgroundWorker();
-                servers[serverName].notificationsBw.WorkerSupportsCancellation = true;
-                servers[serverName].notificationsBw.DoWork += new DoWorkEventHandler(riceviNotifiche);
-                servers[serverName].notificationsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(riceviNotificheTerminato);
+            // Aggiorna statistiche
+            servers[serverName].statisticsBw = new BackgroundWorker();
+            servers[serverName].statisticsBw.WorkerSupportsCancellation = true;
+            servers[serverName].statisticsBw.DoWork += new DoWorkEventHandler(aggiornaStatistiche);
+            servers[serverName].statisticsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(aggiornaStatisticheTerminato);
+            servers[serverName].statisticsBw.RunWorkerAsync(serverName);
 
-                if (servers[serverName].notificationsBw.IsBusy != true)
-                {
-                    servers[serverName].notificationsBw.RunWorkerAsync(serverName);
-                }
-            }
-            catch (ArgumentNullException)
-            {
-                // La lambda nella generazione della funzione da passare ai thread ritorna null
-                //servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
-                //servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
-                //servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
+            // Gestisci notifiche
+            servers[serverName].notificationsBw = new BackgroundWorker();
+            servers[serverName].notificationsBw.WorkerSupportsCancellation = true;
+            servers[serverName].notificationsBw.DoWork += new DoWorkEventHandler(riceviNotifiche);
+            servers[serverName].notificationsBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(riceviNotificheTerminato);
+            servers[serverName].notificationsBw.RunWorkerAsync(serverName);
 
-                servers[serverName].statisticsBw.CancelAsync();
-                servers[serverName].notificationsBw.CancelAsync();
-
-                return;
-            }
-            catch (OutOfMemoryException)
-            {
-                // There is not enough memory available to start this thread.
-                servers[serverName].disconnectionEvent.Set();   // settiamo il disconnectionEvent nel caso in cui il primo dei due thread è già partito, per farlo terminare
-                servers[serverName].server.Close();             // chiudi la connessione sulla TcpClient creata
-                servers.Remove(serverName);                     // rimuovi il ServerInfo dalla lista dei servers
-
-                return;
-            }
-
-            // Mostra la nuova tavola
+            // Mostra il nuovo elenco
             listView1.ItemsSource = si.table.Finestre;
 
             // Aggiungi il nuovo server alla lista di server nella lista combo box
@@ -322,65 +277,38 @@ namespace WpfApplication1
                 else
                 {
                     /* Controlla che 'serverName' non sia stata eliminata */
-                    try
+                    lock (servers)
                     {
-                        // Accesso a 'servers'
-                        // TODO: riduce parallelismo: è accettabile?
-                        tablesMapsEntryMutex.WaitOne();
                         if (servers.ContainsKey(serverName)) // l'argomento non può essere null perché validato
-                        {                            
+                        {
                             servers[serverName].table.aggiornaStatisticheFocus();
                         }
                     }
-                    catch (AbandonedMutexException)
-                    {
-                        // Qualcuno deteneva il mutex e non lo ha rilasciato                    
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // The current instance has already been disposed.                    
-                    }
-                    catch (KeyNotFoundException)
-                    {
-                        /* Eccezione scatenata se serverName non c'è più in 'servers' */
-                        System.Windows.MessageBox.Show("Problema interno inaspettato.\nArresto gestione statistiche per il server " + serverName + ".");
-                        servers[serverName].notificationsBw.CancelAsync();
-                        servers[serverName].statisticsBw.CancelAsync();
-                        
-                    }
-                    catch (Exception)
-                    {
-                        System.Windows.MessageBox.Show("Problema inaspettato durante l'aggiornamento statistiche.\nArresto gestione statistiche per il server " + serverName + ".");
-                        servers[serverName].notificationsBw.CancelAsync();
-                        servers[serverName].statisticsBw.CancelAsync();
-                        
-                    }
-                    finally
-                    {
-                        if (tablesMapsEntryMutex != null)
-                            tablesMapsEntryMutex.ReleaseMutex();
-                    }
+                    Thread.Sleep(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
                 }
-                Thread.Sleep(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
             }
         }
 
         /* Chiamato al termine di aggiornaStatistiche */
         private void aggiornaStatisticheTerminato(object sender, RunWorkerCompletedEventArgs e)
         {
+            BackgroundWorker worker = sender as BackgroundWorker;
+
             if (e.Cancelled == true)
             {
-                System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche cancellato.");
+                //System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche cancellato.");
             }
 
             else if (e.Error != null)
             {
-                System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato con errori.");
+                //System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato con errori.");
             }
             else
             {
-                System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato normalmente.");
+                //System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato normalmente.");
             }
+
+            worker.Dispose();
         }
         
         /* Come manageNotifications ma da eseguire in un BackgroundWorker */
@@ -587,19 +515,22 @@ namespace WpfApplication1
         /* Chiamato al termine di aggiornaStatistiche */
         private void riceviNotificheTerminato(object sender, RunWorkerCompletedEventArgs e)
         {
+            BackgroundWorker worker = sender as BackgroundWorker;
+
             if (e.Cancelled == true)
             {
-                System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche cancellato.");
+                //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche cancellato.");
             }
             else if (e.Error != null)
             {
-                System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato con errori.");
+                //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato con errori.");
             }
             else
             {
-                System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato normalmente.");
-            }           
+                //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato normalmente.");
+            }
             
+            worker.Dispose();            
         }
 
         delegate void PulisciInterfacciaDelegate(TcpClient server, NetworkStream serverStream, string disconnectingServer, bool onPurpose);
@@ -651,12 +582,13 @@ namespace WpfApplication1
 
                 // Chiudi e rimuovi disconnectingServer da servers
                 servers[disconnectingServer].server.Close();
-                tablesMapsEntryMutex.WaitOne();
-                servers.Remove(disconnectingServer);
-                tablesMapsEntryMutex.ReleaseMutex();
+                lock (servers)
+                {
+                    servers.Remove(disconnectingServer);
+                }
 
             }
-            else if(!servers.ContainsKey(disconnectingServer) || !onPurpose)
+            else if(servers.ContainsKey(disconnectingServer) && !onPurpose) // contiene disconnectingServer ed è forzata
             {
                 // Disconnessione forzata: non eliminare voce dalla ListBox né l'elenco delle finestre. Disabilita solo tasti cattura.
                 // Setta isOnline a false, per avvisare che quel server non è più direttamente collegato al client,
@@ -803,8 +735,8 @@ namespace WpfApplication1
                 StringBuilder sb = new StringBuilder();
                 sb.Append("--CLSCN-");
                 Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
-                //buffer = Encoding.ASCII.GetBytes(sb.ToString());
                 buffer[8] = (byte)'\0';
+
                 // Invia richiesta chiusura
                 serverStream.Write(buffer, 0, 9);
 
@@ -848,7 +780,12 @@ namespace WpfApplication1
             }
 
             // Rimuovi disconnectingServer da servers
-            servers.Remove(removingServer);
+            lock (servers)
+            {
+                if(servers.ContainsKey(removingServer))
+                    servers.Remove(removingServer);
+            }
+            
         }
 
         private void buttonCattura_Click(object sender, RoutedEventArgs e)
@@ -863,7 +800,6 @@ namespace WpfApplication1
 
         private void OnButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-
             // Se viene premuto Alt e.Key restituisce "System" ma la vera chiave di Alt è contenuta in SystemKey!
             Key pressedKey = (e.Key == Key.System ? e.SystemKey : e.Key);
 
@@ -919,9 +855,23 @@ namespace WpfApplication1
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
                 this.KeyDown -= new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
             }
-            catch (Exception)
+            catch (InvalidOperationException) // include ObjectDisposedException
             {
-
+                // C'è stato un problema con il NetworkStream o nella CancenAsync().
+                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
+                return;
+            }
+            catch (IOException)
+            {
+                // Problema nella write durante l'invio del comando
+                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
+                return;
+            }
+            catch(Exception)
+            {
+                // Problema generico nell'invio del comando
+                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
+                return;
             }
         }
 
@@ -954,8 +904,7 @@ namespace WpfApplication1
                     buttonDisconnetti.Visibility = Visibility.Visible;
                     buttonChiudiServer.IsEnabled = false;
                     buttonChiudiServer.Visibility = Visibility.Hidden;
-
-                    //textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
 
                     labelDisconnesso.Visibility = Visibility.Hidden;
@@ -974,8 +923,7 @@ namespace WpfApplication1
                     buttonChiudiServer.Visibility = Visibility.Visible;
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
-
-                    //textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
 
                     labelDisconnesso.Visibility = Visibility.Visible;
@@ -995,8 +943,7 @@ namespace WpfApplication1
                     buttonChiudiServer.Visibility = Visibility.Hidden;
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
-
-                    //textBoxIpAddress.Text = "";     // per connessione a un nuovo server
+                    
                     indirizzoServerConnesso.Content = "Nessun server connesso";
 
                     // Nascondi label "Disconnesso"
