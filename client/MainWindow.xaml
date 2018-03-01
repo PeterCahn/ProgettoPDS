@@ -208,7 +208,7 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="280"/>
+                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="250"/>
                     <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path='StatoFinestra'}" Width="90"/>
                     <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='TempoFocusPerc'}" Width="130" />
                 </GridView>
