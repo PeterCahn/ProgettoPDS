@@ -9,11 +9,9 @@ int main(int argc, char* argv[])
 		wns.start();
 	}
 	catch (exception& ex) {
-
+		wcout << ex.what();
 	}
-	
-	system("PAUSE");	
-
+		
 	return 0;
 }
 

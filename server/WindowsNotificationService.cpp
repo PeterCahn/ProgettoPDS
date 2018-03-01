@@ -83,7 +83,6 @@ WindowsNotificationService::~WindowsNotificationService()
 
 /* Per uscire dal servizio */
 volatile bool isRunning = true;
-volatile bool closeEverything = false;
 BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
 	switch (dwCtrlType)
 	{
@@ -108,7 +107,8 @@ void WindowsNotificationService::start()
 	//thread t(hook, this);
 	
 	/* Avvia il server */
-	server.avviaServer();
+	if (server.avviaServer() < 0)
+		throw exception("Impossibile avviare il server.");
 	if (!server.validServer()) {
 		printMessage(TEXT("Istanza di server creata non valida.Riprovare."));		
 		return;
@@ -118,9 +118,10 @@ void WindowsNotificationService::start()
 	while (isRunning) {
 
 		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */		
-		server.acceptConnection();
+		if (server.acceptConnection() < 0)
+			throw exception("Impossibile accettare nuove connessioni.");
 		
-		/* Setta la control routine per gestire il CTRL-C */
+		/* Setta la control routine per gestire il CTRL-C: chiude la connessione con il client per rimettersi in attesa */
 		if (!SetConsoleCtrlHandler(HandlerRoutine, TRUE)) {
 			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
 			return;
@@ -129,7 +130,6 @@ void WindowsNotificationService::start()
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
 		try {
-
 			/* Crea thread per gestire le notifiche */
 			thread notificationsThread(&WindowsNotificationService::notificationsManagement, this);
 
@@ -145,22 +145,31 @@ void WindowsNotificationService::start()
 
 		}
 		catch (system_error se) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;			
-			/* Riprova a lanciare il thread (?) */
-			continue;
+			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;						
+			return;
 		}
 		catch (exception &ex)
 		{
 			// Si è verificata un'eccezione nei thread che gestiscono la connessione con il client.		
+			/* Setta la control routine per gestire il CTRL-C */
+			if (!SetConsoleCtrlHandler(HandlerRoutine, FALSE)) {
+				printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
+				return;
+			}
+			server.chiudiConnessioneClient();
 			continue;
 		}
 		
 		/* Chiudi connessione con il client prima di provare a reiterare sul while */
-		//server.chiudiConnessioneClient();
-		//printMessage(TEXT("Connessione con il client chiusa."));
+		server.chiudiConnessioneClient();
 
 		/* Se è stato premuto CTRL-C 'isRunning' è a false e quindi si può evitare di ciclare di nuovo uscendo dal servizio */
 		if (isRunning) {
+			/* Setta la control routine per gestire il CTRL-C */
+			if (!SetConsoleCtrlHandler(HandlerRoutine, FALSE)) {
+				printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
+				return;
+			}
 			continue;
 		}
 	}	

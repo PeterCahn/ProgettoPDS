@@ -13,11 +13,11 @@ public:
 	~Server();
 
 	/* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
-	void leggiPorta();
+	int leggiPorta();
 	/* Avvia il server facendone il bind ad un socket */
-	void avviaServer();
+	int avviaServer();
 	/* Attende una connessione in entrata da un client */
-	void acceptConnection();
+	int acceptConnection();
 	/* Chiude la connessione con il client attualmente connesso */
 	void chiudiConnessioneClient();
 	/* Chiude il server liberandone le risorse */

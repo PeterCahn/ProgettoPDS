@@ -79,34 +79,63 @@ Server::~Server()
 	WSACleanup();
 }
 
+/* Per uscire dal servizio */
+volatile bool runningServer = true;
+BOOL WINAPI StopServer(_In_ DWORD dwCtrlType) {
+	switch (dwCtrlType)
+	{
+	case CTRL_C_EVENT:
+		//printf("[Ctrl]+C\n");
+		runningServer = false;
+		// Signal is handled - don't pass it on to the next handler
+		return TRUE;
+	default:
+		// Pass signal on to the next handler
+		return FALSE;
+	}
+}
+
 /* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
-void Server::leggiPorta()
+int Server::leggiPorta()
 {
+	/* Setta la control routine per gestire il CTRL-C: chiude il server */
+	if (!SetConsoleCtrlHandler(StopServer, TRUE)) {
+		printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
+		return -1;
+	}
+
 	/* Ottieni porta su cui ascoltare */
 	string porta;
 	regex portRegex("102[4-9]|10[3-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
 	while (true)
 	{
 		cin >> porta;
+		
+		if (!runningServer)
+			return -1;
 
 		if (!cin.good()) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare.";
+			wcout << "\n[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare." << endl;
 			/* TODO: Tentativo di recupuperare 'cin" */
-			return;
+			return -1;
 		}
 		else if (!regex_match(porta, portRegex)) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
+			wcout << "\n[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
 		}
 		else
 			break;
+		
 	}
 	listeningPort = porta;
 
-	return;
+	if (!runningServer)
+		return -1;
+
+	return 0;
 }
 
 /* Avvia il server settando la listeningPort */
-void Server::avviaServer()
+int Server::avviaServer()
 {
 	int iResult;
 	
@@ -115,7 +144,10 @@ void Server::avviaServer()
 	while (true) 
 	{
 		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
-		leggiPorta();
+		int res = leggiPorta();
+		if (res < 0)
+			return res;
+
 		if (!listeningPort.compare("")) {
 			/* Tentativo di recupuperare 'cin' */
 			continue;
@@ -162,28 +194,56 @@ void Server::avviaServer()
 			break;
 	}
 
-	return;
+	return 0;
+}
+
+int CALLBACK checkRunningServer(
+	IN LPWSABUF lpCallerId,
+	IN LPWSABUF lpCallerData,
+	IN OUT LPQOS lpSQOS,
+	IN OUT LPQOS lpGQOS,
+	IN LPWSABUF lpCalleeId,
+	OUT LPWSABUF lpCalleeData,
+	OUT GROUP FAR *g,
+	IN DWORD_PTR dwCallbackData
+)
+{
+	if (runningServer) {		
+		return CF_ACCEPT;
+	}
+	else
+		return CF_REJECT;
 }
 
 /* Attende una connessione in entrata da un client e setta il clientSocket */
-void Server::acceptConnection()
+int Server::acceptConnection()
 {
 	int iResult = 0;
 	SOCKET newClientSocket;
 
-	while (true) {
+	while (runningServer) {		
+
 		try {
+
+			if (!runningServer)
+				return -1;
+
 			printMessage(TEXT("In attesa della connessione di un client..."));
 
+			struct sockaddr_in clientSockAddr;
+			int iClientSize = sizeof(clientSockAddr);
+			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &iClientSize, checkRunningServer, NULL);
+			if (newClientSocket == INVALID_SOCKET && !runningServer)
+				return -1;
+			/*
 			// Accetta la connessione
 			newClientSocket = accept(listeningSocket, NULL, NULL);
 			if (newClientSocket == INVALID_SOCKET) {
 				wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << endl;
 				newClientSocket = INVALID_SOCKET;
-				return;
+				return 0;
 			}
-
-			struct sockaddr_in clientSockAddr;
+			*/
 			int nameLength = sizeof(clientSockAddr);
 			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
 			int port = ntohs(clientSockAddr.sin_port);
@@ -195,15 +255,21 @@ void Server::acceptConnection()
 
 			clientSocket = newClientSocket;
 
-			if (validClient())
+			if (validClient() && runningServer)
 				break;
 		}
 		catch (exception& ex) {
 			wcout << "[" << GetCurrentThreadId() << "] " << "Eccezione lanciata durante l'accettazione del client: " << ex.what() << endl;
 		}
+
+		if (!SetConsoleCtrlHandler(StopServer, FALSE)) {
+			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
+			return 0;
+		}
+
 	}
 
-	return;
+	return 0;
 }
 
 void Server::chiudiConnessioneClient()
