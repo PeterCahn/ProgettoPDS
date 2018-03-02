@@ -15,21 +15,16 @@ class Message
 public:
 	/* TODO: FOCUS and CLOSE (senza windowName) */
 	Message(operation op, HWND hwnd);
-
-	/* FOCUS and CLOSE (con windowName) */
-	Message(operation op, HWND hwnd, wstring windowName);
-
+	
 	~Message();
 
 	virtual BYTE& serialize(u_long& size);
 
 protected:
 	HWND hwnd;
-	operation op;
-	wstring windowName;	// TODO: da eliminare
+	operation op;	
 
 	BYTE* buffer;
-
 
 };
 

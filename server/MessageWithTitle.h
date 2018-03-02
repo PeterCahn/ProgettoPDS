@@ -10,6 +10,6 @@ public:
 	BYTE& serialize(u_long& size);
 
 protected:
-	wstring windowName2;
+	wstring windowName;
 
 };

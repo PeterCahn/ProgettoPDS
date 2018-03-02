@@ -344,7 +344,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	}
 	else if (op == FOCUS || op == CLOSE) {
 
-		message = new Message(op, hwnd, title);
+		message = new Message(op, hwnd);
 
 	}
 	else if (op == TITLE_CHANGED) {

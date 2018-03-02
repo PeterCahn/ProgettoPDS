@@ -21,27 +21,10 @@ enum operation {
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
 
-/*
-Message::Message(operation op, HWND hwnd, wstring windowName, BYTE & icona, u_long iconLength)
-{
-	this->op = op;
-	this->hwnd = hwnd;
-	this->windowName = windowName;
-	this->pixels = &icona;
-	this->iconLength = iconLength;
-}
-*/
-
 Message::Message(operation op, HWND hwnd)
 {
-
-}
-
-Message::Message(operation op, HWND hwnd, wstring windowName)
-{
 	this->op = op;
 	this->hwnd = hwnd;
-	this->windowName = windowName;
 }
 
 Message::~Message()
@@ -52,21 +35,11 @@ Message::~Message()
 
 BYTE& Message::serialize(u_long& size)
 {
-	TCHAR progName[MAX_PATH * sizeof(TCHAR)];
-	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
-
-	/* Copia in progName la stringa ottenuta */
-	wcscpy_s(progName, windowName.c_str());
-
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino
 	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1
-	BYTE* lpPixels = NULL;
-
-	u_long progNameLength = windowName.length() * sizeof(TCHAR);
-	u_long netProgNameLength = htonl(progNameLength);
 
 	/* Calcola lunghezza totale messaggio e salvala */
-	u_long msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength;
+	u_long msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE;
 	u_long netMsgLength = htonl(msgLength);
 
 	size = msgLength;
@@ -88,11 +61,6 @@ BYTE& Message::serialize(u_long& size)
 	memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
 
 	memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-	memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-	memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-	memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-	memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
 
 	return *finalBuffer;
 }

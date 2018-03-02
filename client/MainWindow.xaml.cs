@@ -339,50 +339,15 @@ namespace WpfApplication1
                 byte[] op = new byte[5];
                 Array.Copy(msg, 0, op, 0, 5);
                 operation = Encoding.ASCII.GetString(op);
-
-                if (operation == "OKCLO")
-                {
-                    servers[serverName].notificationsBw.CancelAsync();
-                    servers[serverName].statisticsBw.CancelAsync();
-
-                    // Chiudi la connessione con il server
-                    if (servers[serverName].server.Connected)
-                        servers[serverName].server.Close();
-
-                    safePulisciInterfaccia(serverName, true);
-                    continue;   // continua perché venga visto alla prossima iterazione la CancellationPending == true
-                }
-
-                if (operation == "RETRY")
-                {
-                    continue;
-                }
-
-                if (operation == "ERRCL")
-                {
-                    servers[serverName].notificationsBw.CancelAsync();
-                    servers[serverName].statisticsBw.CancelAsync();
-                    System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-
-                    // Chiudi la connessione con il server
-                    if (servers[serverName].server.Connected)
-                        servers[serverName].server.Close();
-
-                    safePulisciInterfaccia(serverName, false);
-                    continue;
-                }
-
+                
                 // Estrai hwnd: successivi 5 byte.
                 byte[] h = new byte[5];
                 Array.Copy(msg, 6, h, 0, 4);
                 int hwnd = BitConverter.ToInt32(msg, 6);
 
-                // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                byte[] pN = new byte[progNameLength*sizeof(byte)];
-                Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                progName = Encoding.Unicode.GetString(pN);
+                int progNameLength = 0;
+                byte[] pN = null;
+
 
                 /* Possibili valori ricevuti:
                     * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
@@ -390,9 +355,34 @@ namespace WpfApplication1
                     * --<4B dimensione messaggio>-TTCHA-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_con_nuovo_nome>
                     * --<4B dimensione messaggio>-OPENP-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<icona>
                     */
-
                 switch (operation)
                 {
+                    case "OKCLO":
+                        servers[serverName].notificationsBw.CancelAsync();
+                        servers[serverName].statisticsBw.CancelAsync();
+
+                        // Chiudi la connessione con il server
+                        if (servers[serverName].server.Connected)
+                            servers[serverName].server.Close();
+
+                        safePulisciInterfaccia(serverName, true);
+                        //continue;   // continua perché venga visto alla prossima iterazione la CancellationPending == true
+                        break;
+                    case "RETRY":
+                        break;
+                    case "ERRCL":
+                        servers[serverName].notificationsBw.CancelAsync();
+                        servers[serverName].statisticsBw.CancelAsync();
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+
+                        // Chiudi la connessione con il server
+                        if (servers[serverName].server.Connected)
+                            servers[serverName].server.Close();
+
+                        safePulisciInterfaccia(serverName, false);
+                        //continue;
+                        break;
+
                     case "FOCUS":
                         // Cambia programma col focus                            
                         servers[serverName].table.changeFocus(hwnd);
@@ -405,12 +395,28 @@ namespace WpfApplication1
                         break;
                     case "TTCHA":
                         // Cambia nome il nome della finestra ricevuta
+
+                        // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                        progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
+                        // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                        pN = new byte[progNameLength * sizeof(byte)];
+                        Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
+                        progName = Encoding.Unicode.GetString(pN);
+
                         servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
 
                         break;
                     case "OPENP":
                         try
                         {
+
+                            // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
+                            progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
+                            // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
+                            pN = new byte[progNameLength * sizeof(byte)];
+                            Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
+                            progName = Encoding.Unicode.GetString(pN);
+
                             /* Ricevi icona processo */
                             Bitmap bitmap = new Bitmap(64, 64);
                             bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
@@ -476,7 +482,10 @@ namespace WpfApplication1
 
                         break;
                 }
-                
+
+                if (operation == "ERRCL" || operation == "OKCLO" || operation == "RETRY")
+                    continue;
+
             }
         }
 

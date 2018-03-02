@@ -14,9 +14,9 @@
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
 
-MessageWithTitle::MessageWithTitle(operation op, HWND hwnd, wstring windowName) : Message(op, hwnd, windowName)
+MessageWithTitle::MessageWithTitle(operation op, HWND hwnd, wstring windowName) : Message(op, hwnd)
 {	
-
+	this->windowName = windowName;
 }
 
 MessageWithTitle::~MessageWithTitle()
@@ -30,13 +30,12 @@ BYTE& MessageWithTitle::serialize(u_long& size)
 	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
 
 	/* Copia in progName la stringa ottenuta */
-	wcscpy_s(progName, windowName2.c_str());
+	wcscpy_s(progName, windowName.c_str());
 
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino
 	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1
-	BYTE* lpPixels = NULL;
 
-	u_long progNameLength = windowName2.length() * sizeof(TCHAR);
+	u_long progNameLength = windowName.length() * sizeof(TCHAR);
 	u_long netProgNameLength = htonl(progNameLength);
 
 	/* Calcola lunghezza totale messaggio e salvala */
