@@ -23,8 +23,9 @@ Message::Message(operation op, HWND hwnd)
 
 Message::~Message()
 {
-	if (this->buffer != NULL)
+	if (this->buffer != NULL) {
 		delete[] this->buffer;
+	}
 }
 
 BYTE& Message::serialize(u_long& size)

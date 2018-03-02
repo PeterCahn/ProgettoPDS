@@ -51,8 +51,7 @@ Server::Server()
 
 	// Inizializza Winsock
 	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {
-		//wcout << "[" << GetCurrentThreadId() << "] " << "WSAStartup() fallita con errore: " << iResult << endl;
+	if (iResult != 0) {		
 		wcout << "[" << GetCurrentThreadId() << "] " << "ServerClass non inizializzata correttamente." << endl;
 		return;
 	}
@@ -64,7 +63,7 @@ Server::~Server()
 	if(validClient())
 		chiudiConnessioneClient();
 
-	/* Arresta il server rilasciando le sue risorse (close del socket) */
+	/* Arresta il server rilasciando le sue risorse (close del listeningSocket) */
 	arrestaServer();
 
 	/* Termina l'uso della Winsock 2 DLL (Ws2_32.dll) */
@@ -222,9 +221,10 @@ int Server::acceptConnection()
 
 			printMessage(TEXT("In attesa della connessione di un client..."));
 
-			struct sockaddr_in clientSockAddr;
-			int iClientSize = sizeof(clientSockAddr);
-			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &iClientSize, checkRunningServer, NULL);
+			struct sockaddr_in clientSockAddr;			
+			int nameLength = sizeof(clientSockAddr);
+
+			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &nameLength, checkRunningServer, NULL);
 			if (newClientSocket == INVALID_SOCKET && !runningServer)
 				return -1;
 			/*
@@ -236,7 +236,7 @@ int Server::acceptConnection()
 				return 0;
 			}
 			*/
-			int nameLength = sizeof(clientSockAddr);
+
 			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
 			int port = ntohs(clientSockAddr.sin_port);
 
@@ -282,104 +282,129 @@ void Server::arrestaServer()
 * Se l'operazione è OPEN, aggiunge al precedente formato la lunghezza del file contenente l'icona
 * seguito dal file stesso secondo il seguente formato:
 *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>-<lunghezza_file_icona>-<dati_file_icona_bmp>
-*
-* NB: in notificationsManagement il primo check è quello di nuove finestre (operazione OPEN), i successivi check (FOCUS/CLOSE)
-*	   lavorano sulla lista di handle che è stata sicuramente inviata al client e non richiede inviare anche l'icona.
 */
 void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	
 	u_long msgLength = 0;
-	
 	Message* message = NULL;
+	BYTE* lpPixels = NULL;
 	
-	if (op == OPEN) {
-		
-		/* Ottieni l'icona */
-		HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
-		PBITMAPINFO pbi = Helper::CreateBitmapInfoStruct(hSource);
-		HDC hdc = GetDC(NULL);
-		HDC hdcSource = CreateCompatibleDC(hdc);
+	try {
 
-		BITMAPINFO MyBMInfo = { 0 };
-		MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
+		if (op == OPEN) {
 
-		// Get the BITMAPINFO structure from the bitmap
-		int res;
-		if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
-		{
-			Helper::BitmapInfoErrorExit(L"GetDIBits1()");
+			/* Ottieni l'icona */
+			HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
+			PBITMAPINFO pbi = Helper::CreateBitmapInfoStruct(hSource);
+			HDC hdc = GetDC(NULL);
+			HDC hdcSource = CreateCompatibleDC(hdc);
+
+			BITMAPINFO MyBMInfo = { 0 };
+			MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
+
+			// Get the BITMAPINFO structure from the bitmap
+			int res;
+			if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+			{
+				Helper::BitmapInfoErrorExit(L"GetDIBits1()");
+			}
+
+			// create the pixel buffer
+			u_long iconLength = MyBMInfo.bmiHeader.biSizeImage;
+			lpPixels = new BYTE[iconLength];
+
+			MyBMInfo.bmiHeader.biCompression = BI_RGB;
+
+			// Call GetDIBits a second time, this time to (format and) store the actual
+			// bitmap data (the "pixels") in the buffer lpPixels		
+			if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+			{
+				Helper::BitmapInfoErrorExit(L"GetDIBits2()");
+			}
+
+			DeleteObject(hSource);
+			ReleaseDC(NULL, hdcSource);
+
+			/* Tentativo di ottenere l'icona tramite funziona dell'Helper: ma invia icona nera */
+			//u_long iconLength = 0;
+			//BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
+
+			BYTE& pixels = *lpPixels;
+
+			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
+
+		}
+		else if (op == FOCUS || op == CLOSE) {
+			message = new Message(op, hwnd);
+		}
+		else if (op == TITLE_CHANGED) {
+			message = new MessageWithTitle(op, hwnd, title);
 		}
 
-		// create the pixel buffer
-		u_long iconLength = MyBMInfo.bmiHeader.biSizeImage;
-		BYTE* lpPixels = new BYTE[iconLength];
+		/* Ritorna la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
+		BYTE& buffer = message->serialize(msgLength);
 
-		MyBMInfo.bmiHeader.biCompression = BI_RGB;
 
-		// Call GetDIBits a second time, this time to (format and) store the actual
-		// bitmap data (the "pixels") in the buffer lpPixels		
-		if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+		int bytesSent = 0;
+		int offset = 0;
+		int remaining = MSG_LENGTH_SIZE + msgLength;
+		while (remaining > 0)
 		{
-			Helper::BitmapInfoErrorExit(L"GetDIBits2()");
+			bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
+			if (bytesSent < 0)
+				break;
+			remaining -= bytesSent;
+			offset += bytesSent;
 		}
 
-		DeleteObject(hSource);
-		ReleaseDC(NULL, hdcSource);
-
-		/* Tentativo di ottenere l'icona tramite funziona dell'Helper */
-		//u_long iconLength = 0;
-		//BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-
-		BYTE& pixels = *lpPixels;
-
-		message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
-
+		delete message;
 	}
-	else if (op == FOCUS || op == CLOSE) {
-
-		message = new Message(op, hwnd);
-
-	}
-	else if (op == TITLE_CHANGED) {
-
-		message = new MessageWithTitle(op, hwnd, title);
-		
-	}
-
-	/* Ritorna la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
-	BYTE& buffer = message->serialize(msgLength);
-
-	int bytesSent = 0;
-	int offset = 0;
-	int remaining = MSG_LENGTH_SIZE + msgLength;
-	while (remaining > 0)
+	catch (exception&)
 	{
-		bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
-		if (bytesSent < 0)
-			break;
-		remaining -= bytesSent;
-		offset += bytesSent;
-	}
+		if (lpPixels != NULL)
+			delete[] lpPixels;
 
-	delete message;
+		if (message != NULL)
+			delete message;
+
+		// Rilancia l'eccezione perché venga gestita nei livelli superiori
+		throw;
+	}
 
 	return;
-
 }
 
 void Server::sendMessageToClient(const char* operation) {
 
-	char sendBuf[12 * sizeof(char)];
-	u_long msgLength = 5;
-	u_long netMsgLength = htonl(msgLength);
+	try {
+		char sendBuf[12 * sizeof(char)];
+		u_long msgLength = 5;
+		u_long netMsgLength = htonl(msgLength);
 
-	memcpy(sendBuf, "--", 2);
-	memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
-	memcpy(sendBuf + 6, "-", 1);
+		memcpy(sendBuf, "--", 2);
+		memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
+		memcpy(sendBuf + 6, "-", 1);
 
-	memcpy(sendBuf + 7, operation, 5);
+		memcpy(sendBuf + 7, operation, 5);
 
-	send(clientSocket, sendBuf, 12, 0);
+		int bytesSent = 0;
+		int offset = 0;
+		int remaining = 12;
+		while (remaining > 0)
+		{
+			bytesSent = send(clientSocket, sendBuf, remaining, offset);
+			if (bytesSent < 0)
+				return;
+			remaining -= bytesSent;
+			offset += bytesSent;
+		}
+	}
+	catch (exception&)
+	{
+		// Rilancia l'eccezione perché venga gestita nei livelli superiori
+		throw;
+	}
+
 }
 
 int Server::receiveMessageFromClient(char* buffer, int bufferSize)

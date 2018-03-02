@@ -333,14 +333,17 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 
 				wstring windowTitle = Helper::getTitleFromHwnd(currentForegroundHwnd);
 
-				printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
-				printMessage(TEXT("- " + windowTitle));
-				server.sendNotificationToClient(currentForegroundHwnd, windowTitle, FOCUS);				
+				//if (windowTitle.length() != 0) {
+					printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
+					printMessage(TEXT("- " + windowTitle));
+					server.sendNotificationToClient(currentForegroundHwnd, windowTitle, FOCUS);
+				//}
 			}
 
 			windows = tempWindows;
 
-			/*  */
+			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): in caso positivo, 
+				manda un messaggio al client per chiudere la connessione*/
 			if (!isRunning) {
 				printMessage(TEXT("Gestione finestre in chiusura..."));
 				server.sendMessageToClient("ERRCL");
@@ -354,6 +357,8 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 	catch (future_error)
 	{
 		// cosa fare?
+		globalExceptionPtr = current_exception();
+		return;
 	}
 	catch (exception)
 	{

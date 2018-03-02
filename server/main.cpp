@@ -10,6 +10,7 @@ int main(int argc, char* argv[])
 	}
 	catch (exception& ex) {
 		wcout << ex.what() << endl;
+		wns.stop();
 	}
 		
 	return 0;

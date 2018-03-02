@@ -19,8 +19,11 @@ class Message
 public:
 
 	Message(operation op, HWND hwnd);	
+
+	/* Avendo abilitato il comportamento polimorfico, anche il destructor deve essere 'virtual' */
 	virtual ~Message();
 
+	/* La parola chiave 'virtual' abilita il comportamento polimorfico */
 	virtual BYTE& serialize(u_long& size);
 
 protected:
