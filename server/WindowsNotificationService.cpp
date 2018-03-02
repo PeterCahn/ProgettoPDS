@@ -328,16 +328,32 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 			/* Check variazione focus */
 			HWND tempForeground = GetForegroundWindow();
 			if (tempForeground != currentForegroundHwnd) {
-				// Allora il programma che ha il focus è cambiato				
-				currentForegroundHwnd = tempForeground;
+				// Allora il programma che ha il focus è cambiato, ma non è detto che sia una finestra già inviata
 
-				wstring windowTitle = Helper::getTitleFromHwnd(currentForegroundHwnd);
+				wstring windowTitle = Helper::getTitleFromHwnd(tempForeground);
 
-				//if (windowTitle.length() != 0) {
-					printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
-					printMessage(TEXT("- " + windowTitle));
-					server.sendNotificationToClient(currentForegroundHwnd, windowTitle, FOCUS);
-				//}
+				if (windowTitle.length() != 0) {
+
+					// Cercalo tra le finestre in tempWindows
+					if (tempWindows.find(tempForeground) != tempWindows.end()) {
+						// E' una finestra che è gia stata inviata
+						printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
+						printMessage(TEXT("- " + windowTitle));
+						server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
+					}
+					else {
+						// La finestra non c'è in tempWindows, quindi aggiungila a tempWindows e invia notifica OPEN
+						// Devo aggiungere la finestra a 'windows'					
+						tempWindows[tempForeground] = windowTitle;
+						printMessage(TEXT("Nuova finestra aperta!"));
+						printMessage(TEXT("- " + windowTitle));
+						server.sendNotificationToClient(tempForeground, windowTitle, OPEN);
+						server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
+					}
+
+					currentForegroundHwnd = tempForeground;
+				} else
+					server.sendNotificationToClient(0, windowTitle, FOCUS);
 			}
 
 			windows = tempWindows;
