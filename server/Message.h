@@ -5,18 +5,21 @@
 #include <typeinfo>
 #include <string>
 
-
-enum operation;
+enum operation {
+	OPEN,
+	CLOSE,
+	FOCUS,
+	TITLE_CHANGED
+};
 
 using namespace std;
 
 class Message
 {
 public:
-	/* TODO: FOCUS and CLOSE (senza windowName) */
-	Message(operation op, HWND hwnd);
-	
-	~Message();
+
+	Message(operation op, HWND hwnd);	
+	virtual ~Message();
 
 	virtual BYTE& serialize(u_long& size);
 

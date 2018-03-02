@@ -44,13 +44,6 @@
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
 
-/* Definisce che tipo di notifica è associata alla stringa rappresentante il nome di un finestra da inviare al client */
-enum operation {
-	OPEN,
-	CLOSE,
-	FOCUS,
-	TITLE_CHANGED
-};
 
 Server::Server()
 {

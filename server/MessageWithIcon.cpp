@@ -24,8 +24,8 @@ MessageWithIcon::MessageWithIcon(operation op, HWND hwnd, wstring windowName, BY
 
 MessageWithIcon::~MessageWithIcon()
 {
-	if (pixels != nullptr)
-		delete pixels;
+	if (pixels != NULL)
+		delete[] pixels;
 }
 
 BYTE & MessageWithIcon::serialize(u_long & size)

@@ -42,6 +42,7 @@
 
 #include "WindowsNotificationService.h"
 #include "Helper.h"
+#include "Message.h" // qui sono definiti i tipi di operazione
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -53,15 +54,6 @@
 
 using namespace std;
 
-/* Definisce che tipo di notifica è associata alla stringa rappresentante il nome di un finestra da inviare al client */
-enum operation {
-	OPEN,
-	CLOSE,
-	FOCUS,
-	TITLE_CHANGED
-};
-
-typedef std::map<HWND, wstring> WinStringMap;
 
 WindowsNotificationService::WindowsNotificationService()
 {

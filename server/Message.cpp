@@ -2,12 +2,6 @@
 
 #include "Message.h"
 
-enum operation {
-	OPEN,
-	CLOSE,
-	FOCUS,
-	TITLE_CHANGED
-};
 
 #define N_BYTE_TRATTINO 1
 #define N_BYTE_MSG_LENGTH 4
@@ -29,8 +23,8 @@ Message::Message(operation op, HWND hwnd)
 
 Message::~Message()
 {
-	if (buffer != NULL)
-		delete buffer;
+	if (this->buffer != NULL)
+		delete[] this->buffer;
 }
 
 BYTE& Message::serialize(u_long& size)
@@ -54,15 +48,15 @@ BYTE& Message::serialize(u_long& size)
 		memcpy(operation, "CLOSE-", 6);
 
 	/* Inizializza buffer per il messaggio */
-	BYTE *finalBuffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
 
-	memcpy(finalBuffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
-	memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
+	memcpy(buffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
 
-	memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
+	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
 
-	return *finalBuffer;
+	return *buffer;
 }
 
 

@@ -339,13 +339,10 @@ namespace WpfApplication1
                 byte[] op = new byte[5];
                 Array.Copy(msg, 0, op, 0, 5);
                 operation = Encoding.ASCII.GetString(op);
-                
-                // Estrai hwnd: successivi 5 byte.
-                byte[] h = new byte[5];
-                Array.Copy(msg, 6, h, 0, 4);
-                int hwnd = BitConverter.ToInt32(msg, 6);
 
                 int progNameLength = 0;
+                int hwnd = 0;
+                byte[] h = null;
                 byte[] pN = null;
 
 
@@ -384,17 +381,30 @@ namespace WpfApplication1
                         break;
 
                     case "FOCUS":
+                        // Estrai hwnd: successivi 5 byte.
+                        h = new byte[5];
+                        Array.Copy(msg, 6, h, 0, 4);
+                        hwnd = BitConverter.ToInt32(msg, 6);
+
                         // Cambia programma col focus                            
                         servers[serverName].table.changeFocus(hwnd);
 
                         break;
                     case "CLOSE":
+                        // Estrai hwnd: successivi 5 byte.
+                        h = new byte[5];
+                        Array.Copy(msg, 6, h, 0, 4);
+                        hwnd = BitConverter.ToInt32(msg, 6);
+
                         // Rimuovi programma dalla listView                            
                         servers[serverName].table.removeFinestra(hwnd);
 
                         break;
-                    case "TTCHA":
-                        // Cambia nome il nome della finestra ricevuta
+                    case "TTCHA":                        
+                        // Estrai hwnd: successivi 5 byte.
+                        h = new byte[5];
+                        Array.Copy(msg, 6, h, 0, 4);
+                        hwnd = BitConverter.ToInt32(msg, 6);
 
                         // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
                         progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
@@ -409,6 +419,10 @@ namespace WpfApplication1
                     case "OPENP":
                         try
                         {
+                            // Estrai hwnd: successivi 5 byte.
+                            h = new byte[5];
+                            Array.Copy(msg, 6, h, 0, 4);
+                            hwnd = BitConverter.ToInt32(msg, 6);
 
                             // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
                             progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
