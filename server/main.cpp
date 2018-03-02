@@ -9,7 +9,7 @@ int main(int argc, char* argv[])
 		wns.start();
 	}
 	catch (exception& ex) {
-		wcout << ex.what();
+		wcout << ex.what() << endl;
 	}
 		
 	return 0;

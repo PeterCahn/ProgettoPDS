@@ -11,8 +11,6 @@
 #include <chrono>
 #include <string>
 #include <sstream>
-#include <vector>
-#include <algorithm>
 #include <strsafe.h>
 #include <Wingdi.h>
 #include <future>
@@ -28,6 +26,7 @@
 
 #include "Server.h"
 #include "Helper.h"
+#include "Message.h"
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -296,25 +295,10 @@ void Server::arrestaServer()
 */
 void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	
-	/* Prepara variabile TCHAR per essere copiata sul buffer di invio */
-	TCHAR progName[MAX_PATH * sizeof(wchar_t)];
-	ZeroMemory(progName, MAX_PATH * sizeof(wchar_t));
-
-	/* Copia in progName la stringa ottenuta */
-	wcscpy_s(progName, title.c_str());
-
-	/* Prepara il valore della lunghezza del nome del programma in Network Byte Order */
-	u_long progNameLength = title.size() * sizeof(wchar_t);
-	u_long netProgNameLength = htonl(progNameLength);
-
-	int i = 0;
 	u_long msgLength = 0;
-
-	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino
-	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1
-	BYTE* lpPixels = NULL;
-	BYTE* finalBuffer = NULL;
-
+	
+	Message* message = NULL;
+	
 	if (op == OPEN) {
 		
 		/* Ottieni l'icona */
@@ -334,8 +318,8 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		}
 
 		// create the pixel buffer
-		long iconLength = MyBMInfo.bmiHeader.biSizeImage;
-		lpPixels = new BYTE[iconLength];
+		u_long iconLength = MyBMInfo.bmiHeader.biSizeImage;
+		BYTE* lpPixels = new BYTE[iconLength];
 
 		MyBMInfo.bmiHeader.biCompression = BI_RGB;
 
@@ -349,129 +333,42 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		DeleteObject(hSource);
 		ReleaseDC(NULL, hdcSource);
 
-		/* iconLength è la dimensione dell'icona */
-		/* Calcola lunghezza totale messaggio e salvala */
-		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE +
-			PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE + iconLength;
-		u_long netMsgLength = htonl(msgLength);
+		/* Tentativo di ottenere l'icona tramite funziona dell'Helper */
+		//u_long iconLength = 0;
+		//BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
 
-		memcpy(dimension, "--", 2 * N_BYTE_TRATTINO);
-		memcpy(dimension + 2 * N_BYTE_TRATTINO, (void*)&netMsgLength, N_BYTE_MSG_LENGTH);
-		memcpy(dimension + 2 * N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH, "-", N_BYTE_TRATTINO);
+		BYTE& pixels = *lpPixels;
 
-		/* Salva l'operazione */
-		memcpy(operation, "OPENP-", N_BYTE_OPERATION + N_BYTE_TRATTINO);
+		message = new Message(op, hwnd, title, pixels, iconLength);
 
-		/* Crea buffer da inviare */
-		finalBuffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
-
-		memcpy(finalBuffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO, &iconLength, N_BYTE_ICON_LENGTH);	// Aggiungi dimensione icona (4 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + N_BYTE_ICON_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE, lpPixels, iconLength);	// Aggiungi dati icona
 	}
-	else if (op == CLOSE) {
+	else if (op == FOCUS || op == CLOSE) {
 
-		/* Calcola lunghezza totale messaggio e salvala */
-		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength;
-		u_long netMsgLength = htonl(msgLength);
-
-		memcpy(dimension, "--", 2);
-		memcpy(dimension + 2, (void*)&netMsgLength, 4);
-		memcpy(dimension + 6, "-", 1);
-
-		/* Crea operation */
-		memcpy(operation, "CLOSE-", 6);
-
-		/* Crea buffer da inviare */
-		finalBuffer = new BYTE[7 + msgLength];
-
-		memcpy(finalBuffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
-	}
-	else if (op == FOCUS) {
-
-		/* Calcola lunghezza totale messaggio e salvala */
-		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength;
-		u_long netMsgLength = htonl(msgLength);
-
-		memcpy(dimension, "--", 2);
-		memcpy(dimension + 2, (void*)&netMsgLength, 4);
-		memcpy(dimension + 6, "-", 1);
-
-		memcpy(operation, "FOCUS-", 6);
-
-		/* Crea buffer da inviare */
-		finalBuffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
-
-		memcpy(finalBuffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
+		message = new Message(op, hwnd, title);
 
 	}
 	else if (op == TITLE_CHANGED) {
-		/* Calcola lunghezza totale messaggio e salvala */
-		msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength;
-		u_long netMsgLength = htonl(msgLength);
 
-		memcpy(dimension, "--", 2);
-		memcpy(dimension + 2, (void*)&netMsgLength, 4);
-		memcpy(dimension + 6, "-", 1);
-
-		memcpy(operation, "TTCHA-", 6);
-
-		/* Crea buffer da inviare */
-		finalBuffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
-
-		memcpy(finalBuffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-		memcpy(finalBuffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
+		message = new Message(op, hwnd, title);
+		
 	}
+
+	/* Ritorna la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
+	BYTE& buffer = message->serialize(msgLength);
 
 	int bytesSent = 0;
 	int offset = 0;
 	int remaining = MSG_LENGTH_SIZE + msgLength;
 	while (remaining > 0)
 	{
-		bytesSent = send(clientSocket, (char*)finalBuffer, remaining, offset);
+		bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
 		if (bytesSent < 0)
 			break;
 		remaining -= bytesSent;
 		offset += bytesSent;
 	}
+
+	delete message;
 
 	return;
 
@@ -533,16 +430,3 @@ bool Server::validClient()
 
 	return true;
 }
-
-// TODO: da eliminare nella fase finale
-SOCKET Server::getClientSocket()
-{
-	return clientSocket;
-}
-
-// TODO: da eliminare nella fase finale
-SOCKET Server::getListeningSocket()
-{
-	return listeningSocket;
-}
-

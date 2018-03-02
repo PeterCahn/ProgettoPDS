@@ -79,6 +79,7 @@ WindowsNotificationService::WindowsNotificationService()
 WindowsNotificationService::~WindowsNotificationService()
 {
 	printMessage(TEXT("WindowsNotificationsService chiuso."));
+
 }
 
 /* Per uscire dal servizio */

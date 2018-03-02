@@ -11,11 +11,11 @@ public:
 	~Helper();
 
 	static HICON getHICONfromHWND(HWND hwnd);
-	static long ottieniIcona(BYTE* lpPixels, HWND hwnd);
+	static BYTE& ottieniIcona(HWND hwnd, u_long iconLength);
 	static HBITMAP getHBITMAPfromHICON(HICON hIcon);
 	static void BitmapInfoErrorExit(LPTSTR lpszFunction);
 	static PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
-	static std::wstring getTitleFromHwnd(HWND hwnd);
+	static wstring getTitleFromHwnd(HWND hwnd);
 
 };
 

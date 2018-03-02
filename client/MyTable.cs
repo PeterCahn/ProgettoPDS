@@ -43,12 +43,12 @@ namespace client
 
             // Inizializza i tempi per l'aggiornamento delle statistiche
             connectionTime = DateTime.Now;
-            lastUpdate = DateTime.Now;
+            lastUpdate = connectionTime;
         }
 
         ~MyTable()
         {
-            System.Windows.MessageBox.Show("Distruttore di MyTable chiamato");            
+            //System.Windows.MessageBox.Show("Distruttore di MyTable chiamato");            
         }
 
         public void addFinestra(int hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
@@ -131,18 +131,20 @@ namespace client
             {
                 foreach (Finestra finestra in Finestre)
                 {
+                    /* Incrementa il TempoFocus della finestra con StatoFinestra in Focus */
                     if (finestra.StatoFinestra.Equals("Focus"))
                     {
-                        finestra.TempoFocus = (DateTime.Now - lastUpdate).TotalMilliseconds + finestra.TempoFocus;
+                        finestra.TempoFocus += (DateTime.Now - lastUpdate).TotalMilliseconds;
                         lastUpdate = DateTime.Now;
-                    }
-
+                    }                    
+                    
                     // Calcola la percentuale
-                    double perc = (finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds * 100);
+                    double perc = (finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds) * 100;
                     finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
+                    
                 }
             }
-        }
+        }        
 
     }
 

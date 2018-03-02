@@ -34,9 +34,6 @@ public:
 	/* Riceve un messaggio dal client */
 	int receiveMessageFromClient(char* buffer, int bufferSize);
 
-	SOCKET getClientSocket();
-	SOCKET getListeningSocket();
-
 private:
 
 	SOCKET clientSocket;	// Gestisce un client alla volta

@@ -19,10 +19,8 @@ using System.Windows.Forms;
 using System.Text.RegularExpressions;
 
 /* TODO:
- * - Distruttore (utile ad esempio per fare Mutex.Dispose())
- * - Icona con sfondo nero 
- * - Modifica controllo numero server connessi. Crash al controllo se serversListBox.Items[0].Equals("Nessun server connesso")
- *  => Aggiungere elemento che viene mostrato solo quando non ci sono server connessi. Così il controllo è solo sulla size della lista.
+ * - Distruttore
+ * - Icona con sfondo nero
  */
 
 namespace WpfApplication1
@@ -40,12 +38,7 @@ namespace WpfApplication1
         BackgroundWorker bw = new BackgroundWorker();
         string connectingIp;
         int connectingPort;
-
-        /* Mutex necessario alla gestione delle modifiche nella listView1 perchè 
-         * i thread accedono alla stessa variabile 'servers'.
-         */
-        private static Mutex tablesMapsEntryMutex = new Mutex();
-
+        
         public MainWindow()
         {
             InitializeComponent();
@@ -63,6 +56,10 @@ namespace WpfApplication1
             bw.DoWork += new DoWorkEventHandler(provaConnessione);
             bw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(finalizzaConnessione);
 
+        }
+
+        ~MainWindow(){
+            System.Windows.MessageBox.Show("Nel distruttore di MainWindow");
         }
 
         public IPEndPoint parseHostPort(string hostPort)
@@ -216,7 +213,7 @@ namespace WpfApplication1
 
         }
 
-        /* Come manageStatistics ma da eseguire in un BackgroundWorker */
+        /* Metodo passato al BackgroundWorker per aggiornare le statistiche */
         private void aggiornaStatistiche(object sender, DoWorkEventArgs e)
         {
             string serverName = (string) e.Argument;
@@ -233,13 +230,11 @@ namespace WpfApplication1
                 else
                 {
                     /* Controlla che 'serverName' non sia stata eliminata */
-                    lock (servers)
+                    if (servers.ContainsKey(serverName)) // l'argomento non può essere null perché validato
                     {
-                        if (servers.ContainsKey(serverName)) // l'argomento non può essere null perché validato
-                        {
-                            servers[serverName].table.aggiornaStatisticheFocus();
-                        }
+                        servers[serverName].table.aggiornaStatisticheFocus();
                     }
+                    
                     Thread.Sleep(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
                 }
             }
@@ -315,12 +310,12 @@ namespace WpfApplication1
 
                 return;
             }            
-
-            string operation = null;
-            string progName = null;
             
             while (serverStream.CanRead && server.Connected)
             {
+                string operation = "";
+                string progName = "";
+
                 // Controlla se è stata chiamata CancelAsync() sul BackgroundThread che esegue riceiNotifiche 
                 if (worker.CancellationPending == true)
                 {
@@ -385,7 +380,7 @@ namespace WpfApplication1
                 // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
                 int progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
                 // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                byte[] pN = new byte[progNameLength];
+                byte[] pN = new byte[progNameLength*sizeof(byte)];
                 Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
                 progName = Encoding.Unicode.GetString(pN);
 
@@ -475,7 +470,8 @@ namespace WpfApplication1
                         catch (Exception)
                         {
                             // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
-                            // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre                                    
+                            // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre 
+                            continue;                                   
                         }
 
                         break;
@@ -507,11 +503,7 @@ namespace WpfApplication1
 
         delegate void PulisciInterfacciaDelegate(string disconnectingServer, bool onPurpose);
 
-        /* Pulisce l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke)
-         * Seleziona la listView adatta da visualizzare, con distinzione tra pulizia dovuta a disconnessione volontaria
-         *      o pulizia dovuta a eccezzione scatenata (parametro onPurpose)
-         * Disconnessione volontaria:   rimuove l'elenco delle finestre di quel server e la voce nella ListBox
-         * Disconnessione forzata:      non rimuove l'elenco delle finestre di quel server né la voce nella ListBox          
+        /* Chiama funzione per pulire l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke)         
          */
         private void safePulisciInterfaccia(string disconnectingServer, bool onPurpose)
         {
@@ -528,6 +520,11 @@ namespace WpfApplication1
             }
         }
 
+        /* Distinzione tra pulizia dovuta a disconnessione volontaria
+         *      o pulizia dovuta a eccezione scatenata (parametro onPurpose)
+         * Disconnessione volontaria:   rimuove l'elenco delle finestre di quel server e la voce nella ListBox
+         * Disconnessione forzata:      non rimuove l'elenco delle finestre di quel server né la voce nella serversListBox          
+         */
         private void pulisciInterfacciaDopoDisconnessione(string disconnectingServer, bool onPurpose)
         {
             if (onPurpose)
@@ -542,7 +539,6 @@ namespace WpfApplication1
                 invalidaServer(disconnectingServer);
                 
             }
-
         }
 
         private void aggiungiServer(string serverName, ServerInfo si)
@@ -752,9 +748,8 @@ namespace WpfApplication1
             NetworkStream serverStream = null;
             TcpClient server = null;
 
-            // Definisci il server da disconnettere. 
-            // Le strutture dati del server connesso in questo momento sono per forza lì, solo disconnettiDalServerWithBW le può rimuovere.
-            // CurrentConnectedServer può essere però cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
+            // Definisci il server da disconnettere.
+            // CurrentConnectedServer può essere cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
             string disconnectingServer = currentConnectedServer;
 
             try

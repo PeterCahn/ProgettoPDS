@@ -9,7 +9,6 @@
 #include <strsafe.h>
 */
 
-#include <map>
 #include <Windows.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -18,7 +17,6 @@
 #include <sstream>
 #include <strsafe.h>
 #include <Wingdi.h>
-#include <future>
 #include <io.h>
 #include <fcntl.h>
 #include <cstdio>
@@ -57,9 +55,8 @@ HICON Helper::getHICONfromHWND(HWND hwnd) {
 	//return (HICON)GetClassLong(hwnd, GCL_HICON);
 }
 
-long Helper::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
+BYTE& Helper::ottieniIcona(HWND hwnd, u_long iconLength) {
 
-	// Ottieni l'icona
 	HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
 	PBITMAPINFO pbi = Helper::CreateBitmapInfoStruct(hSource);
 	HDC hdc = GetDC(NULL);
@@ -70,14 +67,14 @@ long Helper::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 
 	// Get the BITMAPINFO structure from the bitmap
 	int res;
-	if ((res = GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+	if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
 		Helper::BitmapInfoErrorExit(L"GetDIBits1()");
 	}
 
 	// create the pixel buffer
-	long iconLength = MyBMInfo.bmiHeader.biSizeImage;
-	lpPixels = new BYTE[iconLength];
+	iconLength = MyBMInfo.bmiHeader.biSizeImage;
+	BYTE* lpPixels = new BYTE[iconLength];
 
 	MyBMInfo.bmiHeader.biCompression = BI_RGB;
 
@@ -91,7 +88,7 @@ long Helper::ottieniIcona(BYTE* lpPixels, HWND hwnd) {
 	DeleteObject(hSource);
 	ReleaseDC(NULL, hdcSource);
 
-	return iconLength;
+	return *lpPixels;
 }
 
 HBITMAP Helper::getHBITMAPfromHICON(HICON hIcon) {

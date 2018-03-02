@@ -112,11 +112,17 @@
   <ItemGroup>
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Message.cpp" />
+    <ClCompile Include="MessageWithIcon.cpp" />
+    <ClCompile Include="MessageWithTitle.cpp" />
     <ClCompile Include="WindowsNotificationService.cpp" />
     <ClCompile Include="Server.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Helper.h" />
+    <ClInclude Include="Message.h" />
+    <ClInclude Include="MessageWithIcon.h" />
+    <ClInclude Include="MessageWithTitle.h" />
     <ClInclude Include="WindowsNotificationService.h" />
     <ClInclude Include="Server.h" />
   </ItemGroup>
