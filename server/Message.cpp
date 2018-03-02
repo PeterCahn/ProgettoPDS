@@ -21,7 +21,7 @@ enum operation {
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
 
-
+/*
 Message::Message(operation op, HWND hwnd, wstring windowName, BYTE & icona, u_long iconLength)
 {
 	this->op = op;
@@ -30,6 +30,7 @@ Message::Message(operation op, HWND hwnd, wstring windowName, BYTE & icona, u_lo
 	this->pixels = &icona;
 	this->iconLength = iconLength;
 }
+*/
 
 Message::Message(operation op, HWND hwnd)
 {
@@ -50,18 +51,6 @@ Message::~Message()
 }
 
 BYTE& Message::serialize(u_long& size)
-{
-	if (op == FOCUS)
-		return serializeFocusOrClose(op, size);
-	else if (op == CLOSE)
-		return serializeFocusOrClose(op, size);
-	else if (op == TITLE_CHANGED)
-		return serializeTitleChanged(size);
-	else if (op == OPEN)
-		return serializeOpen(size);
-}
-
-BYTE& Message::serializeFocusOrClose(operation oper, u_long & size)
 {
 	TCHAR progName[MAX_PATH * sizeof(TCHAR)];
 	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
@@ -108,98 +97,4 @@ BYTE& Message::serializeFocusOrClose(operation oper, u_long & size)
 	return *finalBuffer;
 }
 
-BYTE & Message::serializeTitleChanged(u_long & size)
-{
-	TCHAR progName[MAX_PATH * sizeof(TCHAR)];
-	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
-
-	/* Copia in progName la stringa ottenuta */
-	wcscpy_s(progName, windowName.c_str());
-
-	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino
-	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1
-	BYTE* lpPixels = NULL;
-
-	u_long progNameLength = windowName.length() * sizeof(TCHAR);
-	u_long netProgNameLength = htonl(progNameLength);
-
-	/* Calcola lunghezza totale messaggio e salvala */
-	u_long msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength;
-	u_long netMsgLength = htonl(msgLength);
-
-	size = msgLength;
-
-	memcpy(dimension, "--", 2);
-	memcpy(dimension + 2, (void*)&netMsgLength, 4);
-	memcpy(dimension + 6, "-", 1);
-
-	memcpy(operation, "TTCHA-", 6);
-
-	/* Crea buffer da inviare */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
-
-	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
-
-	return *buffer;
-
-}
-
-BYTE & Message::serializeOpen(u_long & size)
-{
-
-	TCHAR progName[MAX_PATH * sizeof(TCHAR)];
-	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
-
-	/* Copia in progName la stringa ottenuta */
-	wcscpy_s(progName, windowName.c_str());
-
-	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino
-	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1	
-
-	u_long progNameLength = windowName.length() * sizeof(TCHAR);
-	u_long netProgNameLength = htonl(progNameLength);
-
-	u_long msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE +
-		PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE + iconLength;
-	u_long netMsgLength = htonl(msgLength);
-
-	size = msgLength;
-
-	memcpy(dimension, "--", 2 * N_BYTE_TRATTINO);
-	memcpy(dimension + 2 * N_BYTE_TRATTINO, (void*)&netMsgLength, N_BYTE_MSG_LENGTH);
-	memcpy(dimension + 2 * N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH, "-", N_BYTE_TRATTINO);
-
-	/* Salva l'operazione */
-	memcpy(operation, "OPENP-", N_BYTE_OPERATION + N_BYTE_TRATTINO);
-
-	/* Crea buffer da inviare */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
-
-	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE, operation, OPERATION_SIZE);	// "<operation>-"	(6 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE, &hwnd, N_BYTE_HWND);
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + N_BYTE_HWND, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE, &netProgNameLength, N_BYTE_PROG_NAME_LENGTH);	// Aggiungi lunghezza progName (4 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + N_BYTE_PROG_NAME_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH, progName, progNameLength);	// <progName>
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO, &iconLength, N_BYTE_ICON_LENGTH);	// Aggiungi dimensione icona (4 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + N_BYTE_ICON_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE, pixels, iconLength);	// Aggiungi dati icona
-
-	return *buffer;
-}
 

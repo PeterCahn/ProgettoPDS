@@ -26,7 +26,7 @@
 
 #include "Server.h"
 #include "Helper.h"
-#include "Message.h"
+#include "MessageWithIcon.h"
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
@@ -339,7 +339,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 
 		BYTE& pixels = *lpPixels;
 
-		message = new Message(op, hwnd, title, pixels, iconLength);
+		message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
 
 	}
 	else if (op == FOCUS || op == CLOSE) {
@@ -349,7 +349,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	}
 	else if (op == TITLE_CHANGED) {
 
-		message = new Message(op, hwnd, title);
+		message = new MessageWithTitle(op, hwnd, title);
 		
 	}
 

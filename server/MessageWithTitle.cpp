@@ -16,9 +16,8 @@
 
 MessageWithTitle::MessageWithTitle(operation op, HWND hwnd, wstring windowName) : Message(op, hwnd, windowName)
 {	
-	this->windowName2 = windowName;	
-}
 
+}
 
 MessageWithTitle::~MessageWithTitle()
 {

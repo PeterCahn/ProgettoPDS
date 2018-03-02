@@ -13,28 +13,23 @@ using namespace std;
 class Message
 {
 public:
-	/* OPENP */
-	Message(operation op, HWND hwnd, wstring windowName, BYTE& icona, u_long iconLength);
-	/* FOCUS and CLOSE */
+	/* TODO: FOCUS and CLOSE (senza windowName) */
 	Message(operation op, HWND hwnd);
-	/* TITLE_CHANGED */
+
+	/* FOCUS and CLOSE (con windowName) */
 	Message(operation op, HWND hwnd, wstring windowName);
 
 	~Message();
 
-	BYTE& serialize(u_long& size);
+	virtual BYTE& serialize(u_long& size);
 
-private:
+protected:
 	HWND hwnd;
 	operation op;
-	wstring windowName;
-	BYTE* buffer;
-	BYTE* pixels;
-	u_long iconLength;
+	wstring windowName;	// TODO: da eliminare
 
-	BYTE& serializeFocusOrClose(operation oper, u_long& size);
-	BYTE& serializeTitleChanged(u_long& size);
-	BYTE& serializeOpen(u_long& size);
+	BYTE* buffer;
+
 
 };
 

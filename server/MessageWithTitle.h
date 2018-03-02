@@ -11,7 +11,5 @@ public:
 
 protected:
 	wstring windowName2;
-	BYTE* buffer;
-	HWND hwnd;
 
 };

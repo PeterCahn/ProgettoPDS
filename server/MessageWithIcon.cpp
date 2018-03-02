@@ -18,7 +18,7 @@ MessageWithIcon::MessageWithIcon(operation op, HWND hwnd, wstring windowName, BY
 	: MessageWithTitle(op, hwnd, windowName)
 {
 	this->pixels = &icona;
-	this->iconLength = iconLength;	
+	this->iconLength = iconLength;		
 }
 
 
@@ -33,12 +33,12 @@ BYTE & MessageWithIcon::serialize(u_long & size)
 	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
 
 	/* Copia in progName la stringa ottenuta */
-	wcscpy_s(progName, windowName2.c_str());
+	wcscpy_s(progName, windowName.c_str());
 
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino
 	char operation[N_BYTE_OPERATION + N_BYTE_TRATTINO];	// 5 byte per l'operazione e trattino + 1	
 
-	u_long progNameLength = windowName2.length() * sizeof(TCHAR);
+	u_long progNameLength = windowName.length() * sizeof(TCHAR);
 	u_long netProgNameLength = htonl(progNameLength);
 
 	u_long msgLength = MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE +
