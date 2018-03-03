@@ -21,6 +21,7 @@ using System.Text.RegularExpressions;
 /* TODO:
  * - Distruttore
  * - Icona con sfondo nero
+ * - Cattura comandi: al momento si possono evitare di attivare funzioni di Windows premendo un tasto alla volta invece che tutti insieme, ma questo non vale per il tasto Win. Aggiustare?
  */
 
 namespace WpfApplication1
@@ -38,7 +39,11 @@ namespace WpfApplication1
         BackgroundWorker bw = new BackgroundWorker();
         string connectingIp;
         int connectingPort;
-        
+
+        /* Handler eventi alla pressione dei tasti durante la cattura di un comando */
+        System.Windows.Input.KeyEventHandler keyDownHandler;
+        System.Windows.Input.KeyEventHandler keyUpHandler;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -56,6 +61,9 @@ namespace WpfApplication1
             bw.DoWork += new DoWorkEventHandler(provaConnessione);
             bw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(finalizzaConnessione);
 
+            // Definisci gli event handler per la gestione della pressione dei tasti durante la cattura di un comando
+            keyDownHandler = new System.Windows.Input.KeyEventHandler(onButtonKeyDown);
+            keyUpHandler = new System.Windows.Input.KeyEventHandler(onButtonKeyUp);
         }
 
         ~MainWindow(){
@@ -219,8 +227,7 @@ namespace WpfApplication1
             textBoxIpAddress.Text = "";
 
             // Mostra il nuovo elenco
-            listView1.ItemsSource = si.table.Finestre;
-            
+            listView1.ItemsSource = si.table.Finestre;            
             listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
 
         }
@@ -642,7 +649,6 @@ namespace WpfApplication1
                         buttonDisconnetti.Visibility = Visibility.Hidden;
                         buttonInvia.IsEnabled = false;
                         buttonCattura.IsEnabled = false;
-
                     }
                     else
                     {
@@ -650,7 +656,6 @@ namespace WpfApplication1
                         serversListBox.SelectedIndex = 0;
                     }
                 }
-
             }
         }
 
@@ -711,8 +716,8 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = true;
 
             // Crea event handler per scrivere i tasti premuti
-            this.KeyDown += new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
-
+            this.KeyDown += keyDownHandler;
+            this.KeyUp += keyUpHandler;
         }
 
         // Al click di "Annulla cattura"
@@ -732,6 +737,10 @@ namespace WpfApplication1
             textBoxComando.Visibility = Visibility.Hidden;
             buttonInvia.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
+
+            // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
+            this.KeyDown -= keyDownHandler;
+            this.KeyUp -= keyUpHandler;
         }
 
         public Bitmap CopyDataToBitmap(byte[] data)
@@ -835,7 +844,7 @@ namespace WpfApplication1
 
         }
 
-        private void OnButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        private void onButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             // Se viene premuto Alt e.Key restituisce "System" ma la vera chiave di Alt è contenuta in SystemKey!
             Key pressedKey = (e.Key == Key.System ? e.SystemKey : e.Key);
@@ -855,6 +864,11 @@ namespace WpfApplication1
             comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey));
 
             // Segnala l'evento come gestito per evitare che venga chiamata nuovamente OnButtonKeyDown
+            e.Handled = true;
+        }
+
+        private void onButtonKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+        {
             e.Handled = true;
         }
 
@@ -890,7 +904,8 @@ namespace WpfApplication1
                 disabilitaCatturaComando();
 
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
-                this.KeyDown -= new System.Windows.Input.KeyEventHandler(OnButtonKeyDown);
+                this.KeyDown -= keyDownHandler;
+                this.KeyUp -= keyUpHandler;
             }
             catch (InvalidOperationException) // include ObjectDisposedException
             {
@@ -915,6 +930,9 @@ namespace WpfApplication1
         private void buttonAnnullaCattura_Click(object sender, RoutedEventArgs e)
         {
             disabilitaCatturaComando();
+
+            this.KeyDown -= keyDownHandler;
+            this.KeyUp -= keyUpHandler;
 
             //UnhookWindowsHookEx(_hookID);
         }
