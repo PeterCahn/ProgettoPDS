@@ -122,16 +122,28 @@ namespace WpfApplication1
                 }
             }
 
-            if (bw.IsBusy != true)
+            int timesRetried = 0;
+            while (timesRetried < 10)
             {
-                connectingIp = ipAddress;
-                connectingPort = port;
+                if (bw.IsBusy != true)
+                {
+                    connectingIp = ipAddress;
+                    connectingPort = port;
 
-                textBoxIpAddress.IsEnabled = false;
-                buttonConnetti.IsEnabled = false;
+                    textBoxIpAddress.IsEnabled = false;
+                    buttonConnetti.IsEnabled = false;
 
-                bw.RunWorkerAsync();
+                    bw.RunWorkerAsync();
+                    break;
+                }
+                else
+                {
+                    timesRetried++;
+                    System.Threading.Thread.Sleep(50);
+                }
             }
+            if(timesRetried >= 10)
+                System.Windows.MessageBox.Show("Errore nella connessione al server, riprovare");
         }
 
         private void provaConnessione(object sender, DoWorkEventArgs e)
