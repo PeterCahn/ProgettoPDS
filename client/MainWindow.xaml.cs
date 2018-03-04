@@ -18,6 +18,10 @@ using System.ComponentModel;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
 
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
+
 /* TODO:
  * - Distruttore
  * - Icona con sfondo nero
@@ -25,6 +29,14 @@ using System.Text.RegularExpressions;
 
 namespace WpfApplication1
 {
+    public class WindowInfo{
+        string operation { get; set; }
+        int hwnd { get; set; }
+        string windowName { get; set; }
+        int iconLength { get; set; }
+        object icona { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
         private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 500;
@@ -335,17 +347,12 @@ namespace WpfApplication1
                 if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
                     continue;
 
-                // Estrai operazione => primi 5 byte
-                byte[] op = new byte[5];
-                Array.Copy(msg, 0, op, 0, 5);
-                operation = Encoding.ASCII.GetString(op);
+                string json = Encoding.UTF8.GetString(msg); //.Replace("\"","'");
+                JToken token = JObject.Parse(json);
 
-                int progNameLength = 0;
-                int hwnd = 0;
-                byte[] h = null;
-                byte[] pN = null;
-
-
+                int hwnd = (int) token.SelectToken("hwnd");
+                operation = (string) token.SelectToken("operation");                                
+                
                 /* Possibili valori ricevuti:
                     * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
                     * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
@@ -381,74 +388,45 @@ namespace WpfApplication1
                         break;
 
                     case "FOCUS":
-                        // Estrai hwnd: successivi 5 byte.
-                        h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
 
                         // Cambia programma col focus                            
                         servers[serverName].table.changeFocus(hwnd);
 
                         break;
                     case "CLOSE":
-                        // Estrai hwnd: successivi 5 byte.
-                        h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
-
                         // Rimuovi programma dalla listView                            
                         servers[serverName].table.removeFinestra(hwnd);
 
                         break;
-                    case "TTCHA":                        
-                        // Estrai hwnd: successivi 5 byte.
-                        h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
+                    case "TTCHA":
 
-                        // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                        progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                        // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                        pN = new byte[progNameLength * sizeof(byte)];
-                        Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                        progName = Encoding.Unicode.GetString(pN);
+                        progName = Encoding.UTF8.GetString(
+                            token.SelectToken("windowName")
+                            .ToObject<JArray>()
+                            .ToObject<byte[]>()
+                            );
 
                         servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
 
                         break;
-                    case "OPENP":
+                    case "OPEN":
                         try
                         {
-                            // Estrai hwnd: successivi 5 byte.
-                            h = new byte[5];
-                            Array.Copy(msg, 6, h, 0, 4);
-                            hwnd = BitConverter.ToInt32(msg, 6);
-
-                            // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                            progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                            // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                            pN = new byte[progNameLength * sizeof(byte)];
-                            Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                            progName = Encoding.Unicode.GetString(pN);
+                            progName = Encoding.UTF8.GetString(
+                                token.SelectToken("windowName")
+                                .ToObject<JArray>()
+                                .ToObject<byte[]>()
+                                );
+                                                        
+                            byte[] bmpData = token.SelectToken("icona")
+                                .ToObject<JArray>().ToObject<byte[]>();
 
                             /* Ricevi icona processo */
                             Bitmap bitmap = new Bitmap(64, 64);
                             bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                                                                                            //bitmap.SetTransparencyKey(Color.White);
-
-                            // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
-                            // 4 byte di dimensione icona e il trattino
-                            int notBmpData = 16 + progNameLength + 1 + 4 + 1;
-                            int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
-
-                            /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
-                            byte[] bmpData = new byte[bmpLength];
-                            Array.Clear(bmpData, 0, bmpLength);
-
-                            // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
-                            // partendo dal source offset "notBmpData"
-                            Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
-
+                         
+                            int bmpLength = (int) token.SelectToken("iconLength");
+                            
                             /* Crea la bitmap a partire dal byte array */
                             bitmap = CopyDataToBitmap(bmpData);
                             /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */

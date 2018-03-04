@@ -2,6 +2,10 @@
 
 #include "MessageWithIcon.h"
 
+using json = nlohmann::json;
+
+#include <vector>
+
 #define N_BYTE_TRATTINO 1
 #define N_BYTE_MSG_LENGTH 4
 #define N_BYTE_PROG_NAME_LENGTH 4
@@ -73,6 +77,67 @@ BYTE & MessageWithIcon::serialize(u_long & size)
 	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO, &iconLength, N_BYTE_ICON_LENGTH);	// Aggiungi dimensione icona (4 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + N_BYTE_ICON_LENGTH, "-", N_BYTE_TRATTINO);	// Aggiungi trattino (1 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE + OPERATION_SIZE + HWND_SIZE + PROG_NAME_LENGTH + progNameLength + N_BYTE_TRATTINO + ICON_LENGTH_SIZE, pixels, iconLength);	// Aggiungi dati icona
+
+	return *buffer;
+}
+
+
+BYTE& MessageWithIcon::toJson(u_long& size)
+{
+	TCHAR progName[MAX_PATH * sizeof(TCHAR)];
+	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
+
+	/* Copia in progName la stringa ottenuta */
+	wcscpy_s(progName, windowName.c_str());
+
+
+	json j;
+
+	j["operation"] = "OPEN";
+	j["hwnd"] = (unsigned int)hwnd;
+
+	std::vector<std::uint8_t> v;
+	for (int i = 0; i < windowName.length(); i++) {
+		v.push_back((uint8_t)progName[i]);
+	}
+
+	j["windowName"] = v;
+
+	//j["windowName"] = windowName;
+	j["iconLength"] = iconLength;
+
+//	vector<uint8_t> icona = json::to_ubjson(pixels);
+	
+	v.clear();
+	for (int i = 0; i < this->iconLength; i++) {
+		v.push_back((uint8_t)pixels[i]);
+	}
+
+	//json j1 = json::parse(v.begin(), v.end());
+
+	//j["icona"] = j1;
+
+	j["icona"] = v;
+
+	string s = j.dump();
+
+	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino	
+
+	/* Calcola lunghezza totale messaggio e salvala */
+	u_long msgLength = s.length();
+	u_long netMsgLength = htonl(msgLength);
+
+	size = msgLength;
+
+	memcpy(dimension, "--", 2);
+	memcpy(dimension + 2, (void*)&netMsgLength, 4);
+	memcpy(dimension + 6, "-", 1);
+
+	/* Inizializza buffer per il messaggio */
+	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+
+	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
 
 	return *buffer;
 }

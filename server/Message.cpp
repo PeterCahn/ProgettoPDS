@@ -1,7 +1,12 @@
 #define UNICODE
 
 #include "Message.h"
+//#include <nlohmann\json.hpp>
 
+// for convenience
+using json = nlohmann::json;
+
+using namespace std;
 
 #define N_BYTE_TRATTINO 1
 #define N_BYTE_MSG_LENGTH 4
@@ -60,4 +65,36 @@ BYTE& Message::serialize(u_long& size)
 	return *buffer;
 }
 
+BYTE& Message::toJson(u_long& size)
+{
+	json j;
 
+	if(op == FOCUS)
+		j["operation"] = "FOCUS";
+	else if(op == CLOSE)
+		j["operation"] = "CLOSE";
+
+	j["hwnd"] = (unsigned int) hwnd;
+	
+	string s = j.dump();
+
+	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino	
+
+	/* Calcola lunghezza totale messaggio e salvala */
+	u_long msgLength = s.length();
+	u_long netMsgLength = htonl(msgLength);
+
+	size = msgLength;
+
+	memcpy(dimension, "--", 2);
+	memcpy(dimension + 2, (void*)&netMsgLength, 4);
+	memcpy(dimension + 6, "-", 1);
+
+	/* Inizializza buffer per il messaggio */
+	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+
+	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
+
+	return *buffer;
+}

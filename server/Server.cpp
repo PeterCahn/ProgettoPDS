@@ -339,11 +339,12 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		}
 		else if (op == TITLE_CHANGED) {
 			message = new MessageWithTitle(op, hwnd, title);
+
 		}
 
 		/* Ritorna la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
-		BYTE& buffer = message->serialize(msgLength);
-
+//		BYTE& buffer = message->serialize(msgLength);
+		BYTE& buffer = message->toJson(msgLength);
 
 		int bytesSent = 0;
 		int offset = 0;
@@ -365,7 +366,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 			delete[] lpPixels;
 
 		if (message != NULL)
-			delete message;
+			delete message;		// TODO: lancia un'eccezione se si raggiunge il catch
 
 		// Rilancia l'eccezione perché venga gestita nei livelli superiori
 		throw;

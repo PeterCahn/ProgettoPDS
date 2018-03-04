@@ -37,7 +37,7 @@ Helper::~Helper()
 HICON Helper::getHICONfromHWND(HWND hwnd) {
 
 	// Get the window icon
-	HICON hIcon = (HICON)(::SendMessageW(hwnd, WM_GETICON, ICON_SMALL, 0));
+	HICON hIcon = (HICON)(::SendMessageW(hwnd, WM_GETICON, ICON_SMALL2, 0));
 	if (hIcon == 0) {
 		// Alternative method. Get from the window class
 		hIcon = reinterpret_cast<HICON>(::GetClassLongPtrW(hwnd, GCLP_HICONSM));
@@ -76,7 +76,8 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long iconLength) {
 	iconLength = MyBMInfo.bmiHeader.biSizeImage;
 	BYTE* lpPixels = new BYTE[iconLength];
 
-	MyBMInfo.bmiHeader.biCompression = BI_RGB;
+	//MyBMInfo.bmiHeader.biCompression = BI_RGB;
+	MyBMInfo.bmiHeader.biCompression = BI_JPEG;
 
 	// Call GetDIBits a second time, this time to (format and) store the actual
 	// bitmap data (the "pixels") in the buffer lpPixels		
@@ -200,7 +201,7 @@ PBITMAPINFO Helper::CreateBitmapInfoStruct(HBITMAP hBmp)
 		pbmi->bmiHeader.biClrUsed = (1 << cClrBits);
 
 	// If the bitmap is not compressed, set the BI_RGB flag.  
-	pbmi->bmiHeader.biCompression = BI_RGB;
+	pbmi->bmiHeader.biCompression = BI_JPEG;
 
 	// Compute the number of bytes in the array of color  
 	// indices and store the result in biSizeImage.  
