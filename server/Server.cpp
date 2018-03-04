@@ -292,47 +292,11 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	try {
 
 		if (op == OPEN) {
-
 			/* Ottieni l'icona */
-			HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
-			PBITMAPINFO pbi = Helper::CreateBitmapInfoStruct(hSource);
-			HDC hdc = GetDC(NULL);
-			HDC hdcSource = CreateCompatibleDC(hdc);
-
-			BITMAPINFO MyBMInfo = { 0 };
-			MyBMInfo.bmiHeader.biSize = sizeof(MyBMInfo.bmiHeader);
-
-			// Get the BITMAPINFO structure from the bitmap
-			int res;
-			if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
-			{
-				Helper::BitmapInfoErrorExit(L"GetDIBits1()");
-			}
-
-			// create the pixel buffer
-			u_long iconLength = MyBMInfo.bmiHeader.biSizeImage;
-			lpPixels = new BYTE[iconLength];
-
-			MyBMInfo.bmiHeader.biCompression = BI_RGB;
-
-			// Call GetDIBits a second time, this time to (format and) store the actual
-			// bitmap data (the "pixels") in the buffer lpPixels		
-			if ((res = GetDIBits(hdc, hSource, 0, MyBMInfo.bmiHeader.biHeight, (LPVOID)lpPixels, &MyBMInfo, DIB_RGB_COLORS)) == 0)
-			{
-				Helper::BitmapInfoErrorExit(L"GetDIBits2()");
-			}
-
-			DeleteObject(hSource);
-			ReleaseDC(NULL, hdcSource);
-
-			/* Tentativo di ottenere l'icona tramite funziona dell'Helper: ma invia icona nera */
-			//u_long iconLength = 0;
-			//BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-
-			BYTE& pixels = *lpPixels;
+			u_long iconLength = 0;
+			BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
 
 			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
-
 		}
 		else if (op == FOCUS || op == CLOSE) {
 			message = new Message(op, hwnd);
@@ -343,8 +307,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 
 		/* Ritorna la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
 		BYTE& buffer = message->serialize(msgLength);
-
-
+		
 		int bytesSent = 0;
 		int offset = 0;
 		int remaining = MSG_LENGTH_SIZE + msgLength;

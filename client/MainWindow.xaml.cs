@@ -21,7 +21,11 @@ using System.Text.RegularExpressions;
 /* TODO:
  * - Distruttore
  * - Icona con sfondo nero
+ *      -> Confermato che il problema è lato server perchè spostando makeTransprent a dopo aver impostato il bitmap ai dati ricevuti dal server, il client mostra effettivamente uno sfondo
+ *         trasparente e quindi è in grado di farlo. È quindi l'immagine sorgente che ha lo sfondo nero, e viene dal server. 
+ *         Oltre a questo l'immagine sorgente, per colpa dello sfondo, ha forma quadrata e non quella dell'icona, e quando si passa il mouse sopra all'elemento corrispondente nella listView questo si vede 
  * - Cattura comandi: al momento si possono evitare di attivare funzioni di Windows premendo un tasto alla volta invece che tutti insieme, ma questo non vale per il tasto Win. Aggiustare?
+ * - Il cursore della textbox catturaComando deve sempre mettersi a destra
  */
 
 namespace WpfApplication1
@@ -452,8 +456,6 @@ namespace WpfApplication1
 
                             /* Ricevi icona processo */
                             Bitmap bitmap = new Bitmap(64, 64);
-                            bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                                                                                            //bitmap.SetTransparencyKey(Color.White);
 
                             // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
                             // 4 byte di dimensione icona e il trattino
@@ -470,7 +472,10 @@ namespace WpfApplication1
 
                             /* Crea la bitmap a partire dal byte array */
                             bitmap = CopyDataToBitmap(bmpData);
-                            /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+
+                            //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                                                                                         //bitmap.SetTransparencyKey(Color.White);
+                                                                                         /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
                             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
                             BitmapImage bmpImage;
