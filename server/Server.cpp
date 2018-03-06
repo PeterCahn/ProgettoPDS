@@ -293,9 +293,9 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 
 		if (op == OPEN) {
 			/* Ottieni l'icona */
-			u_long iconLength = 0;
+			u_long iconLength = 0;			
 			BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-
+			
 			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
 		}
 		else if (op == FOCUS || op == CLOSE) {

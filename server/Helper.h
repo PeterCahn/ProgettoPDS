@@ -16,6 +16,7 @@ public:
 	static void BitmapInfoErrorExit(LPTSTR lpszFunction);
 	static PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
 	static wstring getTitleFromHwnd(HWND hwnd);
+	static HBITMAP CreateBitmapMask(HBITMAP hbmColour, COLORREF crTransparent)
 
 };
 

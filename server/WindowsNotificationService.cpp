@@ -437,7 +437,7 @@ void WindowsNotificationService::receiveCommands() {
 				wcout << "- " << i << std::endl;
 
 			// Invia keystrokes all'applicazione in focus
-			sendKeystrokesToProgram(vKeysList);
+					sendKeystrokesToProgram(vKeysList);
 		}
 
 	} while (iResult > 0 && isRunning);

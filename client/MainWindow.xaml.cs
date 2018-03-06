@@ -33,7 +33,7 @@ namespace WpfApplication1
     public partial class MainWindow : Window
     {
         private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 500;
-        private List<int> comandoDaInviare = new List<int>();
+        private static List<int> comandoDaInviare = new List<int>();
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
 
@@ -475,7 +475,8 @@ namespace WpfApplication1
 
                             //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
                                                                                          //bitmap.SetTransparencyKey(Color.White);
-                                                                                         /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
+                                                                                         
+                            /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
                             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
                             BitmapImage bmpImage;
@@ -721,8 +722,10 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = true;
 
             // Crea event handler per scrivere i tasti premuti
-            this.KeyDown += keyDownHandler;
-            this.KeyUp += keyUpHandler;
+            //this.KeyDown += keyDownHandler;
+            //this.KeyUp += keyUpHandler;
+            _hookID = SetHook(_proc);
+
         }
 
         // Al click di "Annulla cattura"
@@ -741,11 +744,7 @@ namespace WpfApplication1
             // nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
             buttonInvia.Visibility = Visibility.Hidden;
-            buttonInvia.IsEnabled = false;
-
-            // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
-            this.KeyDown -= keyDownHandler;
-            this.KeyUp -= keyUpHandler;
+            buttonInvia.IsEnabled = false;            
         }
 
         public Bitmap CopyDataToBitmap(byte[] data)
@@ -844,8 +843,12 @@ namespace WpfApplication1
             // Mostra la textBox dove scrivere e il button Invia
             abilitaCatturaComando();
 
+            // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
+            //this.KeyDown -= keyDownHandler;
+            //this.KeyUp -= keyUpHandler;
+
             // Alternativa:
-            //_hookID = SetHook(_proc);
+            _hookID = SetHook(_proc);
 
         }
 
@@ -909,8 +912,10 @@ namespace WpfApplication1
                 disabilitaCatturaComando();
 
                 // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
-                this.KeyDown -= keyDownHandler;
-                this.KeyUp -= keyUpHandler;
+                //this.KeyDown -= keyDownHandler;
+                //this.KeyUp -= keyUpHandler;
+
+                UnhookWindowsHookEx(_hookID);
             }
             catch (InvalidOperationException) // include ObjectDisposedException
             {
@@ -936,10 +941,10 @@ namespace WpfApplication1
         {
             disabilitaCatturaComando();
 
-            this.KeyDown -= keyDownHandler;
-            this.KeyUp -= keyUpHandler;
+            //this.KeyDown -= keyDownHandler;
+            //this.KeyUp -= keyUpHandler;
 
-            //UnhookWindowsHookEx(_hookID);
+            UnhookWindowsHookEx(_hookID);
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1111,8 +1116,11 @@ namespace WpfApplication1
             if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
             {
                 int vkCode = Marshal.ReadInt32(lParam);
-                Console.WriteLine((Keys)vkCode);
-                System.Windows.MessageBox.Show(vkCode.ToString());
+                //Console.WriteLine((Keys)vkCode);
+                //System.Windows.MessageBox.Show(vkCode.ToString());  // TODO: Eliminando questo invia più tasti.
+
+                comandoDaInviare.Add(vkCode);                
+
             }
 
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
