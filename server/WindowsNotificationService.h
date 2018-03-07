@@ -50,7 +50,7 @@ private:
 	/* Ascolta i messaggi in arrivo dal client (notifiche o comandi da inviare alle finestre) */
 	void receiveCommands();
 	/* Invia comandi alla finestra attualmente in focus */
-	void sendKeystrokesToProgram(vector<UINT> vKeysList);
+	void sendKeystrokesToProgram(HWND targetHwnd, vector<UINT> vKeysList);
 
 	/* Callback per enumerare le finestre attualmente aperte */
 	static BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam);

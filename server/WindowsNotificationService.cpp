@@ -423,6 +423,15 @@ void WindowsNotificationService::receiveCommands() {
 			stringstream sstream(stringaRicevuta);
 			string virtualKey;
 			vector<UINT> vKeysList;
+			UINT temp;
+
+			vKeysList.clear();
+
+			getline(sstream, virtualKey, '+');
+			sscanf_s(virtualKey.c_str(), "%u", &temp);
+
+			HWND targetHwnd = (HWND) temp;
+
 			while (getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'
 			{
 				UINT vKey;
@@ -437,14 +446,16 @@ void WindowsNotificationService::receiveCommands() {
 				wcout << "- " << i << std::endl;
 
 			// Invia keystrokes all'applicazione in focus
-					sendKeystrokesToProgram(vKeysList);
+			sendKeystrokesToProgram(targetHwnd, vKeysList);
+
+			ZeroMemory(recvbuf, sizeof(recvbuf));
 		}
 
 	} while (iResult > 0 && isRunning);
 
 }
 
-void WindowsNotificationService::sendKeystrokesToProgram(std::vector<UINT> vKeysList)
+void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::vector<UINT> vKeysList)
 {
 	INPUT *keystroke;
 	int i, keystrokes_lenght, keystrokes_sent;
@@ -456,7 +467,8 @@ void WindowsNotificationService::sendKeystrokesToProgram(std::vector<UINT> vKeys
 	// Riempi vettore di keystroke da inviare
 	keystrokes_lenght = vKeysList.size();
 	keystroke = new INPUT[keystrokes_lenght * 2];	// *2 perchè abbiamo pressione e rilascio dei tasti
-													// Pressione dei tasti
+													
+	// Pressione dei tasti
 	for (i = 0; i < keystrokes_lenght; i++) {
 		keystroke[i].type = INPUT_KEYBOARD;		// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
 												// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
@@ -477,7 +489,9 @@ void WindowsNotificationService::sendKeystrokesToProgram(std::vector<UINT> vKeys
 	}
 
 	//Send the keystrokes.
+	SetForegroundWindow(targetHwnd);
 	keystrokes_sent = SendInput((UINT)keystrokes_lenght*2, keystroke, sizeof(*keystroke));
+	SetForegroundWindow(progHandle);
 	delete[] keystroke;
 }
 

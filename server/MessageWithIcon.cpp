@@ -1,6 +1,7 @@
 #define UNICODE
 
 #include "MessageWithIcon.h"
+#include <vector>
 
 #define N_BYTE_TRATTINO 1
 #define N_BYTE_MSG_LENGTH 4
@@ -47,6 +48,8 @@ BYTE & MessageWithIcon::serialize(u_long & size)
 	u_long netMsgLength = htonl(msgLength);
 
 	size = msgLength;
+
+	vector<char> v;
 
 	memcpy(dimension, "--", 2 * N_BYTE_TRATTINO);
 	memcpy(dimension + 2 * N_BYTE_TRATTINO, (void*)&netMsgLength, N_BYTE_MSG_LENGTH);

@@ -722,9 +722,9 @@ namespace WpfApplication1
             buttonInvia.IsEnabled = true;
 
             // Crea event handler per scrivere i tasti premuti
-            //this.KeyDown += keyDownHandler;
-            //this.KeyUp += keyUpHandler;
-            _hookID = SetHook(_proc);
+            this.KeyDown += keyDownHandler;
+            this.KeyUp += keyUpHandler;
+            //_hookID = SetHook(_proc);
 
         }
 
@@ -784,6 +784,12 @@ namespace WpfApplication1
             textBoxComando.Visibility = Visibility.Hidden;
             buttonInvia.Visibility = Visibility.Hidden;
             buttonInvia.IsEnabled = false;
+
+            // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
+            //this.KeyDown -= keyDownHandler;
+            //this.KeyUp -= keyUpHandler;
+
+            //UnhookWindowsHookEx(_hookID);
         }
 
         private void buttonDisconnetti_Click(object sender, RoutedEventArgs e)
@@ -848,7 +854,7 @@ namespace WpfApplication1
             //this.KeyUp -= keyUpHandler;
 
             // Alternativa:
-            _hookID = SetHook(_proc);
+            //_hookID = SetHook(_proc);
 
         }
 
@@ -885,15 +891,23 @@ namespace WpfApplication1
             try
             {
                 byte[] messaggio;
+                int currentHwnd;
+
+                lock (servers)
+                {
+                    currentHwnd = servers[currentConnectedServer].table.handleFinestraInFocus();
+                }
 
                 // Serializza messaggio da inviare
                 StringBuilder sb = new StringBuilder();
+                sb.Append(currentHwnd);
+
                 foreach (int virtualKey in comandoDaInviare)
                 {
                     if (sb.Length != 0)
                         sb.Append("+");
                     sb.Append(virtualKey.ToString());
-                    // System.Windows.MessageBox.Show(virtualKey.ToString());
+                    //System.Windows.MessageBox.Show(virtualKey.ToString());
                 }
                 sb.Append("\0");
                 messaggio = Encoding.ASCII.GetBytes(sb.ToString());
@@ -910,12 +924,7 @@ namespace WpfApplication1
 
                 // Aggiorna bottoni e textBox
                 disabilitaCatturaComando();
-
-                // Rimuovi event handler per non scrivere più i bottoni premuti nel textBox
-                //this.KeyDown -= keyDownHandler;
-                //this.KeyUp -= keyUpHandler;
-
-                UnhookWindowsHookEx(_hookID);
+                
             }
             catch (InvalidOperationException) // include ObjectDisposedException
             {
@@ -944,7 +953,7 @@ namespace WpfApplication1
             //this.KeyDown -= keyDownHandler;
             //this.KeyUp -= keyUpHandler;
 
-            UnhookWindowsHookEx(_hookID);
+            //UnhookWindowsHookEx(_hookID);
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

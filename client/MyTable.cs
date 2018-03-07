@@ -144,7 +144,24 @@ namespace client
                     
                 }
             }
-        }        
+        }
+
+        public int handleFinestraInFocus()
+        {
+            lock (this)
+            {
+                foreach (Finestra finestra in Finestre)
+                {
+                    /* Incrementa il TempoFocus della finestra con StatoFinestra in Focus */
+                    if (finestra.StatoFinestra.Equals("Focus"))
+                    {
+                        return finestra.Hwnd;
+                    }
+
+                }
+                return -1;
+            }
+        }
 
     }
 
