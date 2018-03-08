@@ -59,15 +59,15 @@
                                 <Setter Property="BorderThickness" Value="0"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="OpacityMask" Value="#AA888888"/>                                
+                                <Setter Property="OpacityMask" Value="#AA888888"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        
-        
+
+
         <Style x:Key="ButtonConnettiExtension" TargetType="{x:Type Button}">
 
             <Setter Property="FocusVisualStyle" Value="{StaticResource ButtonFocusVisual}"/>
@@ -108,12 +108,12 @@
                                 </MultiDataTrigger.Conditions>
                                 <MultiDataTrigger.Setters>
                                     <Setter Property="OpacityMask" Value="#AA888888"/>
-                                </MultiDataTrigger.Setters>                                
+                                </MultiDataTrigger.Setters>
                             </MultiDataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
-            </Setter>            
+            </Setter>
         </Style>
 
     </Window.Resources>
@@ -141,7 +141,7 @@
                    VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="0" FontSize="20" FontWeight="Bold"/>
             <ListBox x:Name="serversListBox" BorderThickness="0" Background="{StaticResource LeftMenuBackgroundColor}" 
                      SelectionChanged="serversListBox_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto">                
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListBox.Resources>
                     <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
                         <Setter Property="SnapsToDevicePixels" Value="true"/>
@@ -213,7 +213,7 @@
                     <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='TempoFocusPerc'}" Width="130" />
                 </GridView>
             </ListView.View>
-            <ListView.Resources>                
+            <ListView.Resources>
                 <Style TargetType="{x:Type ListViewItem}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding 'StatoFinestra'}" Value="Focus">
@@ -222,20 +222,19 @@
                             <Setter Property="IsHitTestVisible" Value="False"/>
                         </DataTrigger>
                         <DataTrigger Binding="{Binding 'Visible'}" Value="False">
-                            <Setter Property="Visibility" Value="Collapsed"/>                            
+                            <Setter Property="Visibility" Value="Collapsed"/>
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
-                
+
             </ListView.Resources>
-                
+
         </ListView>
 
         <Label x:Name="labelComando" Grid.Column="1" Content="Invia comando alla finestra in focus:" HorizontalAlignment="Left" Margin="26,481,0,0" VerticalAlignment="Top" Foreground="#FFECECEC"/>
         <Button x:Name="buttonCattura" Style="{StaticResource MetroButton}" IsEnabled="False" Grid.Column="1" Content="Cattura Comando" HorizontalAlignment="Left" Margin="26,512,0,0" VerticalAlignment="Top" Width="auto" Height="auto" Click="buttonCattura_Click"  VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Foreground="#FF2E2E2E"/>
         <Button x:Name="buttonAnnullaCattura" Style="{StaticResource MetroButton}" Visibility="Hidden" Content="Annulla Cattura" HorizontalAlignment="Left" Margin="26,512,0,0" VerticalAlignment="Top" Width="auto" Height="auto" Click="buttonAnnullaCattura_Click" Panel.ZIndex="-1" Grid.Column="1"/>
-        <TextBox x:Name="textBoxComando" Grid.Column="1" IsReadOnly="True" HorizontalAlignment="Left" Height="29" Margin="169,512,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="307" IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"/>
-        <Button x:Name="buttonInvia" Style="{StaticResource MetroButton}" IsEnabled="False" Grid.Column="1" Content="Invia" Margin="490,512,34,0" VerticalAlignment="Top" Height="auto" Click="buttonInvia_Click" Foreground="{StaticResource BackgroundWindowColor}"/>
+        <TextBox x:Name="textBoxComando" Grid.Column="1" IsReadOnly="True" HorizontalAlignment="Left" Height="43" Margin="169,507,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" Width="397" IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center" Background="Transparent" BorderBrush="#00252525" Foreground="#FFECECEC" FontWeight="Bold" FontSize="18"/>
 
         <Button x:Name="buttonDisconnetti" Style="{StaticResource MetroButton}" Content="Disconnetti" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonDisconnetti_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
         <Button x:Name="buttonChiudiServer" Style="{StaticResource MetroButton}" Content="Chiudi server" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonChiudiServerDisconnesso_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>

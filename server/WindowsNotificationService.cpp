@@ -515,7 +515,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 	// Send the keystrokes.
 	SetForegroundWindow(targetHwnd);
 	keystroke_sent = SendInput(vKeysList.size(), &vKeysList[0], sizeof(vKeysList[0]));
-	SetForegroundWindow(progHandle);
+	SetForegroundWindow(progHandle); 
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys

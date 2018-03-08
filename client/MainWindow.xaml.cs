@@ -36,6 +36,7 @@ namespace WpfApplication1
         private static List<string> comandoDaInviare = new List<string>();
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
+        private int numKeyDown = 0, numKeyUp = 0;
 
         /* BackgroundWorker necessario per evitare che il main thread si blocchi 
          * mentre aspetta che si instauri la connessione con un nuovo server. 
@@ -48,7 +49,6 @@ namespace WpfApplication1
         System.Windows.Input.KeyEventHandler keyDownHandler;
         System.Windows.Input.KeyEventHandler keyUpHandler;
         System.Windows.Input.KeyEventHandler previewKeyDownHandler;
-        System.Windows.Input.KeyEventHandler previewKeyUpHandler;
 
         public MainWindow()
         {
@@ -70,9 +70,7 @@ namespace WpfApplication1
             // Definisci gli event handler per la gestione della pressione dei tasti durante la cattura di un comando
             keyDownHandler = new System.Windows.Input.KeyEventHandler(onButtonKeyDown);
             keyUpHandler = new System.Windows.Input.KeyEventHandler(onButtonKeyUp);
-
             previewKeyDownHandler = new System.Windows.Input.KeyEventHandler(onButtonPreviewKeyDown);
-            previewKeyUpHandler = new System.Windows.Input.KeyEventHandler(onButtonPreviewKeyUp);
         }
 
         ~MainWindow(){
@@ -658,7 +656,6 @@ namespace WpfApplication1
 
                         // Aggiorna bottoni
                         buttonDisconnetti.Visibility = Visibility.Hidden;
-                        buttonInvia.IsEnabled = false;
                         buttonCattura.IsEnabled = false;
                     }
                     else
@@ -702,13 +699,14 @@ namespace WpfApplication1
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
 
             textBoxComando.Visibility = Visibility.Hidden;
-            buttonInvia.Visibility = Visibility.Hidden;
 
             textBoxComando.Text = "";
             comandoDaInviare.Clear();
             buttonCattura.IsEnabled = false;
             buttonAnnullaCattura.IsEnabled = false;
-            buttonInvia.IsEnabled = false;
+
+            numKeyDown = 0;
+            numKeyUp = 0;
         }
 
         // Al click di "Cattura comando"
@@ -723,14 +721,11 @@ namespace WpfApplication1
             // mostra textBox e abilita invio
             textBoxComando.Visibility = Visibility.Visible;
             textBoxComando.Text = "";
-            buttonInvia.Visibility = Visibility.Visible;
-            buttonInvia.IsEnabled = true;
 
             // Crea event handler per scrivere i tasti premuti
             this.KeyDown += keyDownHandler;
             this.KeyUp += keyUpHandler;
             this.PreviewKeyDown += previewKeyDownHandler;
-            this.PreviewKeyUp += previewKeyUpHandler;
             //_hookID = SetHook(_proc);
 
         }
@@ -750,13 +745,13 @@ namespace WpfApplication1
 
             // nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
-            buttonInvia.Visibility = Visibility.Hidden;
-            buttonInvia.IsEnabled = false;
             
             this.KeyDown -= keyDownHandler;
             this.KeyUp -= keyUpHandler;
             this.PreviewKeyDown -= previewKeyDownHandler;
-            this.PreviewKeyUp -= previewKeyUpHandler;
+
+            numKeyDown = 0;
+            numKeyUp = 0;
         }
 
         public Bitmap CopyDataToBitmap(byte[] data)
@@ -794,8 +789,6 @@ namespace WpfApplication1
 
             // textBoxComando e buttonInvia non visibili
             textBoxComando.Visibility = Visibility.Hidden;
-            buttonInvia.Visibility = Visibility.Hidden;
-            buttonInvia.IsEnabled = false;
             
             //UnhookWindowsHookEx(_hookID);
         }
@@ -865,12 +858,11 @@ namespace WpfApplication1
         private void onButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (!e.IsRepeat)
-            {                
-                buttonInvia.IsEnabled = true;
-
+            {
                 lock (comandoDaInviare)
                 {
                     comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
+                    numKeyDown++;
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                 }
             }            
@@ -887,7 +879,14 @@ namespace WpfApplication1
             lock (comandoDaInviare)
             {
                 comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey) + "-");
+                numKeyUp++;
                 textBoxComando.AppendText(pressedKey.ToString() + "-");
+                if(numKeyUp == numKeyDown)
+                {
+                    numKeyDown = 0;
+                    numKeyUp = 0;
+                    buttonInvia_Click();
+                }
             }
 
             e.Handled = true;
@@ -900,6 +899,7 @@ namespace WpfApplication1
                 lock (comandoDaInviare)
                 {
                     comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.SystemKey) + "+");
+                    numKeyDown++;
                     textBoxComando.AppendText(e.SystemKey.ToString() + "+");
                     if (e.SystemKey.ToString().Equals("None"))
                         Trace.WriteLine("Alt è none");
@@ -911,6 +911,7 @@ namespace WpfApplication1
                 lock (comandoDaInviare)
                 {
                     comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
+                    numKeyDown++;
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                     if (e.Key.ToString().Equals("None"))
                         Trace.WriteLine("Control è none");
@@ -922,6 +923,7 @@ namespace WpfApplication1
                 lock (comandoDaInviare)
                 {
                     comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
+                    numKeyDown++;
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                 }
                 e.Handled = true;
@@ -932,6 +934,7 @@ namespace WpfApplication1
                 lock (comandoDaInviare)
                 {
                     comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
+                    numKeyDown++;
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                 }
                 e.Handled = true;
@@ -941,12 +944,7 @@ namespace WpfApplication1
 
         }
 
-        private void onButtonPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            e.Handled = false;
-        }
-
-        private void buttonInvia_Click(object sender, RoutedEventArgs e)
+        private void buttonInvia_Click(/*object sender, RoutedEventArgs e*/)
         {
             try
             {
