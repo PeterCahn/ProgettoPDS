@@ -416,37 +416,71 @@ void WindowsNotificationService::receiveCommands() {
 			return;
 		}
 		else {
-			// Questa stringa contiene i virtual-keys ricevuti separati da '+'
+			// Questa stringa contiene i virtual-keys ricevuti separati da '+' o '-'
 			string stringaRicevuta(recvbuf);
 
-			// Converti la stringa in una lista di virtual-keyes
+			// Converti la stringa in una lista di virtual-keys
 			stringstream sstream(stringaRicevuta);
-			string virtualKey;
-			vector<UINT> vKeysList;
+			string virtualKey, stringUpToPlus;
+			vector<INPUT> keystroke;
 			UINT temp;
 
-			vKeysList.clear();
+			
 
-			getline(sstream, virtualKey, '+');
+			getline(sstream, virtualKey, '\n');
 			sscanf_s(virtualKey.c_str(), "%u", &temp);
 
 			HWND targetHwnd = (HWND) temp;
 
-			while (getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'
-			{
+			string keystrokeString;
+			getline(sstream, keystrokeString, '\n');
+			string virtualKeyString;
+			for (int i = 0; i < keystrokeString.size(); i++) {
 				UINT vKey;
-				sscanf_s(virtualKey.c_str(), "%u", &vKey);
-				vKeysList.push_back(vKey);
+				if (keystrokeString[i] == '+') {
+					// Aggiungi keyDown
+					sscanf_s(virtualKeyString.c_str(), "%u", &vKey);
+					INPUT input;
+					input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+															// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+					input.ki.wVk = vKey;					// Virtual-key code dell'input.	
+					input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+					input.ki.dwFlags = 0;					// Eventuali informazioni addizionali sull'evento
+					input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+					input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
+					keystroke.push_back(input);
+
+					virtualKeyString.clear();
+				}
+
+				else if (keystrokeString[i] == '-') {
+					// Aggiungi keyUp
+					sscanf_s(virtualKeyString.c_str(), "%u", &vKey);
+					INPUT input;
+					input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+															// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+					input.ki.wVk = vKey;					// Virtual-key code dell'input.	
+					input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+					input.ki.dwFlags = KEYEVENTF_KEYUP;		// Eventuali informazioni addizionali sull'evento (qui il fatto che sia un keyUp e non keyDown)
+					input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+					input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
+					keystroke.push_back(input);
+
+					virtualKeyString.clear();
+				}
+				else {
+					virtualKeyString += keystrokeString[i];
+				}
 			}
 
-			// TODO: rimuovere dopo debug (?)
+			// TODO: rimuovere dopo debug
 			// Stampa codici virtual-key ricevute
 			wcout << "Virtual-key ricevute da inviare alla finestra in focus: " << endl; // << stringaRicevuta << std::endl;
-			for each(UINT i in vKeysList)
-				wcout << "- " << i << std::endl;
+			for each(INPUT key in keystroke)
+				wcout << "- " << key.ki.wVk << " - " << key.ki.dwFlags << std::endl;
 
-			// Invia keystrokes all'applicazione in focus
-			sendKeystrokesToProgram(targetHwnd, vKeysList);
+			// Invia keystroke all'applicazione in focus
+			sendKeystrokesToProgram(targetHwnd, keystroke);
 
 			ZeroMemory(recvbuf, sizeof(recvbuf));
 		}
@@ -455,44 +489,33 @@ void WindowsNotificationService::receiveCommands() {
 
 }
 
-void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::vector<UINT> vKeysList)
+void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::vector<INPUT> vKeysList)
 {
-	INPUT *keystroke;
-	int i, keystrokes_lenght, keystrokes_sent;
+	int i, keystroke_sent;
 	HWND progHandle;
+	
+	// Controlla che il keystroke sia ben formato
+	int numKeyDown = 0, numKeyUp = 0;
+	for each (INPUT input in vKeysList) {
+		if (input.ki.dwFlags == KEYEVENTF_KEYUP)
+			numKeyUp++;
+		else if (input.ki.dwFlags == 0)
+			numKeyDown++;
+	}
+	if (numKeyDown != numKeyUp) {
+		wcout << "ERRORE! Il comando ricevuto non è ben formato." << endl;
+		return;
+	}
+
+	
 
 	// Ricava l'handle alla finestra verso cui indirizzare il keystroke
 	progHandle = GetForegroundWindow();
 
-	// Riempi vettore di keystroke da inviare
-	keystrokes_lenght = vKeysList.size();
-	keystroke = new INPUT[keystrokes_lenght * 2];	// *2 perchè abbiamo pressione e rilascio dei tasti
-													
-	// Pressione dei tasti
-	for (i = 0; i < keystrokes_lenght; i++) {
-		keystroke[i].type = INPUT_KEYBOARD;		// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
-												// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-		keystroke[i].ki.wVk = vKeysList[i];		// Virtual-key code dell'input.																						  
-		keystroke[i].ki.wScan = 0;				// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-		keystroke[i].ki.dwFlags = 0;			// Eventuali informazioni addizionali sull'evento
-		keystroke[i].ki.time = 0;				// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
-		keystroke[i].ki.dwExtraInfo = 0;		// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
-	}
-	// Rilascio dei tasti
-	for (i = keystrokes_lenght; i < keystrokes_lenght * 2; i++) {
-		keystroke[i].type = INPUT_KEYBOARD;
-		keystroke[i].ki.wVk = vKeysList[i - keystrokes_lenght];
-		keystroke[i].ki.wScan;
-		keystroke[i].ki.dwFlags = KEYEVENTF_KEYUP;
-		keystroke[i].ki.time = 0;
-		keystroke[i].ki.dwExtraInfo = 0;
-	}
-
-	//Send the keystrokes.
+	// Send the keystrokes.
 	SetForegroundWindow(targetHwnd);
-	keystrokes_sent = SendInput((UINT)keystrokes_lenght*2, keystroke, sizeof(*keystroke));
+	keystroke_sent = SendInput(vKeysList.size(), &vKeysList[0], sizeof(vKeysList[0]));
 	SetForegroundWindow(progHandle);
-	delete[] keystroke;
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys
@@ -502,7 +525,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 */
 
 void WindowsNotificationService::printMessage(wstring string) {
-	wcout << "[" << GetCurrentThreadId() << "] " << string << endl;
+	wcout << "[" << GetCurrentThreadId() << "] " << string << endl; 
 }
 
 /* Questa funzione viene passata alla SetWinEventHook nella funzione hook per gestire gli eventi */
