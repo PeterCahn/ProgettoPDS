@@ -49,7 +49,7 @@ BYTE & MessageWithIcon::serialize(u_long & size)
 
 	size = msgLength;
 
-	vector<char> v;
+	vector<BYTE> v;
 
 	memcpy(dimension, "--", 2 * N_BYTE_TRATTINO);
 	memcpy(dimension + 2 * N_BYTE_TRATTINO, (void*)&netMsgLength, N_BYTE_MSG_LENGTH);

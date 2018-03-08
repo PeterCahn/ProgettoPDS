@@ -587,7 +587,7 @@ void CALLBACK WindowsNotificationService::HandleWinEvent(HWINEVENTHOOK hook, DWO
 
 }
 
-unsigned __stdcall WindowsNotificationService::hook(void* args)
+unsigned CALLBACK WindowsNotificationService::hook(void* args)
 {
 	HWINEVENTHOOK hHook = NULL;
 

@@ -862,20 +862,14 @@ namespace WpfApplication1
         {
             // Se viene premuto Alt e.Key restituisce "System" ma la vera chiave di Alt è contenuta in SystemKey!
             Key pressedKey = (e.Key == Key.System ? e.SystemKey : e.Key);
-
-            if (textBoxComando.Text.Length == 0)
+                        
+            if (!e.IsRepeat)
             {
-                textBoxComando.Text = pressedKey.ToString();
+                textBoxComando.AppendText(pressedKey.ToString() + "-");
                 buttonInvia.IsEnabled = true;
+                
+                comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey));
             }
-            else
-            {
-                if (!textBoxComando.Text.Contains(pressedKey.ToString()))
-                    textBoxComando.AppendText("+" + pressedKey.ToString());
-            }
-
-            // Converti c# Key in Virtual-Key da inviare al server
-            comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey));
 
             // Segnala l'evento come gestito per evitare che venga chiamata nuovamente OnButtonKeyDown
             e.Handled = true;
@@ -883,6 +877,11 @@ namespace WpfApplication1
 
         private void onButtonKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
         {
+            // Se viene premuto Alt e.Key restituisce "System" ma la vera chiave di Alt è contenuta in SystemKey!
+            Key pressedKey = (e.Key == Key.System ? e.SystemKey : e.Key);
+
+            textBoxComando.AppendText(pressedKey.ToString() + "+");            
+
             e.Handled = true;
         }
 

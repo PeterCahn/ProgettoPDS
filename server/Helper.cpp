@@ -1,28 +1,12 @@
 #define UNICODE
 
 #include "Helper.h"
-/*
-#include <Windows.h>
-#include <string>
-#include <iostream>
-#include <io.h>
-#include <strsafe.h>
-*/
 
 #include <Windows.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <iostream>
 #include <string>
-#include <sstream>
-#include <strsafe.h>
-#include <Wingdi.h>
+#include <iostream>
 #include <io.h>
-#include <fcntl.h>
-#include <cstdio>
-#include <exception>
-#include <typeinfo>
-#include <stdexcept>
+#include <strsafe.h>
 
 using namespace std;
 
@@ -32,6 +16,14 @@ Helper::Helper()
 
 Helper::~Helper()
 {
+}
+
+Helper::InitDC::InitDC() {
+
+}
+
+Helper::InitDC::~InitDC() {
+
 }
 
 HICON Helper::getHICONfromHWND(HWND hwnd) {
