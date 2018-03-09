@@ -73,23 +73,16 @@ BYTE& MessageWithTitle::serialize(u_long& size)
 BYTE& MessageWithTitle::toJson(u_long& size)
 {
 	json j;
-		
-	j["operation"] = "TTCHA";
-	j["hwnd"] = (unsigned int)hwnd;
-
-	std::vector<std::uint8_t> v;
-
 	TCHAR progName[MAX_PATH * sizeof(TCHAR)];
 	//ZeroMemory(windowName, MAX_PATH * sizeof(wchar_t));
 
 	/* Copia in progName la stringa ottenuta */
 	wcscpy_s(progName, windowName.c_str());
+		
+	j["operation"] = "TTCHA";
+	j["hwnd"] = (unsigned int)hwnd;
 
-	for (int i = 0; i < windowName.length(); i++) {
-		v.push_back((uint8_t)progName[i]);
-	}
-
-	j["windowName"] = v;
+	j["windowName"] = base64_encode(reinterpret_cast<const unsigned char*>(progName), windowName.length() * sizeof(TCHAR));
 	
 	string s = j.dump();
 	//string base64 = base64_encode(reinterpret_cast<const unsigned char*>(s.c_str()), s.length());

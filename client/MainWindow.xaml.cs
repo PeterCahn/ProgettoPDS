@@ -400,11 +400,7 @@ namespace WpfApplication1
                         break;
                     case "TTCHA":
                         hwnd = (int)token.SelectToken("hwnd");
-                        progName = Encoding.UTF8.GetString(
-                            token.SelectToken("windowName")
-                            .ToObject<JArray>()
-                            .ToObject<byte[]>()
-                            );
+                        progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
 
                         servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
 
@@ -466,7 +462,7 @@ namespace WpfApplication1
                         {
                             // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
                             // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre 
-                            continue;                                   
+                            continue;
                         }
 
                         break;

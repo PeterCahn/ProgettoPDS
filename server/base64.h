@@ -1,3 +1,4 @@
+/* https://renenyffenegger.ch/notes/development/Base64/Encoding-and-decoding-base-64-with-cpp */
 //
 //  base64 encoding and decoding with C++.
 //  Version: 1.01.00
