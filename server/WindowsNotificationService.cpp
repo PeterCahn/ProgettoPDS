@@ -392,6 +392,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 	}
 }
 
+using json = nlohmann::json;
 void WindowsNotificationService::receiveCommands() {
 
 	// Ricevi finchè il client non chiude la connessione
@@ -404,23 +405,36 @@ void WindowsNotificationService::receiveCommands() {
 		if (iResult <= 0) {	// c'è stato qualche errore nella connessione con il client
 			return;
 		}
-		/* Se ricevo "--CLOSE-" il client vuole disconnettersi: invio la conferma ed esco */
-		else if (strncmp(recvbuf, "--CLSCN-", 8) == 0) {
-
-			printMessage(TEXT("Il client ha richiesta la disconnessione."));
-
-			/* Il client ha inviato uuna richiesta di chiusura connessione.
-			 * Invia la conferma al client per chiudere la connessione. */
-			server.sendMessageToClient(OK_CLOSE);
-
-			return;
-		}
 		else {
-			// Questa stringa contiene i virtual-keys ricevuti separati da '+'
+			// Ottieni la stringa ricevuta dal client
 			string stringaRicevuta(recvbuf);
+			string jsonString;
 
 			// Converti la stringa in una lista di virtual-keyes
 			stringstream sstream(stringaRicevuta);
+
+			getline(sstream, jsonString, '}');
+			jsonString.append("}");
+
+			json j = json::parse(jsonString);
+							
+			if (j.find("operation") != j.end()) {
+				// C'è il campo "operation"
+				if (j["operation"] == "CLSCN") {
+
+					printMessage(TEXT("Il client ha richiesta la disconnessione."));
+
+					/* Il client ha inviato uuna richiesta di chiusura connessione.
+					* Invia la conferma al client per chiudere la connessione. */
+					server.sendMessageToClient(OK_CLOSE);
+				}else if (j["operation"] == "comando") {
+
+				}				
+			}			
+
+			return;
+
+			
 			string virtualKey;
 			vector<UINT> vKeysList;
 			while (getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'

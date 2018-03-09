@@ -29,6 +29,13 @@ using Newtonsoft.Json.Linq;
 
 namespace WpfApplication1
 {
+    public class Message
+    {
+        public string operazione { get; set; }
+        public int Hwnd { get; set; }
+        public List<string> comandoDaInviare2 { get; set; }
+    }
+
     public class WindowInfo{
         string operation { get; set; }
         int hwnd { get; set; }
@@ -95,9 +102,6 @@ namespace WpfApplication1
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
         {
-
-            //connettiAlServer();   // connessione sincrona
-
             iniziaConnessione();    // connessione asincrona
         }
 
@@ -748,20 +752,16 @@ namespace WpfApplication1
 
             try
             {
-                byte[] buffer = new byte[9];
-                Array.Clear(buffer, 0, 9);
-
                 server = servers[disconnectingServer].server;
                 serverStream = server.GetStream();
 
-                // Prepara messaggio da inviare
-                StringBuilder sb = new StringBuilder();
-                sb.Append("--CLSCN-");
-                Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
-                buffer[8] = (byte)'\0';
+                BinaryWriter bw = new BinaryWriter(serverStream);
 
-                // Invia richiesta chiusura
-                serverStream.Write(buffer, 0, 9);
+                JObject jo = new JObject();
+                jo.Add("operation", "CLSCN");
+                string message = jo.ToString(Formatting.None);
+
+                bw.Write(message.ToCharArray(), 0, message.Length);
 
             }
             catch (InvalidOperationException) // include ObjectDisposedException
@@ -823,6 +823,8 @@ namespace WpfApplication1
             {
                 byte[] messaggio;
 
+                JArray tasti = new JArray();
+
                 // Serializza messaggio da inviare
                 StringBuilder sb = new StringBuilder();
                 foreach (int virtualKey in comandoDaInviare)
@@ -841,7 +843,17 @@ namespace WpfApplication1
                 TcpClient server = null;
                 server = servers[currentConnectedServer].server;
                 serverStream = server.GetStream();
+                /*
+                BinaryWriter bw = new BinaryWriter(serverStream);
 
+                JObject jo = new JObject();
+                jo.Add("operation", "command");
+                jo.Add("tasti", JTasti);
+
+                string message = jo.ToString(Formatting.None);
+
+                bw.Write(message.ToCharArray(), 0, message.Length);
+                */
                 // Invia messaggio
                 serverStream.Write(messaggio, 0, messaggio.Length);
 
