@@ -135,8 +135,8 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 }
 
 HBITMAP Helper::getHBITMAPfromHICON(HICON hIcon) {
-	int bitmapXdimension = 256;
-	int bitmapYdimension = 256;
+	int bitmapXdimension = 64;
+	int bitmapYdimension = 64;
 	HDC hDC = GetDC(NULL);
 	HDC hMemDC = CreateCompatibleDC(hDC);
 	HBITMAP hMemBmp = CreateCompatibleBitmap(hDC, bitmapXdimension, bitmapYdimension);

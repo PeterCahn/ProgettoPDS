@@ -458,7 +458,8 @@ namespace WpfApplication1
                             progName = Encoding.Unicode.GetString(pN);
 
                             /* Ricevi icona processo */
-                            Bitmap bitmap = new Bitmap(64, 64);
+                            int bitmapWidth = 64;
+                            int bitmapheight = 64;
 
                             // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
                             // 4 byte di dimensione icona e il trattino
@@ -474,7 +475,7 @@ namespace WpfApplication1
                             Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
 
                             /* Crea la bitmap a partire dal byte array */
-                            bitmap = CopyDataToBitmap(bmpData);
+                            Bitmap bitmap = CopyDataToBitmap(bmpData, bitmapWidth, bitmapheight);
 
                             //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
                                                                                          //bitmap.SetTransparencyKey(Color.White);
@@ -754,10 +755,10 @@ namespace WpfApplication1
             numKeyUp = 0;
         }
 
-        public Bitmap CopyDataToBitmap(byte[] data)
+        public Bitmap CopyDataToBitmap(byte[] data, int width, int height)
         {
             // Here create the Bitmap to the know height, width and format
-            Bitmap bmp = new Bitmap(256, 256, PixelFormat.Format32bppRgb);
+            Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppRgb);
 
             // Create a BitmapData and Lock all pixels to be written 
             BitmapData bmpData = bmp.LockBits(
