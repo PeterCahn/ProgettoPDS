@@ -316,8 +316,7 @@ namespace WpfApplication1
                 // Chiudi la connessione con il server
                 if (servers[serverName].server.Connected)
                     servers[serverName].server.Close();
-
-                // TODO: Pulisci interfaccia in questo caso
+                
                 safePulisciInterfaccia(serverName, false);
 
                 return;
@@ -347,10 +346,10 @@ namespace WpfApplication1
                 if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
                     continue;
 
-                string json = Encoding.UTF8.GetString(msg); //.Replace("\"","'");
+                string json = Encoding.UTF8.GetString(msg);
                 JToken token = JObject.Parse(json);
 
-                int hwnd = (int) token.SelectToken("hwnd");
+                int hwnd = 0;                
                 operation = (string) token.SelectToken("operation");                                
                 
                 /* Possibili valori ricevuti:
@@ -388,18 +387,19 @@ namespace WpfApplication1
                         break;
 
                     case "FOCUS":
-
+                        hwnd = (int)token.SelectToken("hwnd");
                         // Cambia programma col focus                            
                         servers[serverName].table.changeFocus(hwnd);
 
                         break;
                     case "CLOSE":
+                        hwnd = (int)token.SelectToken("hwnd");
                         // Rimuovi programma dalla listView                            
                         servers[serverName].table.removeFinestra(hwnd);
 
                         break;
                     case "TTCHA":
-
+                        hwnd = (int)token.SelectToken("hwnd");
                         progName = Encoding.UTF8.GetString(
                             token.SelectToken("windowName")
                             .ToObject<JArray>()
@@ -412,14 +412,11 @@ namespace WpfApplication1
                     case "OPEN":
                         try
                         {
-                            progName = Encoding.UTF8.GetString(
-                                token.SelectToken("windowName")
-                                .ToObject<JArray>()
-                                .ToObject<byte[]>()
-                                );
-                                                        
-                            byte[] bmpData = token.SelectToken("icona")
-                                .ToObject<JArray>().ToObject<byte[]>();
+                            hwnd = (int)token.SelectToken("hwnd");
+
+                            progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
+                            string iconaBase64 = token.SelectToken("icona").ToString();
+                            byte[] bmpData = Convert.FromBase64String(iconaBase64);
 
                             /* Ricevi icona processo */
                             Bitmap bitmap = new Bitmap(64, 64);

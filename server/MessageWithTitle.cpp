@@ -1,6 +1,7 @@
 #define UNICODE
 
 #include "MessageWithTitle.h"
+#include "base64.h"
 
 using json = nlohmann::json;
 
@@ -90,8 +91,8 @@ BYTE& MessageWithTitle::toJson(u_long& size)
 
 	j["windowName"] = v;
 	
-
 	string s = j.dump();
+	//string base64 = base64_encode(reinterpret_cast<const unsigned char*>(s.c_str()), s.length());
 	
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino	
 
@@ -109,7 +110,7 @@ BYTE& MessageWithTitle::toJson(u_long& size)
 	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);	
+	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
 
 	return *buffer;
 }

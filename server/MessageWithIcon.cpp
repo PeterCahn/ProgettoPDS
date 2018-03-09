@@ -1,6 +1,7 @@
 #define UNICODE
 
 #include "MessageWithIcon.h"
+#include "base64.h"
 
 using json = nlohmann::json;
 
@@ -90,36 +91,19 @@ BYTE& MessageWithIcon::toJson(u_long& size)
 	/* Copia in progName la stringa ottenuta */
 	wcscpy_s(progName, windowName.c_str());
 
-
 	json j;
 
 	j["operation"] = "OPEN";
 	j["hwnd"] = (unsigned int)hwnd;
 
-	std::vector<std::uint8_t> v;
-	for (int i = 0; i < windowName.length(); i++) {
-		v.push_back((uint8_t)progName[i]);
-	}
+	j["windowName"] = base64_encode(reinterpret_cast<const unsigned char*>(progName), windowName.length()*sizeof(TCHAR));
 
-	j["windowName"] = v;
-
-	//j["windowName"] = windowName;
 	j["iconLength"] = iconLength;
 
-//	vector<uint8_t> icona = json::to_ubjson(pixels);
-	
-	v.clear();
-	for (int i = 0; i < this->iconLength; i++) {
-		v.push_back((uint8_t)pixels[i]);
-	}
-
-	//json j1 = json::parse(v.begin(), v.end());
-
-	//j["icona"] = j1;
-
-	j["icona"] = v;
+	j["icona"] = base64_encode(reinterpret_cast<const unsigned char*>(pixels), iconLength);
 
 	string s = j.dump();
+	//string base64 = base64_encode(reinterpret_cast<const unsigned char*>(s.c_str()),s.length());
 
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino	
 

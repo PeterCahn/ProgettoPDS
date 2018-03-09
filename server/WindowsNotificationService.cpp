@@ -362,7 +362,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 				manda un messaggio al client per chiudere la connessione*/
 			if (!isRunning) {
 				printMessage(TEXT("Gestione finestre in chiusura..."));
-				server.sendMessageToClient("ERRCL");
+				server.sendMessageToClient(ERROR_CLOSE);
 				isRunning = true;
 				return;
 				//throw exception("Chiusura forzata.");
@@ -388,7 +388,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		globalExceptionPtr = current_exception();
 
 		/* E' stata scatenata un'eccezione. Notificalo al client per chiudere la connessione. */
-		server.sendMessageToClient("ERRCL");
+		server.sendMessageToClient(ERROR_CLOSE);
 	}
 }
 
@@ -411,7 +411,7 @@ void WindowsNotificationService::receiveCommands() {
 
 			/* Il client ha inviato uuna richiesta di chiusura connessione.
 			 * Invia la conferma al client per chiudere la connessione. */
-			server.sendMessageToClient("OKCLO");
+			server.sendMessageToClient(OK_CLOSE);
 
 			return;
 		}

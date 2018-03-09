@@ -1,7 +1,7 @@
 #define UNICODE
 
 #include "Message.h"
-//#include <nlohmann\json.hpp>
+#include "base64.h"
 
 // for convenience
 using json = nlohmann::json;
@@ -24,6 +24,11 @@ Message::Message(operation op, HWND hwnd)
 {
 	this->op = op;
 	this->hwnd = hwnd;
+}
+
+Message::Message(operation op)
+{
+	this->op = op;
 }
 
 Message::~Message()
@@ -69,14 +74,21 @@ BYTE& Message::toJson(u_long& size)
 {
 	json j;
 
-	if(op == FOCUS)
+	if (op == FOCUS)
 		j["operation"] = "FOCUS";
-	else if(op == CLOSE)
+	else if (op == CLOSE)
 		j["operation"] = "CLOSE";
+	else if (op == ERROR_CLOSE)
+		j["operation"] = "ERRCL";
+	else if (op == OK_CLOSE)
+		j["operation"] = "OKCLO";
 
-	j["hwnd"] = (unsigned int) hwnd;
+	if (op == FOCUS || op == CLOSE) {
+		j["hwnd"] = (unsigned int) hwnd;
+	}
 	
 	string s = j.dump();
+	//string base64 = base64_encode(reinterpret_cast<const unsigned char*>(s.c_str()), s.length());
 
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino	
 

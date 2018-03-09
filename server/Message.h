@@ -12,7 +12,9 @@ enum operation {
 	OPEN,
 	CLOSE,
 	FOCUS,
-	TITLE_CHANGED
+	TITLE_CHANGED,
+	ERROR_CLOSE,
+	OK_CLOSE
 };
 
 using namespace std;
@@ -22,6 +24,7 @@ class Message
 public:
 
 	Message(operation op, HWND hwnd);
+	Message(operation operation);
 		
 	/* TODO: La regola dei tre.
 		Reminder. Se una classe dispone di una qualunque di queste funzioni membro, occorre implementare le altre due.

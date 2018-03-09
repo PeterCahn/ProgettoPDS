@@ -342,7 +342,7 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 
 		}
 
-		/* Ritorna la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
+		/* Restituisce la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
 //		BYTE& buffer = message->serialize(msgLength);
 		BYTE& buffer = message->toJson(msgLength);
 
@@ -375,25 +375,21 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	return;
 }
 
-void Server::sendMessageToClient(const char* operation) {
+void Server::sendMessageToClient(operation op) {
 
 	try {
-		char sendBuf[12 * sizeof(char)];
-		u_long msgLength = 5;
-		u_long netMsgLength = htonl(msgLength);
 
-		memcpy(sendBuf, "--", 2);
-		memcpy(sendBuf + 2, (void*)&netMsgLength, 4);
-		memcpy(sendBuf + 6, "-", 1);
-
-		memcpy(sendBuf + 7, operation, 5);
-
+		Message message = Message(op);
+		
+		u_long msgLength = 0;
+		BYTE& buffer = message.toJson(msgLength);
+		
 		int bytesSent = 0;
 		int offset = 0;
-		int remaining = 12;
+		int remaining = MSG_LENGTH_SIZE + msgLength;
 		while (remaining > 0)
 		{
-			bytesSent = send(clientSocket, sendBuf, remaining, offset);
+			bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
 			if (bytesSent < 0)
 				return;
 			remaining -= bytesSent;
