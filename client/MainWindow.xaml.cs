@@ -919,7 +919,6 @@ namespace WpfApplication1
         {
             try
             {
-                byte[] messaggio;
                 int currentHwnd;
 
                 lock (servers)
@@ -927,22 +926,18 @@ namespace WpfApplication1
                     currentHwnd = servers[currentConnectedServer].table.handleFinestraInFocus();
                 }
 
-                JArray tasti = new JArray();
+                JObject jsonTasti = new JObject();
+                jsonTasti.Add("operation", "comando");
+                jsonTasti.Add("hwnd", currentHwnd);
 
-                // Serializza messaggio da inviare
+                // Prepara messaggio da inviare
                 StringBuilder sb = new StringBuilder();
-                sb.Append(currentHwnd);
-                sb.Append("\n");
 
                 foreach (string virtualKey in comandoDaInviare)
-                {
-                    //if (sb.Length != 0)
-                        //sb.Append("+");
-                    sb.Append(virtualKey.ToString());
-                    //System.Windows.MessageBox.Show(virtualKey.ToString());
+                {                    
+                    sb.Append(virtualKey.ToString());                 
                 }
-                sb.Append("\n");
-                messaggio = Encoding.ASCII.GetBytes(sb.ToString());
+                jsonTasti.Add("tasti", sb.ToString());
 
                 /* Prepara l'invio del messaggio */
                 NetworkStream serverStream = null;
@@ -950,19 +945,16 @@ namespace WpfApplication1
                 TcpClient server = null;
                 server = servers[currentConnectedServer].server;
                 serverStream = server.GetStream();
-                /*
+                
                 BinaryWriter bw = new BinaryWriter(serverStream);
 
-                JObject jo = new JObject();
-                jo.Add("operation", "command");
-                jo.Add("tasti", JTasti);
-
-                string message = jo.ToString(Formatting.None);
+                string message = jsonTasti.ToString(Formatting.None);
+                message += '\0';
 
                 bw.Write(message.ToCharArray(), 0, message.Length);
-                */
+                
                 // Invia messaggio
-                serverStream.Write(messaggio, 0, messaggio.Length);
+                //serverStream.Write(messaggio, 0, messaggio.Length);
 
                 // Aggiorna bottoni e textBox
                 disabilitaCatturaComando();
