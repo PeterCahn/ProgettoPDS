@@ -58,14 +58,14 @@ using namespace std;
 WindowsNotificationService::WindowsNotificationService()
 {
 	_setmode(_fileno(stdout), _O_U16TEXT);
-	
+
 	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
 	globalExceptionPtr = nullptr;
 	numberRetries = 0;
 	retry = false;
 
 	windows = map<HWND, wstring>();
-	
+
 }
 
 WindowsNotificationService::~WindowsNotificationService()
@@ -96,24 +96,24 @@ void WindowsNotificationService::start()
 		Gestione eventi windows (semplificato ed adattato), preso spunto da qui: http://www.cplusplus.com/forum/windows/58791/
 		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
 			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
-	*/	 
+	*/
 	//thread t(hook, this);
-	
+
 	/* Avvia il server */
 	if (server.avviaServer() < 0)
 		throw exception("Impossibile avviare il server.");
 	if (!server.validServer()) {
-		printMessage(TEXT("Istanza di server creata non valida.Riprovare."));		
+		printMessage(TEXT("Istanza di server creata non valida.Riprovare."));
 		return;
 	}
 
 	/* Settato a false dall'handler per CTRL-C (TODO: così è visto solo alla prossima iterazione) */
 	while (isRunning) {
 
-		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */		
+		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
 		if (server.acceptConnection() < 0)
 			throw exception("Impossibile accettare nuove connessioni.");
-		
+
 		/* Setta la control routine per gestire il CTRL-C: chiude la connessione con il client per rimettersi in attesa */
 		if (!SetConsoleCtrlHandler(HandlerRoutine, TRUE)) {
 			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
@@ -138,7 +138,7 @@ void WindowsNotificationService::start()
 
 		}
 		catch (system_error se) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;						
+			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
 			return;
 		}
 		catch (exception &ex)
@@ -152,7 +152,7 @@ void WindowsNotificationService::start()
 			server.chiudiConnessioneClient();
 			continue;
 		}
-		
+
 		/* Chiudi connessione con il client prima di provare a reiterare sul while */
 		server.chiudiConnessioneClient();
 
@@ -165,7 +165,7 @@ void WindowsNotificationService::start()
 			}
 			continue;
 		}
-	}	
+	}
 }
 
 void WindowsNotificationService::stop()
@@ -175,7 +175,7 @@ void WindowsNotificationService::stop()
 
 BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 {
-	map<HWND, wstring>* windows2 = reinterpret_cast< map<HWND, wstring>* > (lParam);
+	map<HWND, wstring>* windows2 = reinterpret_cast<map<HWND, wstring>*> (lParam);
 
 	//DWORD process, thread;
 	//thread = GetWindowThreadProcessId(hWnd, &process);
@@ -184,10 +184,10 @@ BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lPar
 	GetWindowTextW(hWnd, title, sizeof(title));
 
 	wstring windowTitle = wstring(title);
-		
+
 	// Proteggere accesso a variabile condivisa "windows"
 	if (IsAltTabWindow(hWnd))
-		windows2->insert(pair<HWND,wstring>(hWnd, windowTitle));
+		windows2->insert(pair<HWND, wstring>(hWnd, windowTitle));
 
 	return TRUE;
 }
@@ -198,7 +198,7 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	TITLEBARINFO ti;
 	HWND hwndTry, hwndWalk = NULL;
 
-	if(!IsWindowVisible(hwnd))
+	if (!IsWindowVisible(hwnd))
 		return FALSE;
 
 	TCHAR title[MAX_PATH];
@@ -211,7 +211,7 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	/* For each visible window, walk up its owner chain until you find the root owner.
 	 * Then walk back down the visible last active popup chain until you find a visible window.
 	 * If you're back to where you're started, then put the window in the Alt + Tab list.
-	 * 
+	 *
 	 ** TODO: Prova questo prima o poi
 	 while ((hwndTry = GetLastActivePopup(hwndWalk)) != hwndTry) {
 	 if (IsWindowVisible(hwndTry)) break;
@@ -220,20 +220,20 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	 return hwndWalk == hwnd;
 	 */
 	hwndTry = GetAncestor(hwnd, GA_ROOTOWNER);
-	while(hwndTry != hwndWalk)
+	while (hwndTry != hwndWalk)
 	{
 		hwndWalk = hwndTry;
 		hwndTry = GetLastActivePopup(hwndWalk);
-		if(IsWindowVisible(hwndTry)) 
+		if (IsWindowVisible(hwndTry))
 			break;
 	}
-	if(hwndWalk != hwnd)
+	if (hwndWalk != hwnd)
 		return FALSE;
-	
+
 	// the following removes some task tray programs and "Program Manager"
 	ti.cbSize = sizeof(ti);
 	GetTitleBarInfo(hwnd, &ti);
-	if(ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
+	if (ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
 		return FALSE;
 
 	if (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)
@@ -246,13 +246,13 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 {
 	try {
 
-		/* Stampa ed invia tutte le finestre con flag OPEN */		
+		/* Stampa ed invia tutte le finestre con flag OPEN */
 		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
 		printMessage(TEXT("Finestre aperte:"));
-		
+
 		for each (pair<HWND, wstring> pair in windows) {
 			wstring windowTitle = pair.second;
-			printMessage(windowTitle);			
+			printMessage(windowTitle);
 			server.sendNotificationToClient(pair.first, pair.second, OPEN);
 		}
 
@@ -264,7 +264,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		server.sendNotificationToClient(currentForegroundHwnd, title, FOCUS);
 
 		/* Da qui in poi confronta quello che viene rilevato con quello che si ha */
-		
+
 		/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
 		future<bool> f = stopNotificationsThread.get_future();
 		while (f.wait_for(chrono::seconds(0)) != future_status::ready && isRunning) {
@@ -280,12 +280,12 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 				if (windows.find(pair.first) == windows.end()) {
 					// 'windows' non contiene questo programma (quindi è stato aperto ora)
 					wstring windowTitle = pair.second;
-					
+
 					// Devo aggiungere la finestra a 'windows'
 					windows[pair.first] = windowTitle;
 					printMessage(TEXT("Nuova finestra aperta!"));
 					printMessage(TEXT("- " + windowTitle));
-					server.sendNotificationToClient(pair.first, pair.second, OPEN);					
+					server.sendNotificationToClient(pair.first, pair.second, OPEN);
 				}
 			}
 
@@ -299,7 +299,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 					printMessage(TEXT("Finestra chiusa!"));
 					printMessage(TEXT("- " + windowTitle));
 					server.sendNotificationToClient(pair.first, pair.second, CLOSE);
-					toBeDeleted.push_back(pair.first);					
+					toBeDeleted.push_back(pair.first);
 				}
 			}
 			for each(HWND hwnd in toBeDeleted) {
@@ -352,13 +352,14 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 					}
 
 					currentForegroundHwnd = tempForeground;
-				} else
+				}
+				else
 					server.sendNotificationToClient(0, windowTitle, FOCUS);
 			}
 
 			windows = tempWindows;
 
-			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): in caso positivo, 
+			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): in caso positivo,
 				manda un messaggio al client per chiudere la connessione*/
 			if (!isRunning) {
 				printMessage(TEXT("Gestione finestre in chiusura..."));
@@ -396,8 +397,8 @@ using json = nlohmann::json;
 void WindowsNotificationService::receiveCommands() {
 
 	// Ricevi finchè il client non chiude la connessione
-	char recvbuf[DEFAULT_BUFLEN*sizeof(char)];
-	char sendBuf[DEFAULT_BUFLEN*sizeof(char)];
+	char recvbuf[DEFAULT_BUFLEN * sizeof(char)];
+	char sendBuf[DEFAULT_BUFLEN * sizeof(char)];
 
 	int iResult;
 	do {
@@ -408,16 +409,15 @@ void WindowsNotificationService::receiveCommands() {
 		else {
 			// Ottieni la stringa ricevuta dal client
 			string stringaRicevuta(recvbuf);
-			string jsonString;
+			json j;
 
-			// Converti la stringa in una lista di virtual-keyes
-			stringstream sstream(stringaRicevuta);
-
-			getline(sstream, jsonString, '}');
-			jsonString.append("}");
-
-			json j = json::parse(jsonString);
-							
+			try {
+				j = json::parse(stringaRicevuta);
+			}
+			catch (json::exception e) {
+				printMessage(TEXT("Json ricevuto dal client malformato."));
+				continue;
+			}
 			if (j.find("operation") != j.end()) {
 				// C'è il campo "operation"
 				if (j["operation"] == "CLSCN") {
@@ -427,65 +427,66 @@ void WindowsNotificationService::receiveCommands() {
 					/* Il client ha inviato uuna richiesta di chiusura connessione.
 					* Invia la conferma al client per chiudere la connessione. */
 					server.sendMessageToClient(OK_CLOSE);
-				}else if (j["operation"] == "comando") {
-
-				}				
-			}			
-
-			return;
-
-			
-			string virtualKey;
-			vector<UINT> vKeysList;
-			while (getline(sstream, virtualKey, '+'))	// ogni virtual-key è seprata dalle altre dal carattere '+'
-			{
-				UINT vKey;
-				if (keystrokeString[i] == '+') {
-					// Aggiungi keyDown
-					sscanf_s(virtualKeyString.c_str(), "%u", &vKey);
-					INPUT input;
-					input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
-															// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-					input.ki.wVk = vKey;					// Virtual-key code dell'input.	
-					input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-					input.ki.dwFlags = 0;					// Eventuali informazioni addizionali sull'evento
-					input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
-					input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
-					keystroke.push_back(input);
-
-					virtualKeyString.clear();
 				}
+				else if (j["operation"] == "comando") {
+					string virtualKey, stringUpToPlus;
+					vector<INPUT> keystroke;
+					
+					int tempHwnd = (int)j["hwnd"];
+					HWND targetHwnd = (HWND)tempHwnd;
 
-				else if (keystrokeString[i] == '-') {
-					// Aggiungi keyUp
-					sscanf_s(virtualKeyString.c_str(), "%u", &vKey);
-					INPUT input;
-					input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
-															// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-					input.ki.wVk = vKey;					// Virtual-key code dell'input.	
-					input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-					input.ki.dwFlags = KEYEVENTF_KEYUP;		// Eventuali informazioni addizionali sull'evento (qui il fatto che sia un keyUp e non keyDown)
-					input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
-					input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
-					keystroke.push_back(input);
+					string keystrokeString = j["tasti"];
+					string virtualKeyString;
+					for (int i = 0; i < keystrokeString.size(); i++) {
+						UINT vKey;
+						if (keystrokeString[i] == '+') {
+							// Aggiungi keyDown
+							sscanf_s(virtualKeyString.c_str(), "%u", &vKey);
+							INPUT input;
+							input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+																	// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+							input.ki.wVk = vKey;					// Virtual-key code dell'input.	
+							input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+							input.ki.dwFlags = 0;					// Eventuali informazioni addizionali sull'evento
+							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
+							keystroke.push_back(input);
 
-					virtualKeyString.clear();
-				}
-				else {
-					virtualKeyString += keystrokeString[i];
+							virtualKeyString.clear();
+						}
+
+						else if (keystrokeString[i] == '-') {
+							// Aggiungi keyUp
+							sscanf_s(virtualKeyString.c_str(), "%u", &vKey);
+							INPUT input;
+							input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
+																	// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
+							input.ki.wVk = vKey;					// Virtual-key code dell'input.	
+							input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+							input.ki.dwFlags = KEYEVENTF_KEYUP;		// Eventuali informazioni addizionali sull'evento (qui il fatto che sia un keyUp e non keyDown)
+							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
+							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
+							keystroke.push_back(input);
+
+							virtualKeyString.clear();
+						}
+						else {
+							virtualKeyString += keystrokeString[i];
+						}
+					}
+
+					// TODO: rimuovere dopo debug
+					// Stampa codici virtual-key ricevute
+					wcout << "Virtual-key ricevute da inviare alla finestra in focus: " << endl; // << stringaRicevuta << std::endl;
+					for each(INPUT key in keystroke)
+						wcout << "- " << key.ki.wVk << " - " << key.ki.dwFlags << std::endl;
+
+					// Invia keystroke all'applicazione in focus
+					sendKeystrokesToProgram(targetHwnd, keystroke);
+
+					ZeroMemory(recvbuf, sizeof(recvbuf));
 				}
 			}
-
-			// TODO: rimuovere dopo debug
-			// Stampa codici virtual-key ricevute
-			wcout << "Virtual-key ricevute da inviare alla finestra in focus: " << endl; // << stringaRicevuta << std::endl;
-			for each(INPUT key in keystroke)
-				wcout << "- " << key.ki.wVk << " - " << key.ki.dwFlags << std::endl;
-
-			// Invia keystroke all'applicazione in focus
-			sendKeystrokesToProgram(targetHwnd, keystroke);
-
-			ZeroMemory(recvbuf, sizeof(recvbuf));
 		}
 
 	} while (iResult > 0 && isRunning);
@@ -496,7 +497,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 {
 	int i, keystroke_sent;
 	HWND progHandle;
-	
+
 	// Controlla che il keystroke sia ben formato
 	int numKeyDown = 0, numKeyUp = 0;
 	for each (INPUT input in vKeysList) {
@@ -510,7 +511,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 		return;
 	}
 
-	
+
 
 	// Ricava l'handle alla finestra verso cui indirizzare il keystroke
 	progHandle = GetForegroundWindow();
@@ -518,7 +519,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 	// Send the keystrokes.
 	SetForegroundWindow(targetHwnd);
 	keystroke_sent = SendInput(vKeysList.size(), &vKeysList[0], sizeof(vKeysList[0]));
-	SetForegroundWindow(progHandle); 
+	SetForegroundWindow(progHandle);
 }
 
 /* La funzione MapVirtualKey() traduce virtualKeys in char o "scan codes" in Virtual-keys
@@ -528,7 +529,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 */
 
 void WindowsNotificationService::printMessage(wstring string) {
-	wcout << "[" << GetCurrentThreadId() << "] " << string << endl; 
+	wcout << "[" << GetCurrentThreadId() << "] " << string << endl;
 }
 
 /* Questa funzione viene passata alla SetWinEventHook nella funzione hook per gestire gli eventi */
