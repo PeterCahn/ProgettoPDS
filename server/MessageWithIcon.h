@@ -9,6 +9,8 @@ public:
 
 	BYTE& serialize(u_long& size);
 
+	BYTE& toJson(u_long& size);
+
 protected:	
 	BYTE* pixels;
 	u_long iconLength;

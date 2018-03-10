@@ -28,9 +28,9 @@ public:
 	/* Verifica che il client sia stato accettato con successo e gli sia stato assegnato un socket valido */
 	bool validClient();
 	/* Invia un messaggio al client in base al valore di 'operation' */
-	void sendNotificationToClient(HWND hwnd, wstring title, operation op);
+	void sendNotificationToClient(HWND, wstring, operation);
 	/* Manda un messaggio breve al client */
-	void sendMessageToClient(const char *);
+	void sendMessageToClient(operation);
 	/* Riceve un messaggio dal client */
 	int receiveMessageFromClient(char* buffer, int bufferSize);
 

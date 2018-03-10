@@ -9,6 +9,9 @@ public:
 
 	BYTE& serialize(u_long& size);
 
+	string toJson();
+	BYTE& toJson(u_long& size);
+
 protected:
 	wstring windowName;
 

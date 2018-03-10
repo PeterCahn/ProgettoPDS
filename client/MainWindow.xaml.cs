@@ -18,6 +18,10 @@ using System.ComponentModel;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
 
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
+
 /* TODO:
  * - Distruttore
  * - Icona con sfondo nero
@@ -30,6 +34,21 @@ using System.Text.RegularExpressions;
 
 namespace WpfApplication1
 {
+    public class Message
+    {
+        public string operazione { get; set; }
+        public int Hwnd { get; set; }
+        public List<string> comandoDaInviare2 { get; set; }
+    }
+
+    public class WindowInfo{
+        string operation { get; set; }
+        int hwnd { get; set; }
+        string windowName { get; set; }
+        int iconLength { get; set; }
+        object icona { get; set; }
+    }
+
     public partial class MainWindow : Window
     {
         private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 500;
@@ -98,9 +117,6 @@ namespace WpfApplication1
 
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
         {
-
-            //connettiAlServer();   // connessione sincrona
-
             iniziaConnessione();    // connessione asincrona
         }
 
@@ -330,8 +346,7 @@ namespace WpfApplication1
                 // Chiudi la connessione con il server
                 if (servers[serverName].server.Connected)
                     servers[serverName].server.Close();
-
-                // TODO: Pulisci interfaccia in questo caso
+                
                 safePulisciInterfaccia(serverName, false);
 
                 return;
@@ -361,17 +376,12 @@ namespace WpfApplication1
                 if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
                     continue;
 
-                // Estrai operazione => primi 5 byte
-                byte[] op = new byte[5];
-                Array.Copy(msg, 0, op, 0, 5);
-                operation = Encoding.ASCII.GetString(op);
+                string json = Encoding.UTF8.GetString(msg);
+                JToken token = JObject.Parse(json);
 
-                int progNameLength = 0;
-                int hwnd = 0;
-                byte[] h = null;
-                byte[] pN = null;
-
-
+                int hwnd = 0;                
+                operation = (string) token.SelectToken("operation");                                
+                
                 /* Possibili valori ricevuti:
                     * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
                     * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
@@ -407,73 +417,37 @@ namespace WpfApplication1
                         break;
 
                     case "FOCUS":
-                        // Estrai hwnd: successivi 5 byte.
-                        h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
-
+                        hwnd = (int)token.SelectToken("hwnd");
                         // Cambia programma col focus                            
                         servers[serverName].table.changeFocus(hwnd);
 
                         break;
                     case "CLOSE":
-                        // Estrai hwnd: successivi 5 byte.
-                        h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
-
+                        hwnd = (int)token.SelectToken("hwnd");
                         // Rimuovi programma dalla listView                            
                         servers[serverName].table.removeFinestra(hwnd);
 
                         break;
-                    case "TTCHA":                        
-                        // Estrai hwnd: successivi 5 byte.
-                        h = new byte[5];
-                        Array.Copy(msg, 6, h, 0, 4);
-                        hwnd = BitConverter.ToInt32(msg, 6);
-
-                        // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                        progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                        // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                        pN = new byte[progNameLength * sizeof(byte)];
-                        Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                        progName = Encoding.Unicode.GetString(pN);
+                    case "TTCHA":
+                        hwnd = (int)token.SelectToken("hwnd");
+                        progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
 
                         servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
 
                         break;
-                    case "OPENP":
+                    case "OPEN":
                         try
                         {
-                            // Estrai hwnd: successivi 5 byte.
-                            h = new byte[5];
-                            Array.Copy(msg, 6, h, 0, 4);
-                            hwnd = BitConverter.ToInt32(msg, 6);
+                            hwnd = (int)token.SelectToken("hwnd");
 
-                            // Estrai lunghezza nome programma => offset 6 (offset 5 è il '-' che precede)
-                            progNameLength = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(msg, 11));
-                            // Leggi nome del programma => da offset 11 (6 di operazione + 5 di dimensione (incluso 1 di trattino))
-                            pN = new byte[progNameLength * sizeof(byte)];
-                            Array.Copy(msg, 5 + 5 + 6, pN, 0, progNameLength);
-                            progName = Encoding.Unicode.GetString(pN);
+                            progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
+                            string iconaBase64 = token.SelectToken("icona").ToString();
+                            byte[] bmpData = Convert.FromBase64String(iconaBase64);
 
                             /* Ricevi icona processo */
                             int bitmapWidth = 64;
                             int bitmapheight = 64;
-
-                            // Non ci interessano: 6 byte dell'operazione, il nome del programma, il trattino, 
-                            // 4 byte di dimensione icona e il trattino
-                            int notBmpData = 16 + progNameLength + 1 + 4 + 1;
-                            int bmpLength = BitConverter.ToInt32(msg, notBmpData - 5);
-
-                            /* Legge i successivi bmpLength bytes e li copia nel buffer bmpData */
-                            byte[] bmpData = new byte[bmpLength];
-                            Array.Clear(bmpData, 0, bmpLength);
-
-                            // Estrai dal messaggio ricevuto in bmpData solo i dati dell'icona
-                            // partendo dal source offset "notBmpData"
-                            Array.Copy(msg, notBmpData, bmpData, 0, bmpLength);
-
+                            
                             /* Crea la bitmap a partire dal byte array */
                             Bitmap bitmap = CopyDataToBitmap(bmpData, bitmapWidth, bitmapheight);
 
@@ -520,7 +494,7 @@ namespace WpfApplication1
                         {
                             // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
                             // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre 
-                            continue;                                   
+                            continue;
                         }
 
                         break;
@@ -810,20 +784,16 @@ namespace WpfApplication1
 
             try
             {
-                byte[] buffer = new byte[9];
-                Array.Clear(buffer, 0, 9);
-
                 server = servers[disconnectingServer].server;
                 serverStream = server.GetStream();
 
-                // Prepara messaggio da inviare
-                StringBuilder sb = new StringBuilder();
-                sb.Append("--CLSCN-");
-                Array.Copy(Encoding.ASCII.GetBytes(sb.ToString()), buffer, 8);
-                buffer[8] = (byte)'\0';
+                BinaryWriter bw = new BinaryWriter(serverStream);
 
-                // Invia richiesta chiusura
-                serverStream.Write(buffer, 0, 9);
+                JObject jo = new JObject();
+                jo.Add("operation", "CLSCN");
+                string message = jo.ToString(Formatting.None);
+
+                bw.Write(message.ToCharArray(), 0, message.Length);
 
             }
             catch (InvalidOperationException) // include ObjectDisposedException
@@ -957,6 +927,8 @@ namespace WpfApplication1
                     currentHwnd = servers[currentConnectedServer].table.handleFinestraInFocus();
                 }
 
+                JArray tasti = new JArray();
+
                 // Serializza messaggio da inviare
                 StringBuilder sb = new StringBuilder();
                 sb.Append(currentHwnd);
@@ -978,7 +950,17 @@ namespace WpfApplication1
                 TcpClient server = null;
                 server = servers[currentConnectedServer].server;
                 serverStream = server.GetStream();
+                /*
+                BinaryWriter bw = new BinaryWriter(serverStream);
 
+                JObject jo = new JObject();
+                jo.Add("operation", "command");
+                jo.Add("tasti", JTasti);
+
+                string message = jo.ToString(Formatting.None);
+
+                bw.Write(message.ToCharArray(), 0, message.Length);
+                */
                 // Invia messaggio
                 serverStream.Write(messaggio, 0, messaggio.Length);
 
