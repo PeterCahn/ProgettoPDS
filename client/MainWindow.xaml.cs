@@ -41,7 +41,8 @@ namespace WpfApplication1
         public List<string> comandoDaInviare2 { get; set; }
     }
 
-    public class WindowInfo{
+    public class WindowInfo
+    {
         string operation { get; set; }
         int hwnd { get; set; }
         string windowName { get; set; }
@@ -92,7 +93,8 @@ namespace WpfApplication1
             previewKeyDownHandler = new System.Windows.Input.KeyEventHandler(onButtonPreviewKeyDown);
         }
 
-        ~MainWindow(){
+        ~MainWindow()
+        {
             System.Windows.MessageBox.Show("Nel distruttore di MainWindow");
         }
 
@@ -125,7 +127,7 @@ namespace WpfApplication1
             IPEndPoint ipPort = null;
             string ipAddress = null;
             int port = -1;
-            string serverName = null;            
+            string serverName = null;
 
             /* Ottieni il l'indirizzo IP e la porta a cui connettersi. */
             ipPort = parseHostPort(textBoxIpAddress.Text);
@@ -173,7 +175,7 @@ namespace WpfApplication1
                     System.Threading.Thread.Sleep(50);
                 }
             }
-            if(timesRetried >= 10)
+            if (timesRetried >= 10)
                 System.Windows.MessageBox.Show("Errore nella connessione al server, riprovare");
         }
 
@@ -184,13 +186,13 @@ namespace WpfApplication1
                 e.Result = new TcpClient(connectingIp, connectingPort);
                 /* ArgumentNullException: hostname is null
                  * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
-                 
+
             }
             catch (SocketException se)
             {
                 int errorCode = se.ErrorCode;
                 if (errorCode.Equals(SocketError.TimedOut))
-                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp+":"+connectingPort + " scaduto.");
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.");
                 else
                     System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.");
 
@@ -200,7 +202,7 @@ namespace WpfApplication1
 
         private void finalizzaConnessione(object sender, RunWorkerCompletedEventArgs e)
         {
-            TcpClient s = (TcpClient) e.Result;
+            TcpClient s = (TcpClient)e.Result;
             if (s == null)
             {
                 // Non è stato possibile connettersi, quindi ritorna
@@ -250,7 +252,7 @@ namespace WpfApplication1
             textBoxIpAddress.Text = "";
 
             // Mostra il nuovo elenco
-            listView1.ItemsSource = si.table.Finestre;            
+            listView1.ItemsSource = si.table.Finestre;
             listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
 
         }
@@ -258,7 +260,7 @@ namespace WpfApplication1
         /* Metodo passato al BackgroundWorker per aggiornare le statistiche */
         private void aggiornaStatistiche(object sender, DoWorkEventArgs e)
         {
-            string serverName = (string) e.Argument;
+            string serverName = (string)e.Argument;
             BackgroundWorker worker = sender as BackgroundWorker;
 
             while (true)
@@ -276,7 +278,7 @@ namespace WpfApplication1
                     {
                         servers[serverName].table.aggiornaStatisticheFocus();
                     }
-                    
+
                     Thread.Sleep(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
                 }
             }
@@ -303,18 +305,18 @@ namespace WpfApplication1
 
             worker.Dispose();
         }
-        
+
         /* Come manageNotifications ma da eseguire in un BackgroundWorker */
         private void riceviNotifiche(object sender, DoWorkEventArgs e)
         {
-            string serverName = (string) e.Argument;
+            string serverName = (string)e.Argument;
             BackgroundWorker worker = sender as BackgroundWorker;
             TcpClient server = null;
 
             NetworkStream serverStream = null;
             byte[] buffer = new byte[7];
             Array.Clear(buffer, 0, 7);
-            
+
             try
             {
                 server = servers[serverName].server;
@@ -326,7 +328,7 @@ namespace WpfApplication1
                 System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".");
                 servers[serverName].notificationsBw.CancelAsync();
                 servers[serverName].statisticsBw.CancelAsync();
-                
+
                 // Chiudi la connessione con il server
                 if (servers[serverName].server.Connected)
                     servers[serverName].server.Close();
@@ -336,22 +338,22 @@ namespace WpfApplication1
 
                 return;
             }
-            catch(Exception)
+            catch (Exception)
             {
                 /* Eccezione scatenata se serverName non c'è più in 'servers' */
                 System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".");
                 servers[serverName].notificationsBw.CancelAsync();
                 servers[serverName].statisticsBw.CancelAsync();
-                
+
                 // Chiudi la connessione con il server
                 if (servers[serverName].server.Connected)
                     servers[serverName].server.Close();
-                
+
                 safePulisciInterfaccia(serverName, false);
 
                 return;
-            }            
-            
+            }
+
             while (serverStream.CanRead && server.Connected)
             {
                 string operation = "";
@@ -363,7 +365,7 @@ namespace WpfApplication1
                     e.Cancel = true;
                     break;
                 }
-                                
+
                 // Iinizio e dimensione messaggio: "--<4 byte int>-" = 7 byte in "buffer"
                 // Leggi la dimensione del messaggio
                 if (managedReadn(server, serverStream, serverName, buffer, 7) <= 0)
@@ -379,9 +381,9 @@ namespace WpfApplication1
                 string json = Encoding.UTF8.GetString(msg);
                 JToken token = JObject.Parse(json);
 
-                int hwnd = 0;                
-                operation = (string) token.SelectToken("operation");                                
-                
+                int hwnd = 0;
+                operation = (string)token.SelectToken("operation");
+
                 /* Possibili valori ricevuti:
                     * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
                     * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
@@ -447,13 +449,13 @@ namespace WpfApplication1
                             /* Ricevi icona processo */
                             int bitmapWidth = 64;
                             int bitmapheight = 64;
-                            
+
                             /* Crea la bitmap a partire dal byte array */
                             Bitmap bitmap = CopyDataToBitmap(bmpData, bitmapWidth, bitmapheight);
 
                             //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                                                                                         //bitmap.SetTransparencyKey(Color.White);
-                                                                                         
+                            //bitmap.SetTransparencyKey(Color.White);
+
                             /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
                             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
@@ -523,8 +525,8 @@ namespace WpfApplication1
             {
                 //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato normalmente.");
             }
-            
-            worker.Dispose();            
+
+            worker.Dispose();
         }
 
         delegate void PulisciInterfacciaDelegate(string disconnectingServer, bool onPurpose);
@@ -556,14 +558,14 @@ namespace WpfApplication1
             if (onPurpose)
             {
                 // Disconnessione volontaria: rimuovi server
-                rimuoviServer(disconnectingServer);                
+                rimuoviServer(disconnectingServer);
 
             }
-            else if(servers.ContainsKey(disconnectingServer) && !onPurpose) // contiene disconnectingServer ed è forzata
+            else if (servers.ContainsKey(disconnectingServer) && !onPurpose) // contiene disconnectingServer ed è forzata
             {
                 // Disconnessione forzata: invalida server ma continua a mostrarlo nell'elenco
                 invalidaServer(disconnectingServer);
-                
+
             }
         }
 
@@ -599,16 +601,16 @@ namespace WpfApplication1
                         // Server già presente ma offline: rimuovi i suoi riferimenti e riaggiungi
                         servers.Remove(serverName);
                         serversListBox.Items.Remove(serverName);
-                        
+
                         servers.Add(serverName, si);
 
                         // Aggiungi e cambia la selezione della serversListBox al server appena connesso
                         int index = serversListBox.Items.Add(serverName);
                         serversListBox.SelectedIndex = index;
                         currentConnectedServer = serversListBox.Items[index] as string;
-                        
-                    }                    
-                    
+
+                    }
+
                 }
             }
         }
@@ -649,7 +651,7 @@ namespace WpfApplication1
         private void invalidaServer(string serverName)
         {
             servers[serverName].isOnline = false;
-                        
+
             if (serverName.Equals(currentConnectedServer))
             {
                 // L'elenco finestre disattivo è quello attivo, 
@@ -664,7 +666,7 @@ namespace WpfApplication1
                 buttonDisconnetti.Visibility = Visibility.Hidden;
             }
         }
-   
+
         // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando
         private void disabilitaERimuoviCatturaComando()
         {
@@ -720,7 +722,7 @@ namespace WpfApplication1
 
             // nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
-            
+
             this.KeyDown -= keyDownHandler;
             this.KeyUp -= keyUpHandler;
             this.PreviewKeyDown -= previewKeyDownHandler;
@@ -764,7 +766,7 @@ namespace WpfApplication1
 
             // textBoxComando e buttonInvia non visibili
             textBoxComando.Visibility = Visibility.Hidden;
-            
+
             //UnhookWindowsHookEx(_hookID);
         }
 
@@ -820,12 +822,12 @@ namespace WpfApplication1
         {
             // Mostra la textBox dove scrivere e il button Invia
             abilitaCatturaComando();
-            
+
             // Alternativa:
             //_hookID = SetHook(_proc);
 
         }
-                
+
         private void onButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (!e.IsRepeat)
@@ -836,7 +838,7 @@ namespace WpfApplication1
                     numKeyDown++;
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                 }
-            }            
+            }
 
             // Segnala l'evento come gestito per evitare che venga chiamata nuovamente OnButtonKeyDown
             e.Handled = true;
@@ -852,7 +854,7 @@ namespace WpfApplication1
                 comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey) + "-");
                 numKeyUp++;
                 textBoxComando.AppendText(pressedKey.ToString() + "-");
-                if(numKeyUp == numKeyDown)
+                if (numKeyUp == numKeyDown)
                 {
                     numKeyDown = 0;
                     numKeyUp = 0;
@@ -864,7 +866,10 @@ namespace WpfApplication1
         }
 
         private void onButtonPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {            
+        {
+
+            if (e.Key.ToString().Equals("LeftShift"))
+                Trace.WriteLine("a");
             if (!e.IsRepeat && (e.SystemKey != System.Windows.Input.Key.None) && (e.KeyboardDevice.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
             {
                 lock (comandoDaInviare)
@@ -872,8 +877,6 @@ namespace WpfApplication1
                     comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.SystemKey) + "+");
                     numKeyDown++;
                     textBoxComando.AppendText(e.SystemKey.ToString() + "+");
-                    if (e.SystemKey.ToString().Equals("None"))
-                        Trace.WriteLine("Alt è none");
                 }
                 e.Handled = true;
             }
@@ -889,7 +892,7 @@ namespace WpfApplication1
                 }
                 e.Handled = true;
             }
-            if (!e.IsRepeat && (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            if (!e.IsRepeat && (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift && !e.Handled)
             {
                 lock (comandoDaInviare)
                 {
@@ -934,8 +937,8 @@ namespace WpfApplication1
                 StringBuilder sb = new StringBuilder();
 
                 foreach (string virtualKey in comandoDaInviare)
-                {                    
-                    sb.Append(virtualKey.ToString());                 
+                {
+                    sb.Append(virtualKey.ToString());
                 }
                 jsonTasti.Add("tasti", sb.ToString());
 
@@ -945,20 +948,26 @@ namespace WpfApplication1
                 TcpClient server = null;
                 server = servers[currentConnectedServer].server;
                 serverStream = server.GetStream();
-                
+
                 BinaryWriter bw = new BinaryWriter(serverStream);
 
                 string message = jsonTasti.ToString(Formatting.None);
                 message += '\0';
 
                 bw.Write(message.ToCharArray(), 0, message.Length);
-                
+
                 // Invia messaggio
                 //serverStream.Write(messaggio, 0, messaggio.Length);
 
                 // Aggiorna bottoni e textBox
-                disabilitaCatturaComando();
-                
+                // disabilitaCatturaComando();
+
+                // Preparati per prossimo keystroke
+                comandoDaInviare.Clear();
+                textBoxComando.Text = "";
+                numKeyDown = 0;
+                numKeyUp = 0;
+
             }
             catch (InvalidOperationException) // include ObjectDisposedException
             {
@@ -972,7 +981,7 @@ namespace WpfApplication1
                 System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
                 return;
             }
-            catch(Exception)
+            catch (Exception)
             {
                 // Problema generico nell'invio del comando
                 System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
@@ -983,14 +992,14 @@ namespace WpfApplication1
         private void buttonAnnullaCattura_Click(object sender, RoutedEventArgs e)
         {
             disabilitaCatturaComando();
-            
+
             //UnhookWindowsHookEx(_hookID);
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             string selectedServer = ((sender as System.Windows.Controls.ListBox).SelectedItem as string);
-                        
+
             if (selectedServer != null)
             {
                 if (!selectedServer.Equals("Nessun server connesso") && servers[selectedServer].isOnline)
@@ -1004,7 +1013,7 @@ namespace WpfApplication1
                     buttonDisconnetti.Visibility = Visibility.Visible;
                     buttonChiudiServer.IsEnabled = false;
                     buttonChiudiServer.Visibility = Visibility.Hidden;
-                    
+
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
 
                     labelDisconnesso.Visibility = Visibility.Hidden;
@@ -1023,7 +1032,7 @@ namespace WpfApplication1
                     buttonChiudiServer.Visibility = Visibility.Visible;
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
-                    
+
                     indirizzoServerConnesso.Content = servers[selectedServer].serverName;
 
                     labelDisconnesso.Visibility = Visibility.Visible;
@@ -1043,7 +1052,7 @@ namespace WpfApplication1
                     buttonChiudiServer.Visibility = Visibility.Hidden;
                     buttonDisconnetti.IsEnabled = false;
                     buttonDisconnetti.Visibility = Visibility.Hidden;
-                    
+
                     indirizzoServerConnesso.Content = "Nessun server connesso";
 
                     // Nascondi label "Disconnesso"
