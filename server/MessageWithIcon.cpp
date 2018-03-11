@@ -44,6 +44,9 @@ MessageWithIcon & MessageWithIcon::operator=(const MessageWithIcon & source)
 			this->buffer = new BYTE[source.bufferSize];
 			memcpy(this->buffer, source.buffer, bufferSize);
 		}
+
+		this->op = source.op;
+		this->hwnd = source.hwnd;
 		this->windowName = source.windowName;
 
 		/* Delete buffer dell'icona */
@@ -62,7 +65,7 @@ MessageWithIcon & MessageWithIcon::operator=(const MessageWithIcon & source)
 
 MessageWithIcon::~MessageWithIcon()
 {
-	if (pixels != NULL)
+	if (pixels != nullptr)
 		delete[] pixels;
 }
 
@@ -96,7 +99,8 @@ BYTE & MessageWithIcon::serialize(u_long & size)
 	memcpy(operation, "OPENP-", N_BYTE_OPERATION + N_BYTE_TRATTINO);
 
 	/* Crea buffer da inviare */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
@@ -153,7 +157,8 @@ BYTE& MessageWithIcon::toJson(u_long& size)
 	memcpy(dimension + 6, "-", 1);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);

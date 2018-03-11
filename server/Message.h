@@ -29,7 +29,6 @@ public:
 
 	/* Construttore di copia */
 	Message(const Message&);
-
 	/* Operatore di assegnazione */
 	Message& operator=(const Message& source);
 		

@@ -50,6 +50,10 @@ Message& Message::operator=(const Message& source) {
 		this->bufferSize = source.bufferSize;
 		this->buffer = new BYTE[bufferSize];
 		memcpy(this->buffer, source.buffer, bufferSize);
+
+		this->op = source.op;
+		if (source.hwnd != 0)
+			this->hwnd = source.hwnd;
 	}
 	return *this;
 }
@@ -57,7 +61,7 @@ Message& Message::operator=(const Message& source) {
 
 Message::~Message()
 {
-	if (this->buffer != NULL) {
+	if (this->buffer != nullptr) {
 		delete[] this->buffer;
 	}
 }
@@ -72,7 +76,6 @@ BYTE& Message::serialize(u_long& size)
 	u_long netMsgLength = htonl(msgLength);
 
 	size = msgLength;
-	bufferSize = size;
 
 	memcpy(dimension, "--", 2);
 	memcpy(dimension + 2, (void*)&netMsgLength, 4);
@@ -84,7 +87,8 @@ BYTE& Message::serialize(u_long& size)
 		memcpy(operation, "CLOSE-", 6);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
@@ -128,7 +132,8 @@ BYTE& Message::toJson(u_long& size)
 	memcpy(dimension + 6, "-", 1);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
