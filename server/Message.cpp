@@ -31,6 +31,30 @@ Message::Message(operation op)
 	this->op = op;
 }
 
+Message::Message(const Message& message) 
+{
+	this->op = message.op;
+	if(message.hwnd != 0)
+		this->hwnd = message.hwnd;
+
+	if (this->buffer != nullptr) {							// check che sia stato allocato il buffer, altrimenti non fare delete
+		this->buffer = new BYTE[message.bufferSize];
+		memcpy(this->buffer, message.buffer, message.bufferSize);
+	}
+}
+
+Message& Message::operator=(const Message& source) {
+	if (this != &source) {									// per non assegnare un oggetto a sé stesso
+		delete[] this->buffer;
+		this->buffer = nullptr;								// per evitare che in caso di eccezione la memoria venga rilasciata due volte
+		this->bufferSize = source.bufferSize;
+		this->buffer = new BYTE[bufferSize];
+		memcpy(this->buffer, source.buffer, bufferSize);
+	}
+	return *this;
+}
+
+
 Message::~Message()
 {
 	if (this->buffer != NULL) {
@@ -48,6 +72,7 @@ BYTE& Message::serialize(u_long& size)
 	u_long netMsgLength = htonl(msgLength);
 
 	size = msgLength;
+	bufferSize = size;
 
 	memcpy(dimension, "--", 2);
 	memcpy(dimension + 2, (void*)&netMsgLength, 4);

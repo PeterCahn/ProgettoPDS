@@ -25,6 +25,40 @@ MessageWithIcon::MessageWithIcon(operation op, HWND hwnd, wstring windowName, BY
 	this->iconLength = iconLength;		
 }
 
+MessageWithIcon::MessageWithIcon(const MessageWithIcon & message) : MessageWithTitle(message)
+{
+	this->iconLength = message.iconLength;
+	this->pixels = new BYTE[message.iconLength];
+	memcpy(this->pixels, message.pixels, message.iconLength);
+}
+
+MessageWithIcon & MessageWithIcon::operator=(const MessageWithIcon & source)
+{
+	if (this != &source) {									// check che non si stia assegnando un oggetto a sé stesso
+		/* Delete buffer destinazione */
+		if (this->buffer != nullptr) {							// check che sia stato allocato il buffer, altrimenti non fare altro
+			delete[] this->buffer;
+			this->buffer = nullptr;								// puntatore a null per evitare che in caso di eccezione la memoria venga rilasciata due volte
+			/* Assegnazione a buffer destinazione */
+			this->bufferSize = source.bufferSize;
+			this->buffer = new BYTE[source.bufferSize];
+			memcpy(this->buffer, source.buffer, bufferSize);
+		}
+		this->windowName = source.windowName;
+
+		/* Delete buffer dell'icona */
+		if (pixels != nullptr) {
+			delete[] this->pixels;
+			this->pixels = nullptr;
+			/* Assegnazione a buffer dell'icona destinazione */
+			this->iconLength = source.iconLength;
+			this->pixels = new BYTE[source.iconLength];
+			memcpy(this->pixels, source.pixels, source.iconLength);
+		}
+	}
+	return *this;
+}
+
 
 MessageWithIcon::~MessageWithIcon()
 {

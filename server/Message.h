@@ -23,21 +23,21 @@ class Message
 {
 public:
 
+	/* Costruttori overloaded */
 	Message(operation op, HWND hwnd);
 	Message(operation operation);
+
+	/* Construttore di copia */
+	Message(const Message&);
+
+	/* Operatore di assegnazione */
+	Message& operator=(const Message& source);
 		
-	/* TODO: La regola dei tre.
-		Reminder. Se una classe dispone di una qualunque di queste funzioni membro, occorre implementare le altre due.
-		- Costruttore di copia
-		- Operatore di assegnazione
-		- Distruttore
-	*/
-	/* Avendo abilitato il comportamento polimorfico, anche il destructor deve essere 'virtual' */
+	/* Avendo abilitato il comportamento polimorfico (vedi metodi sotto), anche il destructor deve essere 'virtual' */
 	virtual ~Message();
 
 	/* La parola chiave 'virtual' abilita il comportamento polimorfico */
 	virtual BYTE& serialize(u_long& size);
-
 	virtual BYTE& toJson(u_long& size);
 
 protected:
@@ -45,6 +45,7 @@ protected:
 	operation op;	
 
 	BYTE* buffer;
+	long bufferSize;
 
 };
 

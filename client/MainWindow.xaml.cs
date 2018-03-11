@@ -792,6 +792,7 @@ namespace WpfApplication1
                 JObject jo = new JObject();
                 jo.Add("operation", "CLSCN");
                 string message = jo.ToString(Formatting.None);
+                message += '\0';
 
                 bw.Write(message.ToCharArray(), 0, message.Length);
 

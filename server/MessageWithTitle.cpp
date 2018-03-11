@@ -22,9 +22,29 @@ MessageWithTitle::MessageWithTitle(operation op, HWND hwnd, wstring windowName) 
 	this->windowName = windowName;
 }
 
+MessageWithTitle::MessageWithTitle(const MessageWithTitle & message) : Message(message)
+{
+	this->windowName = message.windowName;
+}
+
+MessageWithTitle & MessageWithTitle::operator=(const MessageWithTitle & source)
+{
+	if (this != &source) {									// per non assegnare un oggetto a sé stesso
+		if (this->buffer != nullptr) {
+			delete[] this->buffer;
+			this->buffer = nullptr;								// per evitare che in caso di eccezione la memoria venga rilasciata due volte
+			this->bufferSize = source.bufferSize;
+			this->buffer = new BYTE[bufferSize];
+			memcpy(this->buffer, source.buffer, bufferSize);
+		}
+		this->windowName = source.windowName;
+	}
+	return *this;
+}
+
 MessageWithTitle::~MessageWithTitle()
 {
-
+	Message::~Message();
 }
 
 BYTE& MessageWithTitle::serialize(u_long& size)
