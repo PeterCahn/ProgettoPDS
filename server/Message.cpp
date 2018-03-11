@@ -31,9 +31,37 @@ Message::Message(operation op)
 	this->op = op;
 }
 
+Message::Message(const Message& message) 
+{
+	this->op = message.op;
+	if(message.hwnd != 0)
+		this->hwnd = message.hwnd;
+
+	if (this->buffer != nullptr) {							// check che sia stato allocato il buffer, altrimenti non fare delete
+		this->buffer = new BYTE[message.bufferSize];
+		memcpy(this->buffer, message.buffer, message.bufferSize);
+	}
+}
+
+Message& Message::operator=(const Message& source) {
+	if (this != &source) {									// per non assegnare un oggetto a sé stesso
+		delete[] this->buffer;
+		this->buffer = nullptr;								// per evitare che in caso di eccezione la memoria venga rilasciata due volte
+		this->bufferSize = source.bufferSize;
+		this->buffer = new BYTE[bufferSize];
+		memcpy(this->buffer, source.buffer, bufferSize);
+
+		this->op = source.op;
+		if (source.hwnd != 0)
+			this->hwnd = source.hwnd;
+	}
+	return *this;
+}
+
+
 Message::~Message()
 {
-	if (this->buffer != NULL) {
+	if (this->buffer != nullptr) {
 		delete[] this->buffer;
 	}
 }
@@ -59,7 +87,8 @@ BYTE& Message::serialize(u_long& size)
 		memcpy(operation, "CLOSE-", 6);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
@@ -103,7 +132,8 @@ BYTE& Message::toJson(u_long& size)
 	memcpy(dimension + 6, "-", 1);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);

@@ -22,6 +22,29 @@ MessageWithTitle::MessageWithTitle(operation op, HWND hwnd, wstring windowName) 
 	this->windowName = windowName;
 }
 
+MessageWithTitle::MessageWithTitle(const MessageWithTitle & message) : Message(message)
+{
+	this->windowName = message.windowName;
+}
+
+MessageWithTitle & MessageWithTitle::operator=(const MessageWithTitle & source)
+{
+	if (this != &source) {									// per non assegnare un oggetto a sé stesso
+		if (this->buffer != nullptr) {
+			delete[] this->buffer;
+			this->buffer = nullptr;								// per evitare che in caso di eccezione la memoria venga rilasciata due volte
+			this->bufferSize = source.bufferSize;
+			this->buffer = new BYTE[bufferSize];
+			memcpy(this->buffer, source.buffer, bufferSize);
+		}
+
+		this->op = source.op;
+		this->hwnd = source.hwnd;
+		this->windowName = source.windowName;
+	}
+	return *this;
+}
+
 MessageWithTitle::~MessageWithTitle()
 {
 
@@ -54,7 +77,8 @@ BYTE& MessageWithTitle::serialize(u_long& size)
 	memcpy(operation, "TTCHA-", 6);
 
 	/* Crea buffer da inviare */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
@@ -100,7 +124,8 @@ BYTE& MessageWithTitle::toJson(u_long& size)
 	memcpy(dimension + 6, "-", 1);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);

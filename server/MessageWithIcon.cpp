@@ -25,10 +25,47 @@ MessageWithIcon::MessageWithIcon(operation op, HWND hwnd, wstring windowName, BY
 	this->iconLength = iconLength;		
 }
 
+MessageWithIcon::MessageWithIcon(const MessageWithIcon & message) : MessageWithTitle(message)
+{
+	this->iconLength = message.iconLength;
+	this->pixels = new BYTE[message.iconLength];
+	memcpy(this->pixels, message.pixels, message.iconLength);
+}
+
+MessageWithIcon & MessageWithIcon::operator=(const MessageWithIcon & source)
+{
+	if (this != &source) {									// check che non si stia assegnando un oggetto a sé stesso
+		/* Delete buffer destinazione */
+		if (this->buffer != nullptr) {							// check che sia stato allocato il buffer, altrimenti non fare altro
+			delete[] this->buffer;
+			this->buffer = nullptr;								// puntatore a null per evitare che in caso di eccezione la memoria venga rilasciata due volte
+			/* Assegnazione a buffer destinazione */
+			this->bufferSize = source.bufferSize;
+			this->buffer = new BYTE[source.bufferSize];
+			memcpy(this->buffer, source.buffer, bufferSize);
+		}
+
+		this->op = source.op;
+		this->hwnd = source.hwnd;
+		this->windowName = source.windowName;
+
+		/* Delete buffer dell'icona */
+		if (pixels != nullptr) {
+			delete[] this->pixels;
+			this->pixels = nullptr;
+			/* Assegnazione a buffer dell'icona destinazione */
+			this->iconLength = source.iconLength;
+			this->pixels = new BYTE[source.iconLength];
+			memcpy(this->pixels, source.pixels, source.iconLength);
+		}
+	}
+	return *this;
+}
+
 
 MessageWithIcon::~MessageWithIcon()
 {
-	if (pixels != NULL)
+	if (pixels != nullptr)
 		delete[] pixels;
 }
 
@@ -62,7 +99,8 @@ BYTE & MessageWithIcon::serialize(u_long & size)
 	memcpy(operation, "OPENP-", N_BYTE_OPERATION + N_BYTE_TRATTINO);
 
 	/* Crea buffer da inviare */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 
@@ -119,7 +157,8 @@ BYTE& MessageWithIcon::toJson(u_long& size)
 	memcpy(dimension + 6, "-", 1);
 
 	/* Inizializza buffer per il messaggio */
-	buffer = new BYTE[MSG_LENGTH_SIZE + msgLength];
+	bufferSize = MSG_LENGTH_SIZE + msgLength;
+	buffer = new BYTE[bufferSize];
 
 	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
 	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
