@@ -109,8 +109,6 @@ BYTE& Message::toJson(u_long& size)
 		j["operation"] = "CLOSE";
 	else if (op == ERROR_CLOSE)
 		j["operation"] = "ERRCL";
-	else if (op == OK_CLOSE)
-		j["operation"] = "OKCLO";
 
 	if (op == FOCUS || op == CLOSE) {
 		j["hwnd"] = (unsigned int) hwnd;

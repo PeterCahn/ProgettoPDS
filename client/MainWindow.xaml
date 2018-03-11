@@ -134,7 +134,7 @@
                      Height="23" Width="175" TextAlignment="Center" MaxLines="1" Panel.ZIndex="0"/>
             <Button x:Name="buttonConnetti" Content="Connetti" Style="{StaticResource ButtonConnettiExtension}" HorizontalAlignment="Center" VerticalAlignment="Top" 
                     Width="175" Height="auto" Click="buttonConnetti_Click" Foreground="#FF252525" Panel.ZIndex="0"/>
-
+            
             <Separator Margin="10,20,10,0" ></Separator>
 
             <Label x:Name="labelServerConnessi" Content="Server connessi" HorizontalAlignment="Center" Margin="0,0,0,0" 
@@ -238,7 +238,10 @@
 
         <Button x:Name="buttonDisconnetti" Style="{StaticResource MetroButton}" Content="Disconnetti" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonDisconnetti_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
         <Button x:Name="buttonChiudiServer" Style="{StaticResource MetroButton}" Content="Chiudi server" Visibility="Hidden" HorizontalAlignment="Left" Margin="457,50,0,0" VerticalAlignment="Top" Width="109" Height="39" Click="buttonChiudiServerDisconnesso_Click" Panel.ZIndex="-1" Grid.Column="1" FontSize="14"/>
-
+        <!--  Per gestire eventualmente la terminazione di un tentativo di connessione in corso"
+        <Button x:Name="buttonTerminaConnessione" Content="Termina connessione" Style="{StaticResource ButtonConnettiExtension}" HorizontalAlignment="Center" VerticalAlignment="Top" 
+                    Width="175" Height="auto" Click="buttonConnetti_Click" Foreground="#FF252525" Panel.ZIndex="0" Margin="12,78,13,0" Visibility="Hidden"/>
+        -->
         <Label x:Name="indirizzoServerConnesso" Content="Nessun server connesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFECECEC" Panel.ZIndex="1" FontWeight="Bold" Height="auto" Width="auto" FontSize="34" Margin="26,44,0,0"/>
         <Label x:Name="labelDisconnesso" Content="Disconnesso" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FFDE0000" Panel.ZIndex="1" Height="auto" Width="auto" FontSize="20" Margin="26,17,0,0" Background="#00000000" BorderThickness="0" Visibility="Hidden"/>
 
