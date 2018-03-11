@@ -13,8 +13,7 @@ enum operation {
 	CLOSE,
 	FOCUS,
 	TITLE_CHANGED,
-	ERROR_CLOSE,
-	OK_CLOSE
+	ERROR_CLOSE
 };
 
 using namespace std;

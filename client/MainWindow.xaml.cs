@@ -392,17 +392,6 @@ namespace WpfApplication1
                     */
                 switch (operation)
                 {
-                    case "OKCLO":
-                        servers[serverName].notificationsBw.CancelAsync();
-                        servers[serverName].statisticsBw.CancelAsync();
-
-                        // Chiudi la connessione con il server
-                        if (servers[serverName].server.Connected)
-                            servers[serverName].server.Close();
-
-                        safePulisciInterfaccia(serverName, true);
-                        //continue;   // continua perché venga visto alla prossima iterazione la CancellationPending == true
-                        break;
                     case "RETRY":
                         break;
                     case "ERRCL":
@@ -798,6 +787,15 @@ namespace WpfApplication1
 
                 bw.Write(message.ToCharArray(), 0, message.Length);
 
+                servers[disconnectingServer].notificationsBw.CancelAsync();
+                servers[disconnectingServer].statisticsBw.CancelAsync();
+
+                // Chiudi la connessione con il server
+                if (servers[disconnectingServer].server.Connected)
+                    servers[disconnectingServer].server.Close();
+
+                safePulisciInterfaccia(disconnectingServer, true);
+
             }
             catch (InvalidOperationException) // include ObjectDisposedException
             {
@@ -1119,17 +1117,7 @@ namespace WpfApplication1
             if ((res = readn(server, serverStream, serverName, buffer, n)) == 0)
             {
                 // È stato superato il timeout senza ricevere niente
-                return res;
-            }
-            else if (res == -2)
-            {
-                // La read ha letto 0 byte, significa che il server non è più raggiungibile, posso chiudere tutto                
-                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                servers[serverName].statisticsBw.CancelAsync();
-                servers[serverName].notificationsBw.CancelAsync();
-
-                safePulisciInterfaccia(serverName, false);
-                return res;
+                return 0;
             }
             else if (res < 0)
             {
