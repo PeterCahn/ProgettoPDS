@@ -57,6 +57,8 @@ namespace WpfApplication1
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
         private int numKeyDown = 0, numKeyUp = 0;
+        private Boolean disconnessioneInCorso;     // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando si preme Disconnetti e la managedReadn() si vede il socket improvvisamente chiuso
+        private object disconnessioneInCorso_lock = new object();
 
         /* BackgroundWorker necessario per evitare che il main thread si blocchi 
          * mentre aspetta che si instauri la connessione con un nuovo server. 
@@ -128,6 +130,9 @@ namespace WpfApplication1
             string ipAddress = null;
             int port = -1;
             string serverName = null;
+
+            lock(disconnessioneInCorso_lock)
+                disconnessioneInCorso = false;
 
             /* Ottieni il l'indirizzo IP e la porta a cui connettersi. */
             ipPort = parseHostPort(textBoxIpAddress.Text);
@@ -768,6 +773,8 @@ namespace WpfApplication1
         {
             NetworkStream serverStream = null;
             TcpClient server = null;
+            lock(disconnessioneInCorso_lock)
+                disconnessioneInCorso = true;
 
             // Definisci il server da disconnettere.
             // CurrentConnectedServer può essere cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
@@ -1121,10 +1128,16 @@ namespace WpfApplication1
             }
             else if (res < 0)
             {
-                // Eccezione scatenata in readn
-                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                servers[serverName].statisticsBw.CancelAsync();
-                servers[serverName].notificationsBw.CancelAsync();
+                lock (disconnessioneInCorso_lock)
+                {
+                    if (!disconnessioneInCorso) // Settato a true se la disconnessione è volontaria (premendo il button Disconnetti)
+                    {
+                        // Eccezione scatenata in readn
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        servers[serverName].statisticsBw.CancelAsync();
+                        servers[serverName].notificationsBw.CancelAsync();
+                    }
+                }
 
                 safePulisciInterfaccia(serverName, false);
                 return res;
