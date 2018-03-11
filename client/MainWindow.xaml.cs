@@ -177,7 +177,11 @@ namespace WpfApplication1
         {
             try
             {
-                e.Result = new TcpClient(connectingIp, connectingPort);
+                TcpClient connection = new TcpClient();
+                connection.ConnectAsync(connectingIp, connectingPort).Wait(7000);
+                
+                e.Result = connection;
+
                 /* ArgumentNullException: hostname is null
                  * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
 

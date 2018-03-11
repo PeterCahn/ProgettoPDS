@@ -375,7 +375,7 @@ int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 	if (iResult > 0)
 		return iResult;
 	if (iResult == 0) {
-		printMessage(TEXT("Connessione chiusa."));		
+		printMessage(TEXT("Connessione chiusa."));
 	}
 	else if (iResult < 0) {
 		int errorCode = WSAGetLastError();
