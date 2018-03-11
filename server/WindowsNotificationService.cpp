@@ -423,10 +423,6 @@ void WindowsNotificationService::receiveCommands() {
 				if (j["operation"] == "CLSCN") {
 
 					printMessage(TEXT("Il client ha richiesta la disconnessione."));
-
-					/* Il client ha inviato uuna richiesta di chiusura connessione.
-					* Invia la conferma al client per chiudere la connessione. */
-					server.sendMessageToClient(OK_CLOSE);
 				}
 				else if (j["operation"] == "comando") {
 					string virtualKey, stringUpToPlus;
@@ -500,22 +496,22 @@ void WindowsNotificationService::receiveCommands() {
 }
 
 bool WindowsNotificationService::isExtendedKey(WORD virtualKey) {
-	return virtualKey == 0x12	// ALT
-		|| virtualKey == 0x11	// CTRL
-		|| virtualKey == 0x2D	// INS
-		|| virtualKey == 0x2E	// DEL
-		|| virtualKey == 0x24	// HOME
-		|| virtualKey == 0x23	// END
-		|| virtualKey == 0x25	// Arrow LEFT
-		|| virtualKey == 0x26	// Arrow UP
-		|| virtualKey == 0x27	// Arrow RIGHT
-		|| virtualKey == 0x28	// Arrow DOWN
-		|| virtualKey == 0x21	// Page UP
-		|| virtualKey == 0x22	// Page DOWN
-		|| virtualKey == 0x90	// Num LOCK
-		|| virtualKey == 0x2C	// PRINT SCREEN (screenshot)
-		|| virtualKey == 0x6F	// DIVIDE
-		|| virtualKey == 0x03;	// CANCEL / BREAK (?)(ctrl+end) TODO: controllare 
+	return virtualKey == VK_RMENU		// ALT TODO aggiungere altri
+		|| virtualKey == VK_RCONTROL	// CTRL
+		|| virtualKey == VK_INSERT		// INS
+		|| virtualKey == VK_DELETE		// DEL
+		|| virtualKey == VK_HOME		// HOME
+		|| virtualKey == VK_END			// END
+		|| virtualKey == VK_LEFT		// Arrow LEFT
+		|| virtualKey == VK_UP			// Arrow UP
+		|| virtualKey == VK_RIGHT		// Arrow RIGHT
+		|| virtualKey == VK_DOWN		// Arrow DOWN
+		|| virtualKey == VK_PRIOR		// Page UP
+		|| virtualKey == VK_NEXT		// Page DOWN
+		|| virtualKey == VK_NUMLOCK		// Num LOCK
+		|| virtualKey == VK_SNAPSHOT	// PRINT SCREEN (screenshot)
+		|| virtualKey == VK_DIVIDE		// DIVIDE
+		|| virtualKey == VK_CANCEL;		// CANCEL / BREAK (ctrl+end)
 }
 
 void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::vector<INPUT> vKeysList)
