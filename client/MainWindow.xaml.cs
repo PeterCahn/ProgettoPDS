@@ -34,22 +34,6 @@ using Newtonsoft.Json.Linq;
 
 namespace WpfApplication1
 {
-    public class Message
-    {
-        public string operazione { get; set; }
-        public int Hwnd { get; set; }
-        public List<string> comandoDaInviare2 { get; set; }
-    }
-
-    public class WindowInfo
-    {
-        string operation { get; set; }
-        int hwnd { get; set; }
-        string windowName { get; set; }
-        int iconLength { get; set; }
-        object icona { get; set; }
-    }
-
     public partial class MainWindow : Window
     {
         private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 500;
@@ -57,8 +41,10 @@ namespace WpfApplication1
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
         private List<int> commandsList = new List<int>();
-        private Boolean disconnessioneInCorso;     // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando si preme Disconnetti e la managedReadn() si vede il socket improvvisamente chiuso
-        private object disconnessioneInCorso_lock = new object();
+        private Boolean disconnessioneInCorso;      // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando 
+                                                    // si preme Disconnetti e la managedReadn() si vede il socket improvvisamente chiuso
+        private object disconnessioneInCorso_lock = new object();   // oggetto su cui facciamo lock prima di accedere al Boolean disconnessioneInCorso
+        private Boolean catturandoComandi = false;  // utile per rimuovere i vari handler (keydown/previewKeydown/keyup) solo se precedentemente aggiunti
 
         /* BackgroundWorker necessario per evitare che il main thread si blocchi 
          * mentre aspetta che si instauri la connessione con un nuovo server. 
@@ -71,7 +57,7 @@ namespace WpfApplication1
         System.Windows.Input.KeyEventHandler keyDownHandler;
         System.Windows.Input.KeyEventHandler keyUpHandler;
         System.Windows.Input.KeyEventHandler previewKeyDownHandler;
-
+        
         public MainWindow()
         {
             InitializeComponent();
@@ -97,8 +83,11 @@ namespace WpfApplication1
 
         ~MainWindow()
         {
-            System.Windows.MessageBox.Show("Nel distruttore di MainWindow");
+            System.Windows.MessageBox.Show("Nel distruttore di MainWindow", "Client - Avviso");
+            // TODO: aggiungere cose
         }
+        
+        
 
         public IPEndPoint parseHostPort(string hostPort)
         {
@@ -138,7 +127,7 @@ namespace WpfApplication1
             ipPort = parseHostPort(textBoxIpAddress.Text);
             if (ipPort == null)
             {
-                System.Windows.MessageBox.Show("Formato ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]");
+                System.Windows.MessageBox.Show("Formato ammesso: [0-255].[0-255].[0-255].[0.255]:[1024-65535]", "Client - Avviso");
                 return;
             }
 
@@ -154,7 +143,7 @@ namespace WpfApplication1
                 {
                     if (servers[serverName].isOnline)
                     {
-                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
+                        System.Windows.MessageBox.Show("Già connessi al server " + serverName, "Client - Avviso");
                         return;
                     }
                 }
@@ -181,7 +170,7 @@ namespace WpfApplication1
                 }
             }
             if (timesRetried >= 10)
-                System.Windows.MessageBox.Show("Errore nella connessione al server, riprovare");
+                System.Windows.MessageBox.Show("Errore nella connessione al server, riprovare", "Client - Avviso");
         }
 
         private void provaConnessione(object sender, DoWorkEventArgs e)
@@ -197,9 +186,9 @@ namespace WpfApplication1
             {
                 int errorCode = se.ErrorCode;
                 if (errorCode.Equals(SocketError.TimedOut))
-                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.");
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.", "Client - Avviso");
                 else
-                    System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.");
+                    System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.", "Client - Avviso");
 
                 return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
             }
@@ -330,7 +319,7 @@ namespace WpfApplication1
             catch (KeyNotFoundException)
             {
                 /* Eccezione scatenata se serverName non c'è più in 'servers' */
-                System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".");
+                System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
                 servers[serverName].notificationsBw.CancelAsync();
                 servers[serverName].statisticsBw.CancelAsync();
 
@@ -346,7 +335,7 @@ namespace WpfApplication1
             catch (Exception)
             {
                 /* Eccezione scatenata se serverName non c'è più in 'servers' */
-                System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".");
+                System.Windows.MessageBox.Show("Problema inaspettato durante la ricezione delle notifiche.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
                 servers[serverName].notificationsBw.CancelAsync();
                 servers[serverName].statisticsBw.CancelAsync();
 
@@ -402,7 +391,7 @@ namespace WpfApplication1
                     case "ERRCL":
                         servers[serverName].notificationsBw.CancelAsync();
                         servers[serverName].statisticsBw.CancelAsync();
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.", "Client - Avviso");
 
                         // Chiudi la connessione con il server
                         if (servers[serverName].server.Connected)
@@ -587,7 +576,7 @@ namespace WpfApplication1
                     if (servers[serverName].isOnline)
                     {
                         // Notifica che il server è già presente e connesso
-                        System.Windows.MessageBox.Show("Già connessi al server " + serverName);
+                        System.Windows.MessageBox.Show("Già connessi al server " + serverName, "Client - Avviso");
                         return;
                     }
                     else
@@ -661,24 +650,6 @@ namespace WpfApplication1
             }
         }
 
-        // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando
-        private void disabilitaERimuoviCatturaComando()
-        {
-            // Nascondi e disabilita tutto (caso server disconnesso)
-            labelComando.Visibility = Visibility.Hidden;
-            buttonCattura.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.Visibility = Visibility.Hidden;
-
-            textBoxComando.Visibility = Visibility.Hidden;
-
-            textBoxComando.Text = "";
-            comandoDaInviare.Clear();
-            buttonCattura.IsEnabled = false;
-            buttonAnnullaCattura.IsEnabled = false;
-
-            commandsList.Clear();
-        }
-
         // Al click di "Cattura comando"
         private void abilitaCatturaComando()
         {
@@ -696,8 +667,17 @@ namespace WpfApplication1
             this.KeyDown += keyDownHandler;
             this.KeyUp += keyUpHandler;
             this.PreviewKeyDown += previewKeyDownHandler;
+            catturandoComandi = true;   // Indica che i nuovi handler sono stati aggiunti
             //_hookID = SetHook(_proc);
+        }
 
+        // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando
+        private void disabilitaERimuoviCatturaComando()
+        {
+            // Nascondi e disabilita tutto (caso server disconnesso)
+            disabilitaCatturaComando();
+            buttonCattura.Visibility = Visibility.Hidden;
+            labelComando.Visibility = Visibility.Hidden;
         }
 
         // Al click di "Annulla cattura"
@@ -709,16 +689,21 @@ namespace WpfApplication1
 
             // mostra e abilita
             buttonCattura.IsEnabled = true;
-            buttonCattura.Visibility = Visibility.Visible;
+            buttonCattura.Visibility = Visibility.Visible;  //
             buttonAnnullaCattura.Visibility = Visibility.Hidden;
             buttonAnnullaCattura.IsEnabled = false;
 
             // nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
 
-            this.KeyDown -= keyDownHandler;
-            this.KeyUp -= keyUpHandler;
-            this.PreviewKeyDown -= previewKeyDownHandler;
+            // Rimuovi handler eventi keydown/previewKeydown/keyup
+            if (catturandoComandi)
+            {
+                this.KeyDown -= keyDownHandler;
+                this.KeyUp -= keyUpHandler;
+                this.PreviewKeyDown -= previewKeyDownHandler;
+            }
+            catturandoComandi = false;  // Indica che gli handler sono stati rimossi
 
             commandsList.Clear();
         }
@@ -858,7 +843,27 @@ namespace WpfApplication1
             {
                 int virtualKey = KeyInterop.VirtualKeyFromKey(pressedKey);
                 comandoDaInviare.Add(virtualKey + "-");
-                commandsList.Remove(KeyInterop.VirtualKeyFromKey(pressedKey));
+                if(commandsList.Contains(virtualKey))
+                    commandsList.Remove(virtualKey);
+                else
+                {
+                    /* Comando malformato / Combinazione di Windows:
+                     * I comandi di questo tipo, dove il client intercetta l'evento KeyUp di un tasto ma non il precedente keyDown, sono
+                     * solitamente quelli che rappresentano delle combinazioni intercettate da Windows. Il sistema operativo infatti intercettando
+                     * l'evento KeyDown precedente al KeyUp impedisce al client di vederlo. In questi casi, essendo queste delle combinazioni di 
+                     * Windows che possono essere utili lato client, non facciamo inviare la combinazione al server.
+                     */
+                    string combinazione = "";
+                    foreach (int vKey in commandsList) {
+                        if (combinazione.Length > 0)
+                            combinazione += " + ";
+                        combinazione += KeyInterop.KeyFromVirtualKey(vKey).ToString();
+                    }
+                    System.Windows.MessageBox.Show("Impossibile inviare questo comando (" + combinazione + " + " + pressedKey + ")", "Client - Avviso");
+                    disabilitaCatturaComando();
+                    e.Handled = true;
+                    return;
+                }
                 textBoxComando.AppendText(pressedKey.ToString() + "-");
                 if (commandsList.Count == 0)
                     buttonInvia_Click();
@@ -949,19 +954,19 @@ namespace WpfApplication1
             catch (InvalidOperationException) // include ObjectDisposedException
             {
                 // C'è stato un problema con il NetworkStream o nella CancenAsync().
-                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
+                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
             catch (IOException)
             {
                 // Problema nella write durante l'invio del comando
-                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
+                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
             catch (Exception)
             {
                 // Problema generico nell'invio del comando
-                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.");
+                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
         }
@@ -1104,7 +1109,7 @@ namespace WpfApplication1
                     if (!disconnessioneInCorso) // Settato a true se la disconnessione è volontaria (premendo il button Disconnetti)
                     {
                         // Eccezione scatenata in readn
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.", "Client - Avviso");
                         servers[serverName].statisticsBw.CancelAsync();
                         servers[serverName].notificationsBw.CancelAsync();
                     }
@@ -1115,6 +1120,16 @@ namespace WpfApplication1
             }
             return res;
         }
+
+
+        /* Disattiva la cattura di un comando quando la finestra del client perde il focus.
+         * Ottenuto tramite la gestione dell'evento Deactivated di Window
+         */
+        private void Window_Deactivated(object sender, EventArgs e)
+        {
+            disabilitaCatturaComando();
+        }
+
 
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
