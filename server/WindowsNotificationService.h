@@ -49,6 +49,8 @@ private:
 
 	/* Ascolta i messaggi in arrivo dal client (notifiche o comandi da inviare alle finestre) */
 	void receiveCommands();
+	/* Controlla se la virtual key è una extended key*/
+	bool WindowsNotificationService::isExtendedKey(WORD virtualKey);
 	/* Invia comandi alla finestra attualmente in focus */
 	void sendKeystrokesToProgram(HWND targetHwnd, vector<INPUT> vKeysList);
 

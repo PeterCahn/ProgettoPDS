@@ -423,10 +423,6 @@ void WindowsNotificationService::receiveCommands() {
 				if (j["operation"] == "CLSCN") {
 
 					printMessage(TEXT("Il client ha richiesta la disconnessione."));
-
-					/* Il client ha inviato uuna richiesta di chiusura connessione.
-					* Invia la conferma al client per chiudere la connessione. */
-					server.sendMessageToClient(OK_CLOSE);
 				}
 				else if (j["operation"] == "comando") {
 					string virtualKey, stringUpToPlus;
@@ -447,7 +443,10 @@ void WindowsNotificationService::receiveCommands() {
 																	// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
 							input.ki.wVk = vKey;					// Virtual-key code dell'input.	
 							input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-							input.ki.dwFlags = 0;					// Eventuali informazioni addizionali sull'evento
+							if (isExtendedKey(vKey))				// Eventuali informazioni addizionali sull'evento (specifica se si tratta di una extendedKey o no)
+								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+							else	
+								input.ki.dwFlags = 0;					
 							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
 							keystroke.push_back(input);
@@ -463,7 +462,10 @@ void WindowsNotificationService::receiveCommands() {
 																	// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
 							input.ki.wVk = vKey;					// Virtual-key code dell'input.	
 							input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
-							input.ki.dwFlags = KEYEVENTF_KEYUP;		// Eventuali informazioni addizionali sull'evento (qui il fatto che sia un keyUp e non keyDown)
+							if (isExtendedKey(vKey))				// Eventuali informazioni addizionali sull'evento (qui anche il fatto che sia un keyUp e non keyDown)
+								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
+							else
+								input.ki.dwFlags = KEYEVENTF_KEYUP;		
 							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
 							keystroke.push_back(input);
@@ -491,6 +493,25 @@ void WindowsNotificationService::receiveCommands() {
 
 	} while (iResult > 0 && isRunning);
 
+}
+
+bool WindowsNotificationService::isExtendedKey(WORD virtualKey) {
+	return virtualKey == VK_RMENU		// ALT TODO aggiungere altri
+		|| virtualKey == VK_RCONTROL	// CTRL
+		|| virtualKey == VK_INSERT		// INS
+		|| virtualKey == VK_DELETE		// DEL
+		|| virtualKey == VK_HOME		// HOME
+		|| virtualKey == VK_END			// END
+		|| virtualKey == VK_LEFT		// Arrow LEFT
+		|| virtualKey == VK_UP			// Arrow UP
+		|| virtualKey == VK_RIGHT		// Arrow RIGHT
+		|| virtualKey == VK_DOWN		// Arrow DOWN
+		|| virtualKey == VK_PRIOR		// Page UP
+		|| virtualKey == VK_NEXT		// Page DOWN
+		|| virtualKey == VK_NUMLOCK		// Num LOCK
+		|| virtualKey == VK_SNAPSHOT	// PRINT SCREEN (screenshot)
+		|| virtualKey == VK_DIVIDE		// DIVIDE
+		|| virtualKey == VK_CANCEL;		// CANCEL / BREAK (ctrl+end)
 }
 
 void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::vector<INPUT> vKeysList)
