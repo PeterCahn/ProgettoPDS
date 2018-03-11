@@ -286,21 +286,6 @@ namespace WpfApplication1
         private void aggiornaStatisticheTerminato(object sender, RunWorkerCompletedEventArgs e)
         {
             BackgroundWorker worker = sender as BackgroundWorker;
-
-            if (e.Cancelled == true)
-            {
-                //System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche cancellato.");
-            }
-
-            else if (e.Error != null)
-            {
-                //System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato con errori.");
-            }
-            else
-            {
-                //System.Windows.MessageBox.Show("BackgroundWorker aggiornaStatistiche terminato normalmente.");
-            }
-
             worker.Dispose();
         }
 
