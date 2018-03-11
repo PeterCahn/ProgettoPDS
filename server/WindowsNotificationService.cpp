@@ -499,20 +499,27 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 	HWND progHandle;
 
 	// Controlla che il keystroke sia ben formato
-	int numKeyDown = 0, numKeyUp = 0;
+	vector<WORD> checkList;
 	for each (INPUT input in vKeysList) {
-		if (input.ki.dwFlags == KEYEVENTF_KEYUP)
-			numKeyUp++;
+		if (input.ki.dwFlags == KEYEVENTF_KEYUP) {
+			// Controlla che il tasto sia stato precedentemente premuto
+			vector<WORD>::iterator pos = find(checkList.begin(), checkList.end(), input.ki.wVk);
+			if (pos == checkList.end()) {
+				wcout << "ERRORE! Il comando ricevuto non è ben formato." << endl;
+				return;
+			}
+			// Se cè, rimuovilo dalla lista
+			checkList.erase(pos);
+
+		}
 		else if (input.ki.dwFlags == 0)
-			numKeyDown++;
+			checkList.push_back(input.ki.wVk);
 	}
-	if (numKeyDown != numKeyUp) {
+	if (checkList.size() != 0) {
 		wcout << "ERRORE! Il comando ricevuto non è ben formato." << endl;
 		return;
 	}
-
-
-
+	
 	// Ricava l'handle alla finestra verso cui indirizzare il keystroke
 	progHandle = GetForegroundWindow();
 
