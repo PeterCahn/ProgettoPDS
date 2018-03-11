@@ -56,7 +56,9 @@ namespace WpfApplication1
         private static List<string> comandoDaInviare = new List<string>();
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
-        private int numKeyDown = 0, numKeyUp = 0;
+        private List<int> commandsList = new List<int>();
+        private Boolean disconnessioneInCorso;     // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando si preme Disconnetti e la managedReadn() si vede il socket improvvisamente chiuso
+        private object disconnessioneInCorso_lock = new object();
 
         /* BackgroundWorker necessario per evitare che il main thread si blocchi 
          * mentre aspetta che si instauri la connessione con un nuovo server. 
@@ -128,6 +130,9 @@ namespace WpfApplication1
             string ipAddress = null;
             int port = -1;
             string serverName = null;
+
+            lock(disconnessioneInCorso_lock)
+                disconnessioneInCorso = false;
 
             /* Ottieni il l'indirizzo IP e la porta a cui connettersi. */
             ipPort = parseHostPort(textBoxIpAddress.Text);
@@ -675,8 +680,7 @@ namespace WpfApplication1
             buttonCattura.IsEnabled = false;
             buttonAnnullaCattura.IsEnabled = false;
 
-            numKeyDown = 0;
-            numKeyUp = 0;
+            commandsList.Clear();
         }
 
         // Al click di "Cattura comando"
@@ -720,8 +724,7 @@ namespace WpfApplication1
             this.KeyUp -= keyUpHandler;
             this.PreviewKeyDown -= previewKeyDownHandler;
 
-            numKeyDown = 0;
-            numKeyUp = 0;
+            commandsList.Clear();
         }
 
         public Bitmap CopyDataToBitmap(byte[] data, int width, int height)
@@ -772,6 +775,8 @@ namespace WpfApplication1
         {
             NetworkStream serverStream = null;
             TcpClient server = null;
+            lock(disconnessioneInCorso_lock)
+                disconnessioneInCorso = true;
 
             // Definisci il server da disconnettere.
             // CurrentConnectedServer può essere cambiato, quindi lo fissiamo in modo che ci si riferisca proprio a quello.
@@ -837,8 +842,9 @@ namespace WpfApplication1
             {
                 lock (comandoDaInviare)
                 {
-                    comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
-                    numKeyDown++;
+                    int virtualKey = KeyInterop.VirtualKeyFromKey(e.Key);
+                    comandoDaInviare.Add(virtualKey + "+");
+                    commandsList.Add(virtualKey);
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                 }
             }
@@ -854,15 +860,12 @@ namespace WpfApplication1
 
             lock (comandoDaInviare)
             {
-                comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(pressedKey) + "-");
-                numKeyUp++;
+                int virtualKey = KeyInterop.VirtualKeyFromKey(pressedKey);
+                comandoDaInviare.Add(virtualKey + "-");
+                commandsList.Remove(KeyInterop.VirtualKeyFromKey(pressedKey));
                 textBoxComando.AppendText(pressedKey.ToString() + "-");
-                if (numKeyUp == numKeyDown)
-                {
-                    numKeyDown = 0;
-                    numKeyUp = 0;
+                if (commandsList.Count == 0)
                     buttonInvia_Click();
-                }
             }
 
             e.Handled = true;
@@ -870,55 +873,31 @@ namespace WpfApplication1
 
         private void onButtonPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-
-            if (e.Key.ToString().Equals("LeftShift"))
-                Trace.WriteLine("a");
+            /* Nel caso della presenza di modifiers l'oggetto e.Key è leggibile correttamente solo nella perviewKeyDown e non nella keyDown, quindi gestiamo qui questo caso */
             if (!e.IsRepeat && (e.SystemKey != System.Windows.Input.Key.None) && (e.KeyboardDevice.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
             {
                 lock (comandoDaInviare)
                 {
-                    comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.SystemKey) + "+");
-                    numKeyDown++;
+                    int virtualKey = KeyInterop.VirtualKeyFromKey(e.SystemKey);
+                    comandoDaInviare.Add(virtualKey + "+");
+                    commandsList.Add(virtualKey);
                     textBoxComando.AppendText(e.SystemKey.ToString() + "+");
                 }
                 e.Handled = true;
             }
-            if (!e.IsRepeat && (e.KeyboardDevice.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            if (!e.IsRepeat && ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) == ModifierKeys.Control 
+                || (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift
+                || (e.KeyboardDevice.Modifiers & ModifierKeys.Windows) == ModifierKeys.Windows))
             {
                 lock (comandoDaInviare)
                 {
-                    comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
-                    numKeyDown++;
-                    textBoxComando.AppendText(e.Key.ToString() + "+");
-                    if (e.Key.ToString().Equals("None"))
-                        Trace.WriteLine("Control è none");
-                }
-                e.Handled = true;
-            }
-            if (!e.IsRepeat && (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift && !e.Handled)
-            {
-                lock (comandoDaInviare)
-                {
-                    comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
-                    numKeyDown++;
+                    int virtualKey = KeyInterop.VirtualKeyFromKey(e.Key);
+                    comandoDaInviare.Add(virtualKey + "+");
+                    commandsList.Add(virtualKey);
                     textBoxComando.AppendText(e.Key.ToString() + "+");
                 }
                 e.Handled = true;
-
             }
-            if (!e.IsRepeat && (e.KeyboardDevice.Modifiers & ModifierKeys.Windows) == ModifierKeys.Windows)
-            {
-                lock (comandoDaInviare)
-                {
-                    comandoDaInviare.Add(KeyInterop.VirtualKeyFromKey(e.Key) + "+");
-                    numKeyDown++;
-                    textBoxComando.AppendText(e.Key.ToString() + "+");
-                }
-                e.Handled = true;
-
-            }
-            //Trace.WriteLine(" Ctrl key !");
-
         }
 
         private void buttonInvia_Click(/*object sender, RoutedEventArgs e*/)
@@ -968,8 +947,7 @@ namespace WpfApplication1
                 // Preparati per prossimo keystroke
                 comandoDaInviare.Clear();
                 textBoxComando.Text = "";
-                numKeyDown = 0;
-                numKeyUp = 0;
+                commandsList.Clear();
 
             }
             catch (InvalidOperationException) // include ObjectDisposedException
@@ -1125,10 +1103,16 @@ namespace WpfApplication1
             }
             else if (res < 0)
             {
-                // Eccezione scatenata in readn
-                System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
-                servers[serverName].statisticsBw.CancelAsync();
-                servers[serverName].notificationsBw.CancelAsync();
+                lock (disconnessioneInCorso_lock)
+                {
+                    if (!disconnessioneInCorso) // Settato a true se la disconnessione è volontaria (premendo il button Disconnetti)
+                    {
+                        // Eccezione scatenata in readn
+                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.");
+                        servers[serverName].statisticsBw.CancelAsync();
+                        servers[serverName].notificationsBw.CancelAsync();
+                    }
+                }
 
                 safePulisciInterfaccia(serverName, false);
                 return res;
