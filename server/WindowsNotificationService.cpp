@@ -441,12 +441,12 @@ void WindowsNotificationService::receiveCommands() {
 							INPUT input;
 							input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
 																	// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-							input.ki.wVk = vKey;					// Virtual-key code dell'input.	
-							input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+							input.ki.wVk = 0;						// Virtual-key code dell'input.	
+							input.ki.wScan = MapVirtualKey(vKey, MAPVK_VK_TO_VSC);	// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
 							if (isExtendedKey(vKey))				// Eventuali informazioni addizionali sull'evento (specifica se si tratta di una extendedKey o no)
-								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_SCANCODE;
 							else	
-								input.ki.dwFlags = 0;					
+								input.ki.dwFlags = KEYEVENTF_SCANCODE;
 							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
 							keystroke.push_back(input);
@@ -460,12 +460,12 @@ void WindowsNotificationService::receiveCommands() {
 							INPUT input;
 							input.type = INPUT_KEYBOARD;			// Definisce il tipo di input, che può essere INPUT_HARDWARE, INPUT_KEYBOARD o INPUT_MOUSE
 																	// Una volta definito il tipo di input come INPUT_KEYBOARD, si usa la sotto-struttura .ki per inserire le informazioni sull'input
-							input.ki.wVk = vKey;					// Virtual-key code dell'input.	
-							input.ki.wScan = 0;						// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
+							input.ki.wVk = 0;						// Virtual-key code dell'input.	
+							input.ki.wScan = MapVirtualKey(vKey, MAPVK_VK_TO_VSC);	// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
 							if (isExtendedKey(vKey))				// Eventuali informazioni addizionali sull'evento (qui anche il fatto che sia un keyUp e non keyDown)
-								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
+								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP | KEYEVENTF_SCANCODE;
 							else
-								input.ki.dwFlags = KEYEVENTF_KEYUP;		
+								input.ki.dwFlags = KEYEVENTF_KEYUP | KEYEVENTF_SCANCODE;
 							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
 							keystroke.push_back(input);
