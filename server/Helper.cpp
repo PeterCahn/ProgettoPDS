@@ -8,6 +8,8 @@
 #include <io.h>
 #include <strsafe.h>
 
+#pragma comment (lib, "Msimg32.lib")
+
 using namespace std;
 
 Helper::Helper()
@@ -46,13 +48,94 @@ HICON Helper::getHICONfromHWND(HWND hwnd) {
 	return hIcon;
 }
 
+HICON CreateAlphaIcon(void)
+{
+	HDC hMemDC;
+	DWORD dwWidth, dwHeight;
+	BITMAPV5HEADER bi;
+	HBITMAP hBitmap, hOldBitmap;
+	void *lpBits;
+	DWORD x, y;
+	HICON hAlphaIcon = NULL;
+
+	dwWidth = 32;  // width of cursor
+	dwHeight = 32;  // height of cursor
+
+	ZeroMemory(&bi, sizeof(BITMAPV5HEADER));
+	bi.bV5Size = sizeof(BITMAPV5HEADER);
+	bi.bV5Width = dwWidth;
+	bi.bV5Height = dwHeight;
+	bi.bV5Planes = 1;
+	bi.bV5BitCount = 32;
+	bi.bV5Compression = BI_BITFIELDS;
+	// The following mask specification specifies a supported 32 BPP
+	// alpha format for Windows XP.
+	bi.bV5RedMask = 0x00FF0000;
+	bi.bV5GreenMask = 0x0000FF00;
+	bi.bV5BlueMask = 0x000000FF;
+	bi.bV5AlphaMask = 0xFF000000;
+
+	HDC hdc;
+	hdc = GetDC(NULL);
+
+	// Create the DIB section with an alpha channel.
+	hBitmap = CreateDIBSection(hdc, (BITMAPINFO *)&bi, DIB_RGB_COLORS,
+		(void **)&lpBits, NULL, (DWORD)0);
+
+	hMemDC = CreateCompatibleDC(hdc);
+	ReleaseDC(NULL, hdc);
+
+	// Draw something on the DIB section.
+	hOldBitmap = (HBITMAP)SelectObject(hMemDC, hBitmap);
+	PatBlt(hMemDC, 0, 0, dwWidth, dwHeight, WHITENESS);
+	SetTextColor(hMemDC, RGB(0, 0, 0));
+	SetBkMode(hMemDC, TRANSPARENT);
+	TextOut(hMemDC, 0, 9, L"rgba", 4);
+	DWORD *lpdwPixel;
+	lpdwPixel = (DWORD *)lpBits;
+	for (x = 0; x<dwWidth; x++)
+		for (y = 0; y<dwHeight; y++)
+		{
+			// Clear the alpha bits
+			*lpdwPixel &= 0x00FFFFFF;
+			// Set the alpha bits to 0x9F (semi-transparent)
+			if ((*lpdwPixel & 0x00FFFFFF) == 0)
+				*lpdwPixel |= 0xFF000000;
+			lpdwPixel++;
+		}
+
+	SelectObject(hMemDC, hOldBitmap);
+	DeleteDC(hMemDC);
+
+	// Create an empty mask bitmap.
+	HBITMAP hMonoBitmap = CreateBitmap(dwWidth, dwHeight, 1, 1, NULL);
+
+	// Set the alpha values for each pixel in the cursor so that
+	// the complete cursor is semi-transparent.
+	ICONINFO ii;
+	ii.fIcon = TRUE;  // Change fIcon to TRUE to create an alpha icon
+	ii.xHotspot = 0;
+	ii.yHotspot = 0;
+	ii.hbmMask = hMonoBitmap;
+	ii.hbmColor = hBitmap;
+
+	// Create the alpha cursor with the alpha DIB section.
+	hAlphaIcon = CreateIconIndirect(&ii);
+
+	DeleteObject(hBitmap);
+	DeleteObject(hMonoBitmap);
+
+	return hAlphaIcon;
+}
+
+/* Crea una maschera in cui i pixel dello sfondo sono bianchi e quelli dell'icona sono neri */
 HBITMAP Helper::CreateBitmapMask(HBITMAP hbmColour, COLORREF crTransparent)
 {
 	HDC hdcMem, hdcMem2;
 	HBITMAP hbmMask;
 	BITMAP bm;
 
-	// Create monochrome (1 bit) mask bitmap.  
+	// Create monochrome (1 bit) mask bitmap.
 
 	GetObject(hbmColour, sizeof(BITMAP), &bm);
 	hbmMask = CreateBitmap(bm.bmWidth, bm.bmHeight, 1, 1, NULL);
@@ -88,10 +171,146 @@ HBITMAP Helper::CreateBitmapMask(HBITMAP hbmColour, COLORREF crTransparent)
 	return hbmMask;
 }
 
+PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp)
+{
+	BITMAP bmp;
+	PBITMAPINFO pbmi;
+	WORD    cClrBits;
+
+	// Retrieve the bitmap color format, width, and height.  
+	GetObject(hBmp, sizeof(BITMAP), (LPSTR)&bmp);
+
+	// Convert the color format to a count of bits.  
+	cClrBits = (WORD)(bmp.bmPlanes * bmp.bmBitsPixel);
+	if (cClrBits == 1)
+		cClrBits = 1;
+	else if (cClrBits <= 4)
+		cClrBits = 4;
+	else if (cClrBits <= 8)
+		cClrBits = 8;
+	else if (cClrBits <= 16)
+		cClrBits = 16;
+	else if (cClrBits <= 24)
+		cClrBits = 24;
+	else cClrBits = 32;
+
+	// Allocate memory for the BITMAPINFO structure. (This structure  
+	// contains a BITMAPINFOHEADER structure and an array of RGBQUAD  
+	// data structures.)  
+
+	if (cClrBits < 24)
+		pbmi = (PBITMAPINFO)LocalAlloc(LPTR,
+			sizeof(BITMAPINFOHEADER) +
+			sizeof(RGBQUAD) * (1 << cClrBits));
+
+	// There is no RGBQUAD array for these formats: 24-bit-per-pixel or 32-bit-per-pixel 
+
+	else
+		pbmi = (PBITMAPINFO)LocalAlloc(LPTR,
+			sizeof(BITMAPINFOHEADER));
+
+	// Initialize the fields in the BITMAPINFO structure.  
+
+	pbmi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	pbmi->bmiHeader.biWidth = bmp.bmWidth;
+	pbmi->bmiHeader.biHeight = bmp.bmHeight;
+	pbmi->bmiHeader.biPlanes = bmp.bmPlanes;
+	pbmi->bmiHeader.biBitCount = bmp.bmBitsPixel;
+	if (cClrBits < 24)
+		pbmi->bmiHeader.biClrUsed = (1 << cClrBits);
+
+	// If the bitmap is not compressed, set the BI_RGB flag.  
+	pbmi->bmiHeader.biCompression = BI_RGB;
+
+	// Compute the number of bytes in the array of color  
+	// indices and store the result in biSizeImage.  
+	// The width must be DWORD aligned unless the bitmap is RLE 
+	// compressed. 
+	pbmi->bmiHeader.biSizeImage = ((pbmi->bmiHeader.biWidth * cClrBits + 31) & ~31) / 8
+		* pbmi->bmiHeader.biHeight;
+	// Set biClrImportant to 0, indicating that all of the  
+	// device colors are important.  
+	pbmi->bmiHeader.biClrImportant = 0;
+	return pbmi;
+}
+
+void CreateBMPFile(LPTSTR pszFile, HBITMAP hBMP)
+{
+	HANDLE hf;                 // file handle  
+	BITMAPFILEHEADER hdr;       // bitmap file-header  
+	PBITMAPINFOHEADER pbih;     // bitmap info-header  
+	LPBYTE lpBits;              // memory pointer  
+	DWORD dwTotal;              // total count of bytes  
+	DWORD cb;                   // incremental count of bytes  
+	BYTE *hp;                   // byte pointer  
+	DWORD dwTmp;
+	PBITMAPINFO pbi;
+	HDC hDC;
+
+	hDC = CreateCompatibleDC(GetWindowDC(GetDesktopWindow()));
+	SelectObject(hDC, hBMP);
+
+	pbi = CreateBitmapInfoStruct(hBMP);
+
+	pbih = (PBITMAPINFOHEADER)pbi;
+	lpBits = (LPBYTE)GlobalAlloc(GMEM_FIXED, pbih->biSizeImage);
+
+	// Retrieve the color table (RGBQUAD array) and the bits  
+	// (array of palette indices) from the DIB.  
+	GetDIBits(hDC, hBMP, 0, (WORD)pbih->biHeight, lpBits, pbi,
+		DIB_RGB_COLORS);
+
+	// Create the .BMP file.  
+	hf = CreateFile(pszFile,
+		GENERIC_READ | GENERIC_WRITE,
+		(DWORD)0,
+		NULL,
+		CREATE_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL,
+		(HANDLE)NULL);
+	//assert(hf != INVALID_HANDLE_VALUE);
+
+	hdr.bfType = 0x4d42;        // 0x42 = "B" 0x4d = "M"  
+								// Compute the size of the entire file.  
+	hdr.bfSize = (DWORD)(sizeof(BITMAPFILEHEADER) +
+		pbih->biSize + pbih->biClrUsed
+		* sizeof(RGBQUAD) + pbih->biSizeImage);
+	hdr.bfReserved1 = 0;
+	hdr.bfReserved2 = 0;
+
+	// Compute the offset to the array of color indices.  
+	hdr.bfOffBits = (DWORD) sizeof(BITMAPFILEHEADER) +
+		pbih->biSize + pbih->biClrUsed
+		* sizeof(RGBQUAD);
+
+	// Copy the BITMAPFILEHEADER into the .BMP file.  
+	WriteFile(hf, (LPVOID)&hdr, sizeof(BITMAPFILEHEADER),
+		(LPDWORD)&dwTmp, NULL);
+
+	// Copy the BITMAPINFOHEADER and RGBQUAD array into the file.  
+	WriteFile(hf, (LPVOID)pbih, sizeof(BITMAPINFOHEADER)
+		+ pbih->biClrUsed * sizeof(RGBQUAD),
+		(LPDWORD)&dwTmp, (NULL));
+
+	// Copy the array of color indices into the .BMP file.  
+	dwTotal = cb = pbih->biSizeImage;
+	hp = lpBits;
+	WriteFile(hf, (LPSTR)hp, (int)cb, (LPDWORD)&dwTmp, NULL);
+
+	// Close the .BMP file.  
+	CloseHandle(hf);
+
+	// Free memory.  
+	GlobalFree((HGLOBAL)lpBits);
+}
+
 BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 
 	HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
+	//CreateBMPFile(L"c:\\bitmap1.bmp", hSource);
+
 	HBITMAP hMask = CreateBitmapMask(hSource, RGB(0, 0, 0));
+	//CreateBMPFile(L"c:\\bitmap2.bmp", hMask);	
 
 	HDC hdc = CreateCompatibleDC(NULL);
 	HDC hdcSource = CreateCompatibleDC(hdc);
@@ -101,7 +320,7 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 
 	// Get the BITMAPINFO structure from the bitmap
 	int res;
-	if ((res = ::GetDIBits(hdcSource, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
+	if ((res = ::GetDIBits(hdc, hSource, 0, 0, NULL, &MyBMInfo, DIB_RGB_COLORS)) == 0)
 	{
 		Helper::BitmapInfoErrorExit(L"GetDIBits1()");
 	}
@@ -111,6 +330,7 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 	BitBlt(hdc, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, hdcSource, 0, 0, SRCAND);
 
 	SelectObject(hdc, hSource);
+	//TransparentBlt(hdc, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, hdcSource, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, RGB(0, 0, 0));
 	BitBlt(hdc, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, hdcSource, 0, 0, SRCPAINT);
 
 	// create the pixel buffer
