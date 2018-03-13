@@ -336,17 +336,16 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 
 					// Cercalo tra le finestre in tempWindows
 					if (tempWindows.find(tempForeground) != tempWindows.end()) {
-						// E' una finestra che è gia stata inviata
+						// E' una finestra che è gia stata inviata, quindi notifica il cambio focus
 						printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
 						printMessage(TEXT("- " + windowTitle));
 						server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
 					}
 					else {
 						// La finestra non c'è in tempWindows, quindi aggiungila a tempWindows e invia notifica OPEN
-						// Devo aggiungere la finestra a 'windows'					
-						tempWindows[tempForeground] = windowTitle;
 						printMessage(TEXT("Nuova finestra aperta!"));
 						printMessage(TEXT("- " + windowTitle));
+						tempWindows.insert(pair<HWND, wstring>(tempForeground, windowTitle));
 						server.sendNotificationToClient(tempForeground, windowTitle, OPEN);
 						server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
 					}

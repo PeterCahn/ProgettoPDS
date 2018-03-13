@@ -53,7 +53,7 @@ namespace client
 
         public void addFinestra(int hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
         {
-            lock (this)
+            lock (_finestre)
             {
                 Finestre.Add(new Finestra(hwnd, nomeFinestra, statoFinestra, tempoFocusPerc, tempoFocus, icona));
             }            
@@ -61,7 +61,7 @@ namespace client
 
         public void changeFocus(int hwnd)
         {
-            lock (this)
+            lock (_finestre)
             {
                 bool trovato = false;
                 int indexOfFocus = -1;
@@ -99,7 +99,7 @@ namespace client
 
         public void removeFinestra(int hwnd)
         {
-            lock (this)
+            lock (_finestre)
             {
                 foreach (Finestra finestra in Finestre)
                     if (finestra.Hwnd.Equals(hwnd))
@@ -112,7 +112,7 @@ namespace client
            
         public void cambiaTitoloFinestra(int hwnd, string nomeFinestra)
         {
-            lock (this)
+            lock (_finestre)
             {
                 foreach (Finestra finestra in Finestre)
                 {
@@ -127,7 +127,7 @@ namespace client
 
         public void aggiornaStatisticheFocus()
         {
-            lock (this)
+            lock (_finestre)
             {
                 foreach (Finestra finestra in Finestre)
                 {
@@ -148,7 +148,7 @@ namespace client
 
         public int handleFinestraInFocus()
         {
-            lock (this)
+            lock (_finestre)
             {
                 foreach (Finestra finestra in Finestre)
                 {
