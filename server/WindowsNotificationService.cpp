@@ -327,36 +327,29 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 
 			/* Check variazione focus */
 			HWND tempForeground = GetForegroundWindow();
+			if (!IsAltTabWindow(tempForeground)) 
+				tempForeground = 0;	// HWND settato a 0 se tempForeground non è una window di interesse
+
 			if (tempForeground != currentForegroundHwnd) {
-				// Allora il programma che ha il focus è cambiato, ma non è detto che sia una finestra già inviata
+				// Allora il programma che ha il focus è cambiato.
+				// Non c'è bisogno di vedere se questa tempForeground è una nuova finestra perché verrà rilevata al prossimo ciclo.
 
 				wstring windowTitle = Helper::getTitleFromHwnd(tempForeground);
 
-				if (windowTitle.length() != 0) {
-
-					// Cercalo tra le finestre in tempWindows
-					if (tempWindows.find(tempForeground) != tempWindows.end()) {
-						// E' una finestra che è gia stata inviata, quindi notifica il cambio focus
-						printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
-						printMessage(TEXT("- " + windowTitle));
-						server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
-					}
-					else {
-						// La finestra non c'è in tempWindows, quindi aggiungila a tempWindows e invia notifica OPEN
-						printMessage(TEXT("Nuova finestra aperta!"));
-						printMessage(TEXT("- " + windowTitle));
-						tempWindows.insert(pair<HWND, wstring>(tempForeground, windowTitle));
-						server.sendNotificationToClient(tempForeground, windowTitle, OPEN);
-						server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
-					}
-
-					currentForegroundHwnd = tempForeground;
+				if (tempForeground != 0 && tempWindows.find(tempForeground) == tempWindows.end()) {
+					// E' una finestra che non è stata ancora inviata, quindi invia notifica OPEN
+					server.sendNotificationToClient(tempForeground, windowTitle, OPEN);
 				}
-				else
-					server.sendNotificationToClient(0, windowTitle, FOCUS);
+
+				// E' una finestra che è gia stata inviata, quindi notifica il cambio focus
+				printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
+				printMessage(TEXT("- " + windowTitle));
+								
+				server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);				
+				currentForegroundHwnd = tempForeground;
 			}
 
-			windows = tempWindows;
+			swap(windows, tempWindows);
 
 			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): in caso positivo,
 				manda un messaggio al client per chiudere la connessione*/

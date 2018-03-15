@@ -38,11 +38,11 @@ HICON Helper::getHICONfromHWND(HWND hwnd) {
 	}
 	// Alternative: get the first icon from the main module 
 	if (hIcon == 0) {
-		hIcon = ::LoadIcon(GetModuleHandle(0), MAKEINTRESOURCE(0));
+		hIcon = reinterpret_cast<HICON>(::LoadIcon(GetModuleHandle(0), MAKEINTRESOURCE(0)));
 	}
 	// Alternative method. Use OS default icon
 	if (hIcon == 0) {
-		hIcon = ::LoadIcon(0, IDI_APPLICATION);
+		hIcon = reinterpret_cast<HICON>(::LoadIcon(0, IDI_APPLICATION));
 	}
 	
 	return hIcon;
@@ -415,6 +415,10 @@ wstring Helper::getTitleFromHwnd(HWND hwnd) {
 	TCHAR title[MAX_PATH];
 	GetWindowTextW(hwnd, title, sizeof(title));
 
-	return wstring(title);
+	wstring windowTitle = wstring(title);
+	
+	if (windowTitle.length() == 0) return wstring(L"explorer.exe");
+
+	return windowTitle;
 }
 
