@@ -20,6 +20,7 @@ using System.Text.RegularExpressions;
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
 
 /* TODO:
@@ -49,9 +50,15 @@ namespace WpfApplication1
         /* BackgroundWorker necessario per evitare che il main thread si blocchi 
          * mentre aspetta che si instauri la connessione con un nuovo server. 
          * Situazione tipo: non è possibile connettersi al server finché non scade il timeout di connessione nella TcpClient. */
-        BackgroundWorker bw = new BackgroundWorker();
-        string connectingIp;
-        int connectingPort;
+        private BackgroundWorker bw = new BackgroundWorker();
+        private bool timedOut;
+
+        // Per gestire la possibilità di terminare il tentativo di connessione in corso
+        private ManualResetEvent terminaConnessione = new ManualResetEvent(false);
+        private bool terminata = false;
+
+        private string connectingIp;
+        private int connectingPort;
 
         /* Handler eventi alla pressione dei tasti durante la cattura di un comando */
         System.Windows.Input.KeyEventHandler keyDownHandler;
@@ -113,6 +120,17 @@ namespace WpfApplication1
             iniziaConnessione();    // connessione asincrona
         }
 
+        private void buttonTerminaConnessione_Click(object sender, RoutedEventArgs e)
+        {
+            terminaConnessione.Set();    // connessione asincrona
+
+            terminata = true;
+            
+            buttonTerminaConnessione.IsEnabled = false;
+            buttonTerminaConnessione.Visibility = Visibility.Hidden;
+
+        }
+
         private void iniziaConnessione()
         {
             IPEndPoint ipPort = null;
@@ -160,13 +178,16 @@ namespace WpfApplication1
                     textBoxIpAddress.IsEnabled = false;
                     buttonConnetti.IsEnabled = false;
 
+                    //buttonTerminaConnessione.IsEnabled = true;
+                    //buttonTerminaConnessione.Visibility = Visibility.Visible;
+
                     bw.RunWorkerAsync();
                     break;
                 }
                 else
                 {
                     timesRetried++;
-                    System.Threading.Thread.Sleep(50);
+                    Thread.Sleep(50);
                 }
             }
             if (timesRetried >= 10)
@@ -178,8 +199,21 @@ namespace WpfApplication1
             try
             {
                 TcpClient connection = new TcpClient();
-                connection.ConnectAsync(connectingIp, connectingPort).Wait(7000);
-                
+                connection.ExclusiveAddressUse = true;
+
+                /* Tentativo di connessione asincrona */
+                //var x = connection.BeginConnect(connectingIp, connectingPort, new AsyncCallback(finisciConnect), connection);
+
+                /* Aspetta finché non termino manualmente la connessione oppure la 'finisiConnect' ha terminato con o senza eccezioni */
+                //terminaConnessione.WaitOne();
+
+                /* Come facevamo prima: non succede niente quando termina la wait perché nessuna eccezione viene generata, e l'esecuzione continua */
+                timedOut = connection.ConnectAsync(connectingIp, connectingPort).Wait(7000);
+
+                if (!timedOut)
+                    throw new SocketException((int) SocketError.TimedOut);
+
+                /* Metti TcpClient in Result per poter essere controllato */
                 e.Result = connection;
 
                 /* ArgumentNullException: hostname is null
@@ -196,16 +230,107 @@ namespace WpfApplication1
 
                 return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
             }
+            catch(ObjectDisposedException)
+            {
+                System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.", "Client - Avviso");
+                return;
+            }
+            catch (AggregateException ae)
+            {
+                // Il task è stato cancellato se AggregateException.InnerException contiene un TaskCanceledException
+                // Gestiamo solo il caso di SocketException per capire se c'è stato un timeout.                
+
+                ae.Handle(ex => {                    
+
+                    if (ex is SocketException)
+                    {
+                        SocketException exception = (SocketException) ex;
+                        int errorCode = exception.ErrorCode;
+
+                        if (errorCode.Equals(SocketError.TimedOut))
+                            System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.", "Client - Avviso");
+                        else
+                            System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.", "Client - Avviso");
+                    }
+                    else if(ex is Exception)
+                    {
+                        System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.\nImpossibile attendere la connessione.", "Client - Avviso");
+                    }
+
+                    return ex is SocketException;
+                });
+
+                return;
+            }
+            catch(Exception)
+            {
+                System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.\nImpossibile attendere la connessione.", "Client - Avviso");
+                return;
+            }
+            finally
+            {
+                terminaConnessione.Reset();
+                terminata = false;
+            }
+
+        }
+
+        private void finisciConnect(IAsyncResult ar)
+        {
+            TcpClient t = (TcpClient)ar.AsyncState;
+
+            try
+            {
+                t.EndConnect(ar);
+
+                terminaConnessione.Set();
+            }
+            catch (SocketException se)
+            {
+                if (!terminata)
+                {
+                    int errorCode = se.ErrorCode;
+                    if (errorCode.Equals(SocketError.TimedOut))
+                        System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.", "Client - Avviso");
+                    else
+                        System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.", "Client - Avviso");
+                }
+                return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
+            }
+            catch (ObjectDisposedException)
+            {
+                if(!terminata)
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.", "Client - Avviso");
+
+                return;
+            }
+            catch (Exception)
+            {
+                if(!terminata)
+                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.", "Client - Avviso");
+
+                return;
+            }
+            finally
+            {
+                terminaConnessione.Set();
+            }
+
         }
 
         private void finalizzaConnessione(object sender, RunWorkerCompletedEventArgs e)
         {
             TcpClient s = (TcpClient)e.Result;
-            if (s == null)
+
+            if (s == null || !s.Connected)
             {
                 // Non è stato possibile connettersi, quindi ritorna
                 textBoxIpAddress.IsEnabled = true;
                 buttonConnetti.IsEnabled = true;
+
+                //buttonTerminaConnessione.IsEnabled = false;
+                //buttonTerminaConnessione.Visibility = Visibility.Hidden;
+
                 return;
             }
             else
@@ -213,6 +338,9 @@ namespace WpfApplication1
                 // Connessione riuscita, riabilita i pulsanti per connettersi a un nuovo server
                 textBoxIpAddress.IsEnabled = true;
                 buttonConnetti.IsEnabled = true;
+
+                //buttonTerminaConnessione.IsEnabled = false;
+                //buttonTerminaConnessione.Visibility = Visibility.Hidden;
             }
 
             string serverName = connectingIp + ":" + connectingPort;

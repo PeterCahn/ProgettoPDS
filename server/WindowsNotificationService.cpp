@@ -179,11 +179,8 @@ BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lPar
 
 	//DWORD process, thread;
 	//thread = GetWindowThreadProcessId(hWnd, &process);
-
-	TCHAR title[MAX_PATH];
-	GetWindowTextW(hWnd, title, sizeof(title));
-
-	wstring windowTitle = wstring(title);
+	
+	wstring windowTitle = Helper::getTitleFromHwnd(hWnd);
 
 	// Proteggere accesso a variabile condivisa "windows"
 	if (IsAltTabWindow(hWnd))
