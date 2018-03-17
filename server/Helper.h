@@ -18,6 +18,9 @@ public:
 	static wstring getTitleFromHwnd(HWND hwnd);
 	static HBITMAP CreateBitmapMask(HBITMAP hbmColour, COLORREF crTransparent);
 
+	static BYTE& encode(HWND, u_long&);
+	static BYTE& getIcon(HWND, u_long&);
+
 private:
 	class InitDC {
 		InitDC();

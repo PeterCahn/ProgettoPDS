@@ -348,6 +348,7 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 	}
 	
 	DeleteObject(hSource);
+	DeleteObject(hMask);
 	ReleaseDC(NULL, hdcSource);
 	ReleaseDC(NULL, hdc);
 
@@ -422,3 +423,169 @@ wstring Helper::getTitleFromHwnd(HWND hwnd) {
 	return windowTitle;
 }
 
+BYTE& Helper::encode(HWND hwnd, u_long& iconLength) {
+	ICONINFO icon_info;
+	BYTE* pixelsPtr = nullptr;
+
+	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
+		return *pixelsPtr;
+
+	BITMAP bmp;
+	if (!icon_info.hbmColor) {
+		std::wcerr << "warning: required icon is black/white (not yet implemented)";
+		return *pixelsPtr;
+	}
+
+	// retrieving the bitmap
+	if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) <= 0)
+		return *pixelsPtr;
+
+	// Allocate memory for the header (should also make space for the color table,
+	// but we're not using it, so no need for that)
+	BITMAPV5HEADER *hdr = (BITMAPV5HEADER*)std::malloc(sizeof(*hdr));
+	hdr->bV5Size = sizeof(BITMAPV5HEADER);
+	hdr->bV5Width = bmp.bmWidth;
+	hdr->bV5Height = bmp.bmHeight;
+	hdr->bV5Planes = 1;
+	// 4 bytes per pixel: (hi) ARGB (lo)
+	hdr->bV5BitCount = 32; //number of bits that define each pixel
+	hdr->bV5Compression = BI_RGB;
+	hdr->bV5RedMask = 0x00FF0000;
+	hdr->bV5GreenMask = 0x0000FF00;
+	hdr->bV5BlueMask = 0x000000FF;
+	hdr->bV5AlphaMask = 0xFF000000;
+	// will compute this one later
+	hdr->bV5SizeImage = 0;
+	// this means: don't use/store a palette
+	hdr->bV5XPelsPerMeter = 0;
+	hdr->bV5YPelsPerMeter = 0;
+	hdr->bV5ClrUsed = 0;
+	hdr->bV5ClrImportant = 0;
+
+	HDC hdc = GetDC(NULL);
+
+	// Make the device driver calculate the image data size (biSizeImage)
+	GetDIBits(hdc, icon_info.hbmColor, 0L, bmp.bmHeight,
+		NULL, (BITMAPINFO*)hdr, DIB_RGB_COLORS);
+
+	const size_t scanline_bytes = (((hdr->bV5Width * hdr->bV5BitCount) + 31) & ~31) / 8;
+	if (hdr->bV5SizeImage == 0) {
+		// Well, that didn't work out. Calculate bV5SizeImage ourselves.
+		// The form ((x + n) & ~n) is a trick to round x up to a multiple of n+1.
+		// In this case, a multiple of 32 (DWORD-aligned)
+		hdr->bV5SizeImage = scanline_bytes * hdr->bV5Height;
+	}
+
+	// Make space for the image pixels data
+	BYTE *pixels = new BYTE[hdr->bV5SizeImage];
+	if (!pixels) {
+		std::free(hdr);
+		ReleaseDC(NULL, hdc);
+		return *pixels;
+	}
+
+	iconLength = hdr->bV5SizeImage;
+
+	BOOL got_bits = GetDIBits(hdc, icon_info.hbmColor,
+		0L, bmp.bmHeight,
+		(LPBYTE)pixels,
+		(BITMAPINFO*)hdr,
+		DIB_RGB_COLORS);
+
+	ReleaseDC(NULL, hdc);
+
+	if (got_bits == FALSE) {
+		// Well, damn.
+		std::free(hdr);
+		std::free(pixels);
+		return *pixels;
+	}
+	
+	return *pixels;
+}
+
+
+BYTE& Helper::getIcon(HWND hwnd, u_long& iconLength)
+{
+	ICONINFO icon_info;
+	BYTE* pixelsPtr = nullptr;
+
+	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
+		return *pixelsPtr;
+
+	BITMAP bmp;
+	if (!icon_info.hbmColor) {
+		std::wcerr << "warning: required icon is black/white (not yet implemented)";
+		return *pixelsPtr;
+	}
+
+	// retrieving the bitmap
+	if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) <= 0)
+		return *pixelsPtr;
+
+	// Allocate memory for the header (should also make space for the color table,
+	// but we're not using it, so no need for that)
+	BITMAPV5HEADER *hdr = (BITMAPV5HEADER*)std::malloc(sizeof(hdr));
+	hdr->bV5Size = sizeof(BITMAPV5HEADER);
+	hdr->bV5Width = bmp.bmWidth;
+	hdr->bV5Height = bmp.bmHeight;
+	hdr->bV5Planes = 1;
+
+	// 4 bytes per pixel: (hi) ARGB (lo)
+	hdr->bV5BitCount = 32; //number of bits that define each pixel
+	hdr->bV5Compression = BI_BITFIELDS;
+	hdr->bV5RedMask = 0x00FF0000;
+	hdr->bV5GreenMask = 0x0000FF00;
+	hdr->bV5BlueMask = 0x000000FF;
+	hdr->bV5AlphaMask = 0xFF000000;
+
+	hdr->bV5SizeImage = 0;
+
+	// this means: don't use/store a palette
+	hdr->bV5XPelsPerMeter = 0;
+	hdr->bV5YPelsPerMeter = 0;
+	hdr->bV5ClrUsed = 0;
+	hdr->bV5ClrImportant = 0;
+
+	HDC hdc = GetDC(NULL);
+
+	// Make the device driver calculate the image data size (biSizeImage)
+	GetDIBits(hdc, icon_info.hbmColor, 0L, bmp.bmHeight,
+		NULL, (BITMAPINFO*)hdr, DIB_RGB_COLORS);
+
+	const size_t scanline_bytes = (((hdr->bV5Width * hdr->bV5BitCount) + 31) & ~31) / 8;
+	if (hdr->bV5SizeImage == 0) {
+		// Well, that didn't work out. Calculate bV5SizeImage ourselves.
+		// The form ((x + n) & ~n) is a trick to round x up to a multiple of n+1.
+		// In this case, a multiple of 32 (DWORD-aligned)
+		hdr->bV5SizeImage = scanline_bytes * hdr->bV5Height;
+	}
+
+	// Make space for the image pixels data
+	BYTE *pixels = new BYTE[hdr->bV5SizeImage];
+	if (!pixels) {
+		std::free(hdr);
+		ReleaseDC(NULL, hdc);
+		return *pixels;
+	}
+
+	iconLength = hdr->bV5SizeImage;
+
+	BOOL got_bits = GetDIBits(hdc, icon_info.hbmColor,
+		0L, bmp.bmHeight,
+		(LPBYTE)pixels,
+		(BITMAPINFO*)hdr,
+		DIB_RGB_COLORS);
+
+	ReleaseDC(NULL, hdc);
+
+	if (got_bits == FALSE) {
+		// Well, damn.
+		std::free(hdr);
+		std::free(pixels);
+		return *pixels;
+	}
+
+	return *pixels;
+	
+}

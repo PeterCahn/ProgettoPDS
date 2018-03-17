@@ -546,18 +546,20 @@ namespace WpfApplication1
                             string iconaBase64 = token.SelectToken("icona").ToString();
                             byte[] bmpData = Convert.FromBase64String(iconaBase64);
 
-                            /* Ricevi icona processo */
-                            int bitmapWidth = 64;
-                            int bitmapheight = 64;
+                            /* Ricevi icona processo */ // 64*64 se si usa Helper::ottieniIcona() sul server
+                            int bitmapWidth = 32;
+                            int bitmapheight = 32;
 
                             /* Crea la bitmap a partire dal byte array */
                             Bitmap bitmap = CopyDataToBitmap(bmpData, bitmapWidth, bitmapheight);
 
-                            //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                            //bitmap.SetTransparencyKey(Color.White);
 
                             /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
                             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+
+                            //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
+                            bitmap.MakeTransparent(Color.Black);
+                            //bitmap.SetTransparencyKey(Color.White);
 
                             BitmapImage bmpImage;
                             using (var b = new Bitmap(bitmap.Width, bitmap.Height))

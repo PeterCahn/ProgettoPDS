@@ -208,13 +208,6 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	/* For each visible window, walk up its owner chain until you find the root owner.
 	 * Then walk back down the visible last active popup chain until you find a visible window.
 	 * If you're back to where you're started, then put the window in the Alt + Tab list.
-	 *
-	 ** TODO: Prova questo prima o poi
-	 while ((hwndTry = GetLastActivePopup(hwndWalk)) != hwndTry) {
-	 if (IsWindowVisible(hwndTry)) break;
-	 hwndWalk = hwndTry;
-	 }
-	 return hwndWalk == hwnd;
 	 */
 	hwndTry = GetAncestor(hwnd, GA_ROOTOWNER);
 	while (hwndTry != hwndWalk)
@@ -227,12 +220,13 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	if (hwndWalk != hwnd)
 		return FALSE;
 
-	// the following removes some task tray programs and "Program Manager"
+	// Rimuove alcuni programmi nella tray e "Program Manager"
 	ti.cbSize = sizeof(ti);
 	GetTitleBarInfo(hwnd, &ti);
 	if (ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
 		return FALSE;
 
+	// Non mostrare tool window
 	if (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)
 		return FALSE;
 
@@ -401,12 +395,23 @@ void WindowsNotificationService::receiveCommands() {
 			json j;
 
 			try {
+				stringaRicevuta += '\0';
 				j = json::parse(stringaRicevuta);
 			}
 			catch (json::exception e) {
 				printMessage(TEXT("Json ricevuto dal client malformato."));
 				continue;
 			}
+			catch (exception ex)
+			{
+				printMessage(TEXT("Errore durante il parse del messaggio ricevuto."));
+				continue;
+			}
+			catch (...)
+			{
+				continue;
+			}
+
 			if (j.find("operation") != j.end()) {
 				// C'è il campo "operation"
 				if (j["operation"] == "CLSCN") {

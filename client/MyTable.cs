@@ -131,18 +131,23 @@ namespace client
             {
                 foreach (Finestra finestra in Finestre)
                 {
+                    var now = DateTime.Now;
+                    var timeDifference = now - lastUpdate;
+
                     /* Incrementa il TempoFocus della finestra con StatoFinestra in Focus */
                     if (finestra.StatoFinestra.Equals("Focus"))
                     {
-                        finestra.TempoFocus += (DateTime.Now - lastUpdate).TotalMilliseconds;
-                        lastUpdate = DateTime.Now;
-                    }                    
+                        finestra.TempoFocus += timeDifference.TotalMilliseconds;
+                    }
                     
                     // Calcola la percentuale
-                    double perc = (finestra.TempoFocus / (DateTime.Now - connectionTime).TotalMilliseconds) * 100;
+                    double perc = (finestra.TempoFocus / (now - connectionTime).TotalMilliseconds) * 100;
+
                     finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
                     
                 }
+
+                lastUpdate = DateTime.Now;
             }
         }
 
