@@ -7,6 +7,11 @@
 #include <iostream>
 #include <io.h>
 #include <strsafe.h>
+#include <windows.h>
+#include <olectl.h>
+#include <algorithm>
+
+#pragma comment(lib, "oleaut32.lib")
 
 #pragma comment (lib, "Msimg32.lib")
 
@@ -28,10 +33,43 @@ Helper::InitDC::~InitDC() {
 
 }
 
-#include "olectl.h"
-#pragma comment(lib, "oleaut32.lib") 
-HRESULT SaveIcon(HICON hIcon, const wchar_t* path) {
-	// Create the IPicture intrface 
+
+BYTE& Helper::getHiconBytes(HICON hIcon, u_long& iconLength) {
+	// Create the IPicture intrface
+	PICTDESC desc = { sizeof(PICTDESC) };
+	desc.picType = PICTYPE_ICON;
+	desc.icon.hicon = hIcon;
+	IPicture* pPicture = 0;
+	HRESULT hr = OleCreatePictureIndirect(&desc, IID_IPicture, FALSE, (void**)&pPicture);
+	if (FAILED(hr))
+		throw new exception("Errore nell'ottenimento dei byte dell'hIcon");;
+	byte* bufferCpy = nullptr;
+
+	// Create a stream and save the image
+	IStream* pStream = 0;
+	CreateStreamOnHGlobal(0, TRUE, &pStream);
+	LONG cbSize = 0;
+	hr = pPicture->SaveAsFile(pStream, TRUE, &cbSize);
+	iconLength = cbSize;
+
+	// Write the stream content to the file
+	if (!FAILED(hr)) {
+		HGLOBAL hBuf = 0;
+		GetHGlobalFromStream(pStream, &hBuf);
+		char* bufferPtr = static_cast<char*>(GlobalLock(hBuf));
+		char* bufferEnd = bufferPtr + (int)cbSize - 1;
+		bufferCpy = new byte[cbSize];
+		std::copy(bufferPtr, bufferEnd, bufferCpy);
+		GlobalUnlock(bufferPtr);
+	}
+	// Cleanup
+	pStream->Release();
+	pPicture->Release();
+	return *bufferCpy;
+}
+
+HRESULT Helper::SaveIconAsFile(HICON hIcon, const wchar_t* path) {
+	// Create the IPicture intrface
 	PICTDESC desc = { sizeof(PICTDESC) };
 	desc.picType = PICTYPE_ICON;
 	desc.icon.hicon = hIcon;
@@ -39,13 +77,13 @@ HRESULT SaveIcon(HICON hIcon, const wchar_t* path) {
 	HRESULT hr = OleCreatePictureIndirect(&desc, IID_IPicture, FALSE, (void**)&pPicture);
 	if (FAILED(hr)) return hr;
 
-	// Create a stream and save the image 
+	// Create a stream and save the image
 	IStream* pStream = 0;
 	CreateStreamOnHGlobal(0, TRUE, &pStream);
 	LONG cbSize = 0;
 	hr = pPicture->SaveAsFile(pStream, TRUE, &cbSize);
 
-	// Write the stream content to the file 
+	// Write the stream content to the file
 	if (!FAILED(hr)) {
 		HGLOBAL hBuf = 0;
 		GetHGlobalFromStream(pStream, &hBuf);
@@ -59,10 +97,11 @@ HRESULT SaveIcon(HICON hIcon, const wchar_t* path) {
 		}
 		GlobalUnlock(buffer);
 	}
-	// Cleanup 
+	// Cleanup
 	pStream->Release();
 	pPicture->Release();
 	return hr;
+
 }
 
 HICON Helper::getHICONfromHWND(HWND hwnd) {
@@ -262,55 +301,18 @@ void CreateBMPFile(LPTSTR pszFile, HBITMAP hBMP)
 }
 
 BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
+	return getHiconBytes(getHICONfromHWND(hwnd), iconLength);
+}
 
-	ICONINFO icon_info;
-	BYTE* pixelsPtr = nullptr;
+BYTE& Helper::ottieniIcona_OLD(HWND hwnd, u_long& iconLength) {
 
-	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
-		return *pixelsPtr;
-
-	HBITMAP hSource = icon_info.hbmColor;
-	HBITMAP hMask = icon_info.hbmMask;
+	HBITMAP hSource, hMask;
+	
+	Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd), hSource, hMask);
 
 	HDC hdc = CreateCompatibleDC(NULL);
 	HDC hdcSource = CreateCompatibleDC(hdc);
-
-	int width = 32;
-	int height = 32;
 	
-	BITMAPV5HEADER hdr;
-	hdr.bV5Size = sizeof(BITMAPV5HEADER);
-	hdr.bV5Width = width;
-	hdr.bV5Height = height;
-	hdr.bV5Planes = 1;
-	// 4 bytes per pixel: (hi) ARGB (lo)
-	hdr.bV5BitCount = 32; //number of bits that define each pixel
-	hdr.bV5Compression = BI_BITFIELDS;
-	hdr.bV5RedMask = 0x00FF0000;
-	hdr.bV5GreenMask = 0x0000FF00;
-	hdr.bV5BlueMask = 0x000000FF;
-	hdr.bV5AlphaMask = 0xFF000000;
-	// will compute this one later
-	hdr.bV5SizeImage = 0;
-	// this means: don't use/store a palette
-	hdr.bV5XPelsPerMeter = 0;
-	hdr.bV5YPelsPerMeter = 0;
-	hdr.bV5ClrUsed = 0;
-	hdr.bV5ClrImportant = 0;
-
-	//auto m_GDIBitmap = ::CreateDIBSection(hdc, (BITMAPINFO *)&hdr, DIB_RGB_COLORS, (void**)&lpBitmapBits, NULL, (DWORD)0);
-
-	GetDIBits(hdc, icon_info.hbmColor, 0L, height, NULL, (BITMAPINFO*)&hdr, DIB_RGB_COLORS);
-
-	BYTE *pixels = new BYTE[hdr.bV5SizeImage];
-	iconLength = hdr.bV5SizeImage;
-
-	GetDIBits(hdc, icon_info.hbmColor, 0L, hdr.bV5Height, (LPBYTE)pixels, (BITMAPINFO*)&hdr, DIB_RGB_COLORS);
-
-	return *pixels;
-
-	//===============
-
 	BITMAPINFO MyBMInfo = { 0 };
 	MyBMInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 
@@ -350,6 +352,45 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 	ReleaseDC(NULL, hdc);
 
 	return *lpPixels;
+}
+
+void Helper::getHBITMAPfromHICON(HICON hIcon, HBITMAP& hSource, HBITMAP& hMask) {
+	
+	//TODO: degub -> rimuovere
+	HRESULT hr = SaveIconAsFile(hIcon, L"icon.ico");
+	
+	ICONINFOEX IconInfo;
+	BITMAP BM_32_bit_color;
+	BITMAP BM_1_bit_mask;
+
+	// 1. From HICON to HBITMAP for color and mask separately
+	memset((void*)&IconInfo, 0, sizeof(ICONINFOEX));
+	IconInfo.cbSize = sizeof(ICONINFOEX);
+	GetIconInfoEx(hIcon, &IconInfo);
+
+
+	//HBITMAP IconInfo.hbmColor is 32bit per pxl, however alpha bytes can be zeroed or can be not.
+	//HBITMAP IconInfo.hbmMask is 1bit per pxl
+
+	// 2. From HBITMAP to BITMAP for color
+	// (HBITMAP without raw data -> HBITMAP with raw data)
+	// LR_CREATEDIBSECTION - DIB section will be created, so .bmBits pointer will not be null
+	hSource = (HBITMAP)CopyImage(IconInfo.hbmColor, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+	//    (HBITMAP to BITMAP)
+	GetObject(hSource, sizeof(BITMAP), &BM_32_bit_color);
+	//Now: BM_32_bit_color.bmBits pointing to BGRA data.(.bmWidth * .bmHeight * (.bmBitsPixel/8))
+
+
+	//TODO: degub -> rimuovere
+	CreateBMPFile(L"bitmap1.bmp", hSource);
+
+	// 3. From HBITMAP to BITMAP for mask
+	hMask = (HBITMAP)CopyImage(IconInfo.hbmMask, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+	GetObject(hMask, sizeof(BITMAP), &BM_1_bit_mask);
+	//Now: BM_1_bit_mask.bmBits pointing to mask data (.bmWidth * .bmHeight Bits!)
+
+	//TODO: degub -> rimuovere
+	CreateBMPFile(L"bitmap1mask.bmp", hMask);
 }
 
 void Helper::BitmapInfoErrorExit(LPTSTR lpszFunction)
