@@ -546,53 +546,16 @@ namespace WpfApplication1
                             string iconaBase64 = token.SelectToken("icona").ToString();
                             byte[] bmpData = Convert.FromBase64String(iconaBase64);
 
-                            /* Ricevi icona processo */ // 64*64 se si usa Helper::ottieniIcona() sul server
-                            int bitmapWidth = 32;
-                            int bitmapheight = 32;
-
-                            /* Crea la bitmap a partire dal byte array */
-                            Bitmap bitmap = CopyDataToBitmap(bmpData, bitmapWidth, bitmapheight);
-
-
-                            /* Il bitmap è salvato in memoria sottosopra, va raddrizzato */
-                            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
-
-                            //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                            bitmap.MakeTransparent(Color.Black);
-                            //bitmap.SetTransparencyKey(Color.White);
-
-                            BitmapImage bmpImage;
-                            using (var b = new Bitmap(bitmap.Width, bitmap.Height))
+                            BitmapFrame bf;
+                            using (var stream = new MemoryStream(bmpData))
                             {
-                                b.SetResolution(bitmap.HorizontalResolution, bitmap.VerticalResolution);
-
-                                using (var g = Graphics.FromImage(b))
-                                {
-                                    // Clears the entire drawing surface and fills it with the specified background color
-                                    g.Clear(Color.White);
-                                    // Draws the specified image using its original physical size at the location specified by a coordinate pair
-                                    g.DrawImageUnscaled(bitmap, 0, 0, bitmap.Width, bitmap.Height);
-                                }
-
-                                // Now save b like you normally would
-                                using (MemoryStream stream = new MemoryStream())
-                                {
-                                    b.Save(stream, ImageFormat.Bmp);
-                                    stream.Position = 0;
-                                    bmpImage = new BitmapImage();
-                                    bmpImage.BeginInit();
-                                    // According to MSDN, "The default OnDemand cache option retains access to the stream until the image is needed."
-                                    // Force the bitmap to load right now so we can dispose the stream.
-                                    bmpImage.CacheOption = BitmapCacheOption.OnLoad;
-                                    bmpImage.StreamSource = stream;
-                                    bmpImage.EndInit();
-                                    bmpImage.Freeze();
-                                }
-
-                                // Aggiungi il nuovo elemento all'elenco delle tabelle
-                                servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bmpImage);
-
+                                bf = BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
                             }
+
+                            servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bf);
+                            
+                            break; 
+                            
                         }
                         catch (Exception)
                         {
@@ -601,7 +564,8 @@ namespace WpfApplication1
                             continue;
                         }
 
-                        break;
+                        //break;
+                        
                 }
 
                 if (operation == "ERRCL" || operation == "OKCLO" || operation == "RETRY")
@@ -734,8 +698,10 @@ namespace WpfApplication1
                         serversListBox.SelectedIndex = 0;
 
                         // Aggiorna bottoni
+                        buttonDisconnetti.IsEnabled = false;
                         buttonDisconnetti.Visibility = Visibility.Hidden;
                         buttonCattura.IsEnabled = false;
+                        buttonCattura.Visibility = Visibility.Hidden;
                     }
                     else
                     {
@@ -795,6 +761,7 @@ namespace WpfApplication1
         {
             // Nascondi e disabilita tutto (caso server disconnesso)
             disabilitaCatturaComando();
+            buttonCattura.IsEnabled = false;
             buttonCattura.Visibility = Visibility.Hidden;
             labelComando.Visibility = Visibility.Hidden;
         }
@@ -806,12 +773,17 @@ namespace WpfApplication1
             comandoDaInviare.Clear();
             textBoxComando.Text = "";
 
-            // mostra e abilita
-            buttonCattura.IsEnabled = true;
-            buttonCattura.Visibility = Visibility.Visible;  //
-            buttonAnnullaCattura.Visibility = Visibility.Hidden;
-            buttonAnnullaCattura.IsEnabled = false;
-
+            lock (servers)
+            {
+                if (servers.Count != 0)
+                {
+                    // mostra e abilita
+                    buttonCattura.IsEnabled = true;
+                    buttonCattura.Visibility = Visibility.Visible;  //
+                    buttonAnnullaCattura.Visibility = Visibility.Hidden;
+                    buttonAnnullaCattura.IsEnabled = false;
+                }
+            }
             // nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
 
@@ -827,10 +799,18 @@ namespace WpfApplication1
             commandsList.Clear();
         }
 
+        public Icon BytesToIcon(byte[] bytes)
+        {
+            using (MemoryStream ms = new MemoryStream(bytes))
+            {
+                return new Icon(ms);
+            }
+        }
+
         public Bitmap CopyDataToBitmap(byte[] data, int width, int height)
         {
             // Here create the Bitmap to the know height, width and format
-            Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppRgb);
+            Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
 
             // Create a BitmapData and Lock all pixels to be written 
             BitmapData bmpData = bmp.LockBits(

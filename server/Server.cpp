@@ -97,7 +97,7 @@ int Server::leggiPorta()
 
 	/* Ottieni porta su cui ascoltare */
 	string porta;
-	regex portRegex("102[4-9]|10[3-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
+	regex portRegex("102[4-9]|10[3-9][0-9]|11[0-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
 	while (true)
 	{
 		cin >> porta;
@@ -295,8 +295,8 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 			/* Ottieni l'icona */
 			u_long iconLength = 0;
 
-			//BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-			BYTE& pixels = Helper::encode(hwnd, iconLength);
+			BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
+			//BYTE& pixels = Helper::encode(hwnd, iconLength);
 			//BYTE& pixels = Helper::getIcon(hwnd, iconLength); // crasha nel parsing della stringa ricevuta alla disconnessione (CLSCN)
 			
 			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);

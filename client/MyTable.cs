@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Data;
+using System.Windows.Media;
 
 namespace client
 {
@@ -51,7 +52,7 @@ namespace client
             //System.Windows.MessageBox.Show("Distruttore di MyTable chiamato");            
         }
 
-        public void addFinestra(int hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
+        public void addFinestra(int hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, ImageSource icona)
         {
             lock (_finestre)
             {
@@ -177,7 +178,7 @@ namespace client
         private string _statoFinestra { get; set; }
         private double _tempoFocusPerc { get; set; }
         private double _tempoFocus { get; set; }
-        private BitmapImage _icona { get; set; }
+        private ImageSource _icona { get; set; }
         private bool _visible { get; set; }
 
         public int Hwnd
@@ -240,7 +241,7 @@ namespace client
                 }
             }
         }
-        public BitmapImage Icona
+        public ImageSource Icona
         {
             get { return _icona; }
             set
@@ -279,7 +280,7 @@ namespace client
             }
         }
 
-        public Finestra(Int32 hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, BitmapImage icona)
+        public Finestra(Int32 hwnd, string nomeFinestra, string statoFinestra, double tempoFocusPerc, double tempoFocus, ImageSource icona)
         {
             Hwnd = hwnd;
             NomeFinestra = nomeFinestra;

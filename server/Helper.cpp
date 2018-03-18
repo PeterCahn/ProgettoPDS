@@ -28,6 +28,43 @@ Helper::InitDC::~InitDC() {
 
 }
 
+#include "olectl.h"
+#pragma comment(lib, "oleaut32.lib") 
+HRESULT SaveIcon(HICON hIcon, const wchar_t* path) {
+	// Create the IPicture intrface 
+	PICTDESC desc = { sizeof(PICTDESC) };
+	desc.picType = PICTYPE_ICON;
+	desc.icon.hicon = hIcon;
+	IPicture* pPicture = 0;
+	HRESULT hr = OleCreatePictureIndirect(&desc, IID_IPicture, FALSE, (void**)&pPicture);
+	if (FAILED(hr)) return hr;
+
+	// Create a stream and save the image 
+	IStream* pStream = 0;
+	CreateStreamOnHGlobal(0, TRUE, &pStream);
+	LONG cbSize = 0;
+	hr = pPicture->SaveAsFile(pStream, TRUE, &cbSize);
+
+	// Write the stream content to the file 
+	if (!FAILED(hr)) {
+		HGLOBAL hBuf = 0;
+		GetHGlobalFromStream(pStream, &hBuf);
+		void* buffer = GlobalLock(hBuf);
+		HANDLE hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+		if (!hFile) hr = HRESULT_FROM_WIN32(GetLastError());
+		else {
+			DWORD written = 0;
+			WriteFile(hFile, buffer, cbSize, &written, 0);
+			CloseHandle(hFile);
+		}
+		GlobalUnlock(buffer);
+	}
+	// Cleanup 
+	pStream->Release();
+	pPicture->Release();
+	return hr;
+}
+
 HICON Helper::getHICONfromHWND(HWND hwnd) {
 
 	// Get the window icon
@@ -46,86 +83,6 @@ HICON Helper::getHICONfromHWND(HWND hwnd) {
 	}
 	
 	return hIcon;
-}
-
-HICON CreateAlphaIcon(void)
-{
-	HDC hMemDC;
-	DWORD dwWidth, dwHeight;
-	BITMAPV5HEADER bi;
-	HBITMAP hBitmap, hOldBitmap;
-	void *lpBits;
-	DWORD x, y;
-	HICON hAlphaIcon = NULL;
-
-	dwWidth = 32;  // width of cursor
-	dwHeight = 32;  // height of cursor
-
-	ZeroMemory(&bi, sizeof(BITMAPV5HEADER));
-	bi.bV5Size = sizeof(BITMAPV5HEADER);
-	bi.bV5Width = dwWidth;
-	bi.bV5Height = dwHeight;
-	bi.bV5Planes = 1;
-	bi.bV5BitCount = 32;
-	bi.bV5Compression = BI_BITFIELDS;
-	// The following mask specification specifies a supported 32 BPP
-	// alpha format for Windows XP.
-	bi.bV5RedMask = 0x00FF0000;
-	bi.bV5GreenMask = 0x0000FF00;
-	bi.bV5BlueMask = 0x000000FF;
-	bi.bV5AlphaMask = 0xFF000000;
-
-	HDC hdc;
-	hdc = GetDC(NULL);
-
-	// Create the DIB section with an alpha channel.
-	hBitmap = CreateDIBSection(hdc, (BITMAPINFO *)&bi, DIB_RGB_COLORS,
-		(void **)&lpBits, NULL, (DWORD)0);
-
-	hMemDC = CreateCompatibleDC(hdc);
-	ReleaseDC(NULL, hdc);
-
-	// Draw something on the DIB section.
-	hOldBitmap = (HBITMAP)SelectObject(hMemDC, hBitmap);
-	PatBlt(hMemDC, 0, 0, dwWidth, dwHeight, WHITENESS);
-	SetTextColor(hMemDC, RGB(0, 0, 0));
-	SetBkMode(hMemDC, TRANSPARENT);
-	TextOut(hMemDC, 0, 9, L"rgba", 4);
-	DWORD *lpdwPixel;
-	lpdwPixel = (DWORD *)lpBits;
-	for (x = 0; x<dwWidth; x++)
-		for (y = 0; y<dwHeight; y++)
-		{
-			// Clear the alpha bits
-			*lpdwPixel &= 0x00FFFFFF;
-			// Set the alpha bits to 0x9F (semi-transparent)
-			if ((*lpdwPixel & 0x00FFFFFF) == 0)
-				*lpdwPixel |= 0xFF000000;
-			lpdwPixel++;
-		}
-
-	SelectObject(hMemDC, hOldBitmap);
-	DeleteDC(hMemDC);
-
-	// Create an empty mask bitmap.
-	HBITMAP hMonoBitmap = CreateBitmap(dwWidth, dwHeight, 1, 1, NULL);
-
-	// Set the alpha values for each pixel in the cursor so that
-	// the complete cursor is semi-transparent.
-	ICONINFO ii;
-	ii.fIcon = TRUE;  // Change fIcon to TRUE to create an alpha icon
-	ii.xHotspot = 0;
-	ii.yHotspot = 0;
-	ii.hbmMask = hMonoBitmap;
-	ii.hbmColor = hBitmap;
-
-	// Create the alpha cursor with the alpha DIB section.
-	hAlphaIcon = CreateIconIndirect(&ii);
-
-	DeleteObject(hBitmap);
-	DeleteObject(hMonoBitmap);
-
-	return hAlphaIcon;
 }
 
 /* Crea una maschera in cui i pixel dello sfondo sono bianchi e quelli dell'icona sono neri */
@@ -306,15 +263,54 @@ void CreateBMPFile(LPTSTR pszFile, HBITMAP hBMP)
 
 BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 
-	HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
-	//CreateBMPFile(L"c:\\bitmap1.bmp", hSource);
+	ICONINFO icon_info;
+	BYTE* pixelsPtr = nullptr;
 
-	HBITMAP hMask = CreateBitmapMask(hSource, RGB(0, 0, 0));
-	//CreateBMPFile(L"c:\\bitmap2.bmp", hMask);	
+	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
+		return *pixelsPtr;
+
+	HBITMAP hSource = icon_info.hbmColor;
+	HBITMAP hMask = icon_info.hbmMask;
 
 	HDC hdc = CreateCompatibleDC(NULL);
 	HDC hdcSource = CreateCompatibleDC(hdc);
+
+	int width = 32;
+	int height = 32;
 	
+	BITMAPV5HEADER hdr;
+	hdr.bV5Size = sizeof(BITMAPV5HEADER);
+	hdr.bV5Width = width;
+	hdr.bV5Height = height;
+	hdr.bV5Planes = 1;
+	// 4 bytes per pixel: (hi) ARGB (lo)
+	hdr.bV5BitCount = 32; //number of bits that define each pixel
+	hdr.bV5Compression = BI_BITFIELDS;
+	hdr.bV5RedMask = 0x00FF0000;
+	hdr.bV5GreenMask = 0x0000FF00;
+	hdr.bV5BlueMask = 0x000000FF;
+	hdr.bV5AlphaMask = 0xFF000000;
+	// will compute this one later
+	hdr.bV5SizeImage = 0;
+	// this means: don't use/store a palette
+	hdr.bV5XPelsPerMeter = 0;
+	hdr.bV5YPelsPerMeter = 0;
+	hdr.bV5ClrUsed = 0;
+	hdr.bV5ClrImportant = 0;
+
+	//auto m_GDIBitmap = ::CreateDIBSection(hdc, (BITMAPINFO *)&hdr, DIB_RGB_COLORS, (void**)&lpBitmapBits, NULL, (DWORD)0);
+
+	GetDIBits(hdc, icon_info.hbmColor, 0L, height, NULL, (BITMAPINFO*)&hdr, DIB_RGB_COLORS);
+
+	BYTE *pixels = new BYTE[hdr.bV5SizeImage];
+	iconLength = hdr.bV5SizeImage;
+
+	GetDIBits(hdc, icon_info.hbmColor, 0L, hdr.bV5Height, (LPBYTE)pixels, (BITMAPINFO*)&hdr, DIB_RGB_COLORS);
+
+	return *pixels;
+
+	//===============
+
 	BITMAPINFO MyBMInfo = { 0 };
 	MyBMInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 
@@ -326,13 +322,14 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 	}
 	
 	/* Ispirato da: http://www.winprog.org/tutorial/transparency.html */
+	/*
 	SelectObject(hdcSource, hMask);
 	BitBlt(hdc, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, hdcSource, 0, 0, SRCAND);
 
 	SelectObject(hdc, hSource);
 	//TransparentBlt(hdc, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, hdcSource, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, RGB(0, 0, 0));
 	BitBlt(hdc, 0, 0, MyBMInfo.bmiHeader.biWidth, MyBMInfo.bmiHeader.biHeight, hdcSource, 0, 0, SRCPAINT);
-
+	*/
 	// create the pixel buffer
 	iconLength = MyBMInfo.bmiHeader.biSizeImage;
 	BYTE* lpPixels = new BYTE[iconLength];
@@ -353,27 +350,6 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 	ReleaseDC(NULL, hdc);
 
 	return *lpPixels;
-}
-
-HBITMAP Helper::getHBITMAPfromHICON(HICON hIcon) {
-	int bitmapXdimension = 64;
-	int bitmapYdimension = 64;
-	HDC hDC = GetDC(NULL);
-	HDC hMemDC = CreateCompatibleDC(hDC);
-	HBITMAP hMemBmp = CreateCompatibleBitmap(hDC, bitmapXdimension, bitmapYdimension);
-	HBITMAP hResultBmp = NULL;
-	HGDIOBJ hOrgBMP = SelectObject(hMemDC, hMemBmp);
-
-	DrawIconEx(hMemDC, 0, 0, hIcon, bitmapYdimension, bitmapYdimension, 0, NULL, DI_NORMAL);
-
-	hResultBmp = hMemBmp;
-	hMemBmp = NULL;
-
-	SelectObject(hMemDC, hOrgBMP);
-	DeleteDC(hMemDC);
-	ReleaseDC(NULL, hDC);
-	DestroyIcon(hIcon);
-	return hResultBmp;
 }
 
 void Helper::BitmapInfoErrorExit(LPTSTR lpszFunction)
@@ -421,171 +397,4 @@ wstring Helper::getTitleFromHwnd(HWND hwnd) {
 	if (windowTitle.length() == 0) return wstring(L"explorer.exe");
 
 	return windowTitle;
-}
-
-BYTE& Helper::encode(HWND hwnd, u_long& iconLength) {
-	ICONINFO icon_info;
-	BYTE* pixelsPtr = nullptr;
-
-	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
-		return *pixelsPtr;
-
-	BITMAP bmp;
-	if (!icon_info.hbmColor) {
-		std::wcerr << "warning: required icon is black/white (not yet implemented)";
-		return *pixelsPtr;
-	}
-
-	// retrieving the bitmap
-	if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) <= 0)
-		return *pixelsPtr;
-
-	// Allocate memory for the header (should also make space for the color table,
-	// but we're not using it, so no need for that)
-	BITMAPV5HEADER *hdr = (BITMAPV5HEADER*)std::malloc(sizeof(*hdr));
-	hdr->bV5Size = sizeof(BITMAPV5HEADER);
-	hdr->bV5Width = bmp.bmWidth;
-	hdr->bV5Height = bmp.bmHeight;
-	hdr->bV5Planes = 1;
-	// 4 bytes per pixel: (hi) ARGB (lo)
-	hdr->bV5BitCount = 32; //number of bits that define each pixel
-	hdr->bV5Compression = BI_RGB;
-	hdr->bV5RedMask = 0x00FF0000;
-	hdr->bV5GreenMask = 0x0000FF00;
-	hdr->bV5BlueMask = 0x000000FF;
-	hdr->bV5AlphaMask = 0xFF000000;
-	// will compute this one later
-	hdr->bV5SizeImage = 0;
-	// this means: don't use/store a palette
-	hdr->bV5XPelsPerMeter = 0;
-	hdr->bV5YPelsPerMeter = 0;
-	hdr->bV5ClrUsed = 0;
-	hdr->bV5ClrImportant = 0;
-
-	HDC hdc = GetDC(NULL);
-
-	// Make the device driver calculate the image data size (biSizeImage)
-	GetDIBits(hdc, icon_info.hbmColor, 0L, bmp.bmHeight,
-		NULL, (BITMAPINFO*)hdr, DIB_RGB_COLORS);
-
-	const size_t scanline_bytes = (((hdr->bV5Width * hdr->bV5BitCount) + 31) & ~31) / 8;
-	if (hdr->bV5SizeImage == 0) {
-		// Well, that didn't work out. Calculate bV5SizeImage ourselves.
-		// The form ((x + n) & ~n) is a trick to round x up to a multiple of n+1.
-		// In this case, a multiple of 32 (DWORD-aligned)
-		hdr->bV5SizeImage = scanline_bytes * hdr->bV5Height;
-	}
-
-	// Make space for the image pixels data
-	BYTE *pixels = new BYTE[hdr->bV5SizeImage];
-	if (!pixels) {
-		std::free(hdr);
-		ReleaseDC(NULL, hdc);
-		return *pixels;
-	}
-
-	iconLength = hdr->bV5SizeImage;
-
-	BOOL got_bits = GetDIBits(hdc, icon_info.hbmColor,
-		0L, bmp.bmHeight,
-		(LPBYTE)pixels,
-		(BITMAPINFO*)hdr,
-		DIB_RGB_COLORS);
-
-	ReleaseDC(NULL, hdc);
-
-	if (got_bits == FALSE) {
-		// Well, damn.
-		std::free(hdr);
-		std::free(pixels);
-		return *pixels;
-	}
-	
-	return *pixels;
-}
-
-
-BYTE& Helper::getIcon(HWND hwnd, u_long& iconLength)
-{
-	ICONINFO icon_info;
-	BYTE* pixelsPtr = nullptr;
-
-	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
-		return *pixelsPtr;
-
-	BITMAP bmp;
-	if (!icon_info.hbmColor) {
-		std::wcerr << "warning: required icon is black/white (not yet implemented)";
-		return *pixelsPtr;
-	}
-
-	// retrieving the bitmap
-	if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) <= 0)
-		return *pixelsPtr;
-
-	// Allocate memory for the header (should also make space for the color table,
-	// but we're not using it, so no need for that)
-	BITMAPV5HEADER *hdr = (BITMAPV5HEADER*)std::malloc(sizeof(hdr));
-	hdr->bV5Size = sizeof(BITMAPV5HEADER);
-	hdr->bV5Width = bmp.bmWidth;
-	hdr->bV5Height = bmp.bmHeight;
-	hdr->bV5Planes = 1;
-
-	// 4 bytes per pixel: (hi) ARGB (lo)
-	hdr->bV5BitCount = 32; //number of bits that define each pixel
-	hdr->bV5Compression = BI_BITFIELDS;
-	hdr->bV5RedMask = 0x00FF0000;
-	hdr->bV5GreenMask = 0x0000FF00;
-	hdr->bV5BlueMask = 0x000000FF;
-	hdr->bV5AlphaMask = 0xFF000000;
-
-	hdr->bV5SizeImage = 0;
-
-	// this means: don't use/store a palette
-	hdr->bV5XPelsPerMeter = 0;
-	hdr->bV5YPelsPerMeter = 0;
-	hdr->bV5ClrUsed = 0;
-	hdr->bV5ClrImportant = 0;
-
-	HDC hdc = GetDC(NULL);
-
-	// Make the device driver calculate the image data size (biSizeImage)
-	GetDIBits(hdc, icon_info.hbmColor, 0L, bmp.bmHeight,
-		NULL, (BITMAPINFO*)hdr, DIB_RGB_COLORS);
-
-	const size_t scanline_bytes = (((hdr->bV5Width * hdr->bV5BitCount) + 31) & ~31) / 8;
-	if (hdr->bV5SizeImage == 0) {
-		// Well, that didn't work out. Calculate bV5SizeImage ourselves.
-		// The form ((x + n) & ~n) is a trick to round x up to a multiple of n+1.
-		// In this case, a multiple of 32 (DWORD-aligned)
-		hdr->bV5SizeImage = scanline_bytes * hdr->bV5Height;
-	}
-
-	// Make space for the image pixels data
-	BYTE *pixels = new BYTE[hdr->bV5SizeImage];
-	if (!pixels) {
-		std::free(hdr);
-		ReleaseDC(NULL, hdc);
-		return *pixels;
-	}
-
-	iconLength = hdr->bV5SizeImage;
-
-	BOOL got_bits = GetDIBits(hdc, icon_info.hbmColor,
-		0L, bmp.bmHeight,
-		(LPBYTE)pixels,
-		(BITMAPINFO*)hdr,
-		DIB_RGB_COLORS);
-
-	ReleaseDC(NULL, hdc);
-
-	if (got_bits == FALSE) {
-		// Well, damn.
-		std::free(hdr);
-		std::free(pixels);
-		return *pixels;
-	}
-
-	return *pixels;
-	
 }

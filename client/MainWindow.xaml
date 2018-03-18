@@ -201,15 +201,18 @@
                     <GridViewColumn Width="40" Header="Icona">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
-                                <Image Width="25" Height="25" Source="{Binding Icona}">
-                                    <Image.Style>
-                                        <Style TargetType="{x:Type Image}"></Style>
-                                    </Image.Style>
-                                </Image>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Width="25" Height="25" Source="{Binding Icona}">
+                                        <Image.Style>
+                                            <Style TargetType="{x:Type Image}"></Style>
+                                        </Image.Style>
+                                    </Image>
+                                    <TextBlock Width="250" Text="{Binding Path='NomeFinestra'}"></TextBlock>
+                                </StackPanel>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="250"/>
+                    <!--<GridViewColumn Header="Nome applicazione" DisplayMemberBinding="{Binding Path='NomeFinestra'}" Width="250"/>-->
                     <GridViewColumn Header="Stato Finestra" DisplayMemberBinding="{Binding Path='StatoFinestra'}" Width="90"/>
                     <GridViewColumn Header="Tempo in focus (%)" DisplayMemberBinding="{Binding Path='TempoFocusPerc'}" Width="130" />
                 </GridView>
