@@ -295,8 +295,8 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 			/* Ottieni l'icona */
 			u_long iconLength = 0;
 
-			//BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-			BYTE& pixels = Helper::encode(hwnd, iconLength);
+			BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
+			//BYTE& pixels = Helper::encode(hwnd, iconLength);
 			//BYTE& pixels = Helper::getIcon(hwnd, iconLength); // crasha nel parsing della stringa ricevuta alla disconnessione (CLSCN)
 			
 			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);

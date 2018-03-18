@@ -558,7 +558,7 @@ namespace WpfApplication1
                             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
 
                             //bitmap.MakeTransparent(bitmap.GetPixel(1, 1));               // <-- TODO: Tentativo veloce di togliere lo sfondo nero all'icona
-                            bitmap.MakeTransparent(Color.Black);
+                            //bitmap.MakeTransparent(Color.Black);
                             //bitmap.SetTransparencyKey(Color.White);
 
                             BitmapImage bmpImage;

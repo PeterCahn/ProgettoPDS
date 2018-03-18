@@ -7,6 +7,11 @@
 #include <iostream>
 #include <io.h>
 #include <strsafe.h>
+#include <windows.h>
+#include <olectl.h>
+#include <algorithm>
+
+#pragma comment(lib, "oleaut32.lib")
 
 #pragma comment (lib, "Msimg32.lib")
 
@@ -25,6 +30,77 @@ Helper::InitDC::InitDC() {
 }
 
 Helper::InitDC::~InitDC() {
+
+}
+
+
+BYTE& Helper::getHiconBytes(HICON hIcon, u_long& iconLength) {
+	// Create the IPicture intrface
+	PICTDESC desc = { sizeof(PICTDESC) };
+	desc.picType = PICTYPE_ICON;
+	desc.icon.hicon = hIcon;
+	IPicture* pPicture = 0;
+	HRESULT hr = OleCreatePictureIndirect(&desc, IID_IPicture, FALSE, (void**)&pPicture);
+	if (FAILED(hr))
+		throw new exception("Errore nell'ottenimento dei byte dell'hIcon");;
+	byte* bufferCpy = nullptr;
+
+	// Create a stream and save the image
+	IStream* pStream = 0;
+	CreateStreamOnHGlobal(0, TRUE, &pStream);
+	LONG cbSize = 0;
+	hr = pPicture->SaveAsFile(pStream, TRUE, &cbSize);
+	iconLength = cbSize;
+
+	// Write the stream content to the file
+	if (!FAILED(hr)) {
+		HGLOBAL hBuf = 0;
+		GetHGlobalFromStream(pStream, &hBuf);
+		char* bufferPtr = static_cast<char*>(GlobalLock(hBuf));
+		char* bufferEnd = bufferPtr + (int)cbSize - 1;
+		bufferCpy = new byte[cbSize];
+		std::copy(bufferPtr, bufferEnd, bufferCpy);
+		GlobalUnlock(bufferPtr);
+	}
+	// Cleanup
+	pStream->Release();
+	pPicture->Release();
+	return *bufferCpy;
+}
+
+HRESULT Helper::SaveIconAsFile(HICON hIcon, const wchar_t* path) {
+	// Create the IPicture intrface
+	PICTDESC desc = { sizeof(PICTDESC) };
+	desc.picType = PICTYPE_ICON;
+	desc.icon.hicon = hIcon;
+	IPicture* pPicture = 0;
+	HRESULT hr = OleCreatePictureIndirect(&desc, IID_IPicture, FALSE, (void**)&pPicture);
+	if (FAILED(hr)) return hr;
+
+	// Create a stream and save the image
+	IStream* pStream = 0;
+	CreateStreamOnHGlobal(0, TRUE, &pStream);
+	LONG cbSize = 0;
+	hr = pPicture->SaveAsFile(pStream, TRUE, &cbSize);
+
+	// Write the stream content to the file
+	if (!FAILED(hr)) {
+		HGLOBAL hBuf = 0;
+		GetHGlobalFromStream(pStream, &hBuf);
+		void* buffer = GlobalLock(hBuf);
+		HANDLE hFile = CreateFile(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+		if (!hFile) hr = HRESULT_FROM_WIN32(GetLastError());
+		else {
+			DWORD written = 0;
+			WriteFile(hFile, buffer, cbSize, &written, 0);
+			CloseHandle(hFile);
+		}
+		GlobalUnlock(buffer);
+	}
+	// Cleanup
+	pStream->Release();
+	pPicture->Release();
+	return hr;
 
 }
 
@@ -305,12 +381,14 @@ void CreateBMPFile(LPTSTR pszFile, HBITMAP hBMP)
 }
 
 BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
+	return getHiconBytes(getHICONfromHWND(hwnd), iconLength);
+}
 
-	HBITMAP hSource = Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd));
-	//CreateBMPFile(L"c:\\bitmap1.bmp", hSource);
+BYTE& Helper::ottieniIcona_OLD(HWND hwnd, u_long& iconLength) {
 
-	HBITMAP hMask = CreateBitmapMask(hSource, RGB(0, 0, 0));
-	//CreateBMPFile(L"c:\\bitmap2.bmp", hMask);	
+	HBITMAP hSource, hMask;
+	
+	Helper::getHBITMAPfromHICON(Helper::getHICONfromHWND(hwnd), hSource, hMask);
 
 	HDC hdc = CreateCompatibleDC(NULL);
 	HDC hdcSource = CreateCompatibleDC(hdc);
@@ -355,25 +433,43 @@ BYTE& Helper::ottieniIcona(HWND hwnd, u_long& iconLength) {
 	return *lpPixels;
 }
 
-HBITMAP Helper::getHBITMAPfromHICON(HICON hIcon) {
-	int bitmapXdimension = 64;
-	int bitmapYdimension = 64;
-	HDC hDC = GetDC(NULL);
-	HDC hMemDC = CreateCompatibleDC(hDC);
-	HBITMAP hMemBmp = CreateCompatibleBitmap(hDC, bitmapXdimension, bitmapYdimension);
-	HBITMAP hResultBmp = NULL;
-	HGDIOBJ hOrgBMP = SelectObject(hMemDC, hMemBmp);
+void Helper::getHBITMAPfromHICON(HICON hIcon, HBITMAP& hSource, HBITMAP& hMask) {
+	
+	//TODO: degub -> rimuovere
+	HRESULT hr = SaveIconAsFile(hIcon, L"icon.ico");
+	
+	ICONINFOEX IconInfo;
+	BITMAP BM_32_bit_color;
+	BITMAP BM_1_bit_mask;
 
-	DrawIconEx(hMemDC, 0, 0, hIcon, bitmapYdimension, bitmapYdimension, 0, NULL, DI_NORMAL);
+	// 1. From HICON to HBITMAP for color and mask separately
+	memset((void*)&IconInfo, 0, sizeof(ICONINFOEX));
+	IconInfo.cbSize = sizeof(ICONINFOEX);
+	GetIconInfoEx(hIcon, &IconInfo);
 
-	hResultBmp = hMemBmp;
-	hMemBmp = NULL;
 
-	SelectObject(hMemDC, hOrgBMP);
-	DeleteDC(hMemDC);
-	ReleaseDC(NULL, hDC);
-	DestroyIcon(hIcon);
-	return hResultBmp;
+	//HBITMAP IconInfo.hbmColor is 32bit per pxl, however alpha bytes can be zeroed or can be not.
+	//HBITMAP IconInfo.hbmMask is 1bit per pxl
+
+	// 2. From HBITMAP to BITMAP for color
+	// (HBITMAP without raw data -> HBITMAP with raw data)
+	// LR_CREATEDIBSECTION - DIB section will be created, so .bmBits pointer will not be null
+	hSource = (HBITMAP)CopyImage(IconInfo.hbmColor, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+	//    (HBITMAP to BITMAP)
+	GetObject(hSource, sizeof(BITMAP), &BM_32_bit_color);
+	//Now: BM_32_bit_color.bmBits pointing to BGRA data.(.bmWidth * .bmHeight * (.bmBitsPixel/8))
+
+
+	//TODO: degub -> rimuovere
+	CreateBMPFile(L"bitmap1.bmp", hSource);
+
+	// 3. From HBITMAP to BITMAP for mask
+	hMask = (HBITMAP)CopyImage(IconInfo.hbmMask, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+	GetObject(hMask, sizeof(BITMAP), &BM_1_bit_mask);
+	//Now: BM_1_bit_mask.bmBits pointing to mask data (.bmWidth * .bmHeight Bits!)
+
+	//TODO: degub -> rimuovere
+	CreateBMPFile(L"bitmap1mask.bmp", hMask);
 }
 
 void Helper::BitmapInfoErrorExit(LPTSTR lpszFunction)
@@ -421,171 +517,4 @@ wstring Helper::getTitleFromHwnd(HWND hwnd) {
 	if (windowTitle.length() == 0) return wstring(L"explorer.exe");
 
 	return windowTitle;
-}
-
-BYTE& Helper::encode(HWND hwnd, u_long& iconLength) {
-	ICONINFO icon_info;
-	BYTE* pixelsPtr = nullptr;
-
-	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
-		return *pixelsPtr;
-
-	BITMAP bmp;
-	if (!icon_info.hbmColor) {
-		std::wcerr << "warning: required icon is black/white (not yet implemented)";
-		return *pixelsPtr;
-	}
-
-	// retrieving the bitmap
-	if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) <= 0)
-		return *pixelsPtr;
-
-	// Allocate memory for the header (should also make space for the color table,
-	// but we're not using it, so no need for that)
-	BITMAPV5HEADER *hdr = (BITMAPV5HEADER*)std::malloc(sizeof(*hdr));
-	hdr->bV5Size = sizeof(BITMAPV5HEADER);
-	hdr->bV5Width = bmp.bmWidth;
-	hdr->bV5Height = bmp.bmHeight;
-	hdr->bV5Planes = 1;
-	// 4 bytes per pixel: (hi) ARGB (lo)
-	hdr->bV5BitCount = 32; //number of bits that define each pixel
-	hdr->bV5Compression = BI_RGB;
-	hdr->bV5RedMask = 0x00FF0000;
-	hdr->bV5GreenMask = 0x0000FF00;
-	hdr->bV5BlueMask = 0x000000FF;
-	hdr->bV5AlphaMask = 0xFF000000;
-	// will compute this one later
-	hdr->bV5SizeImage = 0;
-	// this means: don't use/store a palette
-	hdr->bV5XPelsPerMeter = 0;
-	hdr->bV5YPelsPerMeter = 0;
-	hdr->bV5ClrUsed = 0;
-	hdr->bV5ClrImportant = 0;
-
-	HDC hdc = GetDC(NULL);
-
-	// Make the device driver calculate the image data size (biSizeImage)
-	GetDIBits(hdc, icon_info.hbmColor, 0L, bmp.bmHeight,
-		NULL, (BITMAPINFO*)hdr, DIB_RGB_COLORS);
-
-	const size_t scanline_bytes = (((hdr->bV5Width * hdr->bV5BitCount) + 31) & ~31) / 8;
-	if (hdr->bV5SizeImage == 0) {
-		// Well, that didn't work out. Calculate bV5SizeImage ourselves.
-		// The form ((x + n) & ~n) is a trick to round x up to a multiple of n+1.
-		// In this case, a multiple of 32 (DWORD-aligned)
-		hdr->bV5SizeImage = scanline_bytes * hdr->bV5Height;
-	}
-
-	// Make space for the image pixels data
-	BYTE *pixels = new BYTE[hdr->bV5SizeImage];
-	if (!pixels) {
-		std::free(hdr);
-		ReleaseDC(NULL, hdc);
-		return *pixels;
-	}
-
-	iconLength = hdr->bV5SizeImage;
-
-	BOOL got_bits = GetDIBits(hdc, icon_info.hbmColor,
-		0L, bmp.bmHeight,
-		(LPBYTE)pixels,
-		(BITMAPINFO*)hdr,
-		DIB_RGB_COLORS);
-
-	ReleaseDC(NULL, hdc);
-
-	if (got_bits == FALSE) {
-		// Well, damn.
-		std::free(hdr);
-		std::free(pixels);
-		return *pixels;
-	}
-	
-	return *pixels;
-}
-
-
-BYTE& Helper::getIcon(HWND hwnd, u_long& iconLength)
-{
-	ICONINFO icon_info;
-	BYTE* pixelsPtr = nullptr;
-
-	if (GetIconInfo(Helper::getHICONfromHWND(hwnd), &icon_info) == FALSE)
-		return *pixelsPtr;
-
-	BITMAP bmp;
-	if (!icon_info.hbmColor) {
-		std::wcerr << "warning: required icon is black/white (not yet implemented)";
-		return *pixelsPtr;
-	}
-
-	// retrieving the bitmap
-	if (GetObject(icon_info.hbmColor, sizeof(bmp), &bmp) <= 0)
-		return *pixelsPtr;
-
-	// Allocate memory for the header (should also make space for the color table,
-	// but we're not using it, so no need for that)
-	BITMAPV5HEADER *hdr = (BITMAPV5HEADER*)std::malloc(sizeof(hdr));
-	hdr->bV5Size = sizeof(BITMAPV5HEADER);
-	hdr->bV5Width = bmp.bmWidth;
-	hdr->bV5Height = bmp.bmHeight;
-	hdr->bV5Planes = 1;
-
-	// 4 bytes per pixel: (hi) ARGB (lo)
-	hdr->bV5BitCount = 32; //number of bits that define each pixel
-	hdr->bV5Compression = BI_BITFIELDS;
-	hdr->bV5RedMask = 0x00FF0000;
-	hdr->bV5GreenMask = 0x0000FF00;
-	hdr->bV5BlueMask = 0x000000FF;
-	hdr->bV5AlphaMask = 0xFF000000;
-
-	hdr->bV5SizeImage = 0;
-
-	// this means: don't use/store a palette
-	hdr->bV5XPelsPerMeter = 0;
-	hdr->bV5YPelsPerMeter = 0;
-	hdr->bV5ClrUsed = 0;
-	hdr->bV5ClrImportant = 0;
-
-	HDC hdc = GetDC(NULL);
-
-	// Make the device driver calculate the image data size (biSizeImage)
-	GetDIBits(hdc, icon_info.hbmColor, 0L, bmp.bmHeight,
-		NULL, (BITMAPINFO*)hdr, DIB_RGB_COLORS);
-
-	const size_t scanline_bytes = (((hdr->bV5Width * hdr->bV5BitCount) + 31) & ~31) / 8;
-	if (hdr->bV5SizeImage == 0) {
-		// Well, that didn't work out. Calculate bV5SizeImage ourselves.
-		// The form ((x + n) & ~n) is a trick to round x up to a multiple of n+1.
-		// In this case, a multiple of 32 (DWORD-aligned)
-		hdr->bV5SizeImage = scanline_bytes * hdr->bV5Height;
-	}
-
-	// Make space for the image pixels data
-	BYTE *pixels = new BYTE[hdr->bV5SizeImage];
-	if (!pixels) {
-		std::free(hdr);
-		ReleaseDC(NULL, hdc);
-		return *pixels;
-	}
-
-	iconLength = hdr->bV5SizeImage;
-
-	BOOL got_bits = GetDIBits(hdc, icon_info.hbmColor,
-		0L, bmp.bmHeight,
-		(LPBYTE)pixels,
-		(BITMAPINFO*)hdr,
-		DIB_RGB_COLORS);
-
-	ReleaseDC(NULL, hdc);
-
-	if (got_bits == FALSE) {
-		// Well, damn.
-		std::free(hdr);
-		std::free(pixels);
-		return *pixels;
-	}
-
-	return *pixels;
-	
 }
