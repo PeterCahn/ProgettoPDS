@@ -6,12 +6,10 @@
 	ma non a terminare il server mentre è in attesa sulla accept o sulla lettura della porta.
 	Questo avviene SOLO quando si è già provato a chiudere una connessione.
 */
-#define WIN32_LEAN_AND_MEAN
+
 #define UNICODE
 
-#include <Windows.h>
-#include <Winsock2.h>
-#include <ws2tcpip.h>
+#include "stdafx.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
@@ -141,7 +139,7 @@ void WindowsNotificationService::start()
 			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
 			return;
 		}
-		catch (exception &ex)
+		catch (exception)
 		{
 			// Si è verificata un'eccezione nei thread che gestiscono la connessione con il client.		
 			/* Setta la control routine per gestire il CTRL-C */
@@ -225,7 +223,7 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	GetTitleBarInfo(hwnd, &ti);
 	if (ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
 		return FALSE;
-
+	
 	// Non mostrare tool window
 	if (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)
 		return FALSE;
@@ -381,7 +379,6 @@ void WindowsNotificationService::receiveCommands() {
 
 	// Ricevi finchè il client non chiude la connessione
 	char recvbuf[DEFAULT_BUFLEN * sizeof(char)];
-	char sendBuf[DEFAULT_BUFLEN * sizeof(char)];
 
 	int iResult;
 	do {
@@ -510,7 +507,7 @@ bool WindowsNotificationService::isExtendedKey(WORD virtualKey) {
 
 void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::vector<INPUT> vKeysList)
 {
-	int i, keystroke_sent;
+	int keystroke_sent;
 	HWND progHandle;
 
 	// Controlla che il keystroke sia ben formato

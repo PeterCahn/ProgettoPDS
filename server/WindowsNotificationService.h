@@ -1,5 +1,7 @@
+#pragma once
+#include "stdafx.h"
+
 #include <map>
-#include <Windows.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>

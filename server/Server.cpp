@@ -1,9 +1,8 @@
-#define WIN32_LEAN_AND_MEAN
+#pragma once
 #define UNICODE
 
-#include <Windows.h>
-#include <Winsock2.h>
-#include <ws2tcpip.h>
+#include "stdafx.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
@@ -296,8 +295,6 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 			u_long iconLength = 0;
 
 			BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-			//BYTE& pixels = Helper::encode(hwnd, iconLength);
-			//BYTE& pixels = Helper::getIcon(hwnd, iconLength); // crasha nel parsing della stringa ricevuta alla disconnessione (CLSCN)
 			
 			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
 		}

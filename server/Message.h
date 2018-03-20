@@ -1,7 +1,4 @@
-#define WIN32_LEAN_AND_MEAN
-
-#include <Windows.h>
-#include <ws2tcpip.h>
+#include "stdafx.h"
 #include <typeinfo>
 #include <string>
 
@@ -23,8 +20,8 @@ class Message
 public:
 
 	/* Costruttori overloaded */
-	Message(operation op, HWND hwnd);
 	Message(operation operation);
+	Message(operation op, HWND hwnd);
 
 	/* Construttore di copia */
 	Message(const Message&);

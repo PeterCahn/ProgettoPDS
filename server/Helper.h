@@ -1,4 +1,4 @@
-#include <Windows.h>
+#include "stdafx.h"
 #include <string>
 
 using namespace std;
@@ -16,18 +16,8 @@ public:
 
 	static HICON getHICONfromHWND(HWND hwnd);
 	static BYTE& ottieniIcona(HWND hwnd, u_long& iconLength);
-	BYTE & ottieniIcona_OLD(HWND hwnd, u_long & iconLength);
-	static void getHBITMAPfromHICON(HICON hIcon, HBITMAP& hSource, HBITMAP& hMask);
-	static void BitmapInfoErrorExit(LPTSTR lpszFunction);
-	static PBITMAPINFO CreateBitmapInfoStruct(HBITMAP hBmp);
-	static wstring getTitleFromHwnd(HWND hwnd);
-	static HBITMAP CreateBitmapMask(HBITMAP hbmColour, COLORREF crTransparent);
-
-private:
-	class InitDC {
-		InitDC();
-		~InitDC();
-	};
+	static BYTE& getIconBuffer(HICON hIcon, u_long& iconLength);
+	static wstring getTitleFromHwnd(HWND hwnd);	
 
 };
 

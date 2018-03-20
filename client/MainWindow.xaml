@@ -198,7 +198,7 @@
                   ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Single">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Width="40" Header="Icona">
+                    <GridViewColumn Width="300" Header="Finestra">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
@@ -207,7 +207,7 @@
                                             <Style TargetType="{x:Type Image}"></Style>
                                         </Image.Style>
                                     </Image>
-                                    <TextBlock Width="250" Text="{Binding Path='NomeFinestra'}"></TextBlock>
+                                    <TextBlock Width="auto" Text="{Binding Path='NomeFinestra'}" Margin="10,0,0,0"></TextBlock>
                                 </StackPanel>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
