@@ -1,5 +1,4 @@
-#include "stdafx.h"
-#include <typeinfo>
+#include <Windows.h>
 #include <string>
 
 /* Documentation: https://github.com/nlohmann/json */

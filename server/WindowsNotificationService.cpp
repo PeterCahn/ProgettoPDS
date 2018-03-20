@@ -9,49 +9,31 @@
 
 #define UNICODE
 
-#include "stdafx.h"
-#include <stdlib.h>
-#include <stdio.h>
+#include "WindowsNotificationService.h"
+#include "Helper.h"
+#include "Message.h"	// qui sono definiti i tipi di operazione
+
 #include <iostream>
 #include <thread>
 #include <chrono>
-#include <string>
 #include <sstream>
-#include <vector>
 #include <algorithm>
-#include <strsafe.h>
-#include <Wingdi.h>
-#include <future>
 #include <regex>
 #include <io.h>
 #include <fcntl.h>
+#include <exception>
 
-#include <process.h>
+/* Documentation: https://github.com/nlohmann/json */
+#include <nlohmann\json.hpp>
+using json = nlohmann::json;
 
-// Gestione eventi windows
+// Gestione eventi windows // TODO: da eliminare
 #include <oleacc.h>
 #pragma comment (lib, "oleacc.lib")
 
-#include <cstdio>
-
-#include <exception>
-#include <typeinfo>
-#include <stdexcept>
-
-#include "WindowsNotificationService.h"
-#include "Helper.h"
-#include "Message.h" // qui sono definiti i tipi di operazione
-
-// Need to link with Ws2_32.lib
-#pragma comment (lib, "Ws2_32.lib")
-// #pragma comment (lib, "Mswsock.lib")
-
 #define DEFAULT_BUFLEN 1024
 
-#define MAX_RETRIES 3
-
 using namespace std;
-
 
 WindowsNotificationService::WindowsNotificationService()
 {
@@ -374,7 +356,6 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 	}
 }
 
-using json = nlohmann::json;
 void WindowsNotificationService::receiveCommands() {
 
 	// Ricevi finchè il client non chiude la connessione

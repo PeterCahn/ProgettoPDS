@@ -1,8 +1,14 @@
 #pragma once
-#include "stdafx.h"
+#define WIN32_LEAN_AND_MEAN
+
+#include <Windows.h>
+#include <Winsock2.h>
+#include <ws2tcpip.h>
+// Link with Ws2_32.lib
+#pragma comment (lib, "Ws2_32.lib")
+// #pragma comment (lib, "Mswsock.lib")
 
 #include <string>
-#include <typeinfo>
 
 enum operation;
 

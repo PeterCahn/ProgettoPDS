@@ -207,7 +207,7 @@
                                             <Style TargetType="{x:Type Image}"></Style>
                                         </Image.Style>
                                     </Image>
-                                    <TextBlock Width="auto" Text="{Binding Path='NomeFinestra'}" Margin="10,0,0,0"></TextBlock>
+                                    <TextBlock Width="auto" Text="{Binding Path='NomeFinestra'}" Margin="10,0,0,0" VerticalAlignment="Center"></TextBlock>
                                 </StackPanel>
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>

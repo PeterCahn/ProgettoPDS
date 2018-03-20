@@ -1,35 +1,13 @@
 #pragma once
 #define UNICODE
 
-#include "stdafx.h"
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <iostream>
-#include <thread>
-#include <chrono>
-#include <string>
-#include <sstream>
-#include <strsafe.h>
-#include <Wingdi.h>
-#include <future>
-#include <regex>
-#include <io.h>
-#include <fcntl.h>
-
-#include <process.h>
-
-#include <exception>
-#include <typeinfo>
-#include <stdexcept>
-
 #include "Server.h"
 #include "Helper.h"
 #include "MessageWithIcon.h"
 
-// Need to link with Ws2_32.lib
-#pragma comment (lib, "Ws2_32.lib")
-// #pragma comment (lib, "Mswsock.lib")
+#include <iostream>
+#include <regex>
+#include <exception>
 
 #define N_BYTE_TRATTINO 1
 #define N_BYTE_MSG_LENGTH 4
@@ -42,7 +20,6 @@
 #define HWND_SIZE (N_BYTE_HWND + N_BYTE_TRATTINO)
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
-
 
 Server::Server()
 {

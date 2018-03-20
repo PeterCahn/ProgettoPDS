@@ -1,6 +1,7 @@
 #pragma once
 #define UNICODE
 
+/* Per gestire MFC */
 #define _AFXDLL
 #include <afx.h>
 #include <afxwin.h>
@@ -8,16 +9,8 @@
 
 #include "Helper.h"
 
-#include <string>
-#include <iostream>
-#include <io.h>
-#include <strsafe.h>
-//#include <windows.h>
 #include <olectl.h>
-#include <algorithm>
-
 #pragma comment(lib, "oleaut32.lib")
-#pragma comment (lib, "Msimg32.lib")
 
 using namespace std;
 
@@ -60,7 +53,7 @@ struct ICONDIRENTRY
 	ULONG nDataLength; // length in bytes
 	ULONG nOffset; // offset of BMP or PNG data from beginning of file
 };
-BYTE& Helper::getIconBuffer(HICON hIcon, DWORD& szSize)
+BYTE& Helper::getIconBuffer(HICON hIcon, u_long& szSize)
 {
 	int nColorBits = 32;
 	BYTE* nullBuffer = nullptr;

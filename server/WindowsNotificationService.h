@@ -1,19 +1,11 @@
 #pragma once
-#include "stdafx.h"
+#include "Server.h"
 
 #include <map>
 #include <stdlib.h>
 #include <stdio.h>
-#include <iostream>
 #include <string>
-#include <sstream>
-#include <strsafe.h>
-#include <Wingdi.h>
 #include <future>
-#include <io.h>
-#include <fcntl.h>
-
-#include "Server.h"
 
 enum operation;
 

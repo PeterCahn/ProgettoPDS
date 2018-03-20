@@ -119,7 +119,6 @@
     <ClCompile Include="MessageWithIcon.cpp" />
     <ClCompile Include="MessageWithTitle.cpp" />
     <ClCompile Include="base64.cpp" />
-    <ClCompile Include="stdafx.cpp" />
     <ClCompile Include="WindowsNotificationService.cpp" />
     <ClCompile Include="Server.cpp" />
   </ItemGroup>
@@ -129,7 +128,6 @@
     <ClInclude Include="Message.h" />
     <ClInclude Include="MessageWithIcon.h" />
     <ClInclude Include="MessageWithTitle.h" />
-    <ClInclude Include="stdafx.h" />
     <ClInclude Include="WindowsNotificationService.h" />
     <ClInclude Include="Server.h" />
   </ItemGroup>
