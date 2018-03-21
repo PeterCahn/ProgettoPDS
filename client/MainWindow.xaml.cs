@@ -779,7 +779,7 @@ namespace WpfApplication1
                 {
                     // mostra e abilita
                     buttonCattura.IsEnabled = true;
-                    buttonCattura.Visibility = Visibility.Visible;  //
+                    buttonCattura.Visibility = Visibility.Visible; 
                     buttonAnnullaCattura.Visibility = Visibility.Hidden;
                     buttonAnnullaCattura.IsEnabled = false;
                 }
@@ -910,10 +910,6 @@ namespace WpfApplication1
         {
             // Mostra la textBox dove scrivere e il button Invia
             abilitaCatturaComando();
-
-            // Alternativa:
-            //_hookID = SetHook(_proc);
-
         }
 
         private void onButtonKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -928,6 +924,8 @@ namespace WpfApplication1
                     if (textBoxComando.Text.Length != 0)
                         textBoxComando.AppendText(" + ");
                     textBoxComando.AppendText(e.Key.ToString());
+
+                    Trace.Write("KeyDown - Key=" + e.Key.ToString() + "; SystemKey=" + e.SystemKey.ToString() + "\n");
                 }
             }
 
@@ -944,6 +942,9 @@ namespace WpfApplication1
             {
                 int virtualKey = KeyInterop.VirtualKeyFromKey(pressedKey);
                 comandoDaInviare.Add(virtualKey + "-");
+
+                Trace.Write("KeyUp - Key = " + e.Key.ToString() + "; SystemKey = " + e.SystemKey.ToString() + "\n");
+
                 if(commandsList.Contains(virtualKey))
                     commandsList.Remove(virtualKey);
                 else
@@ -974,7 +975,10 @@ namespace WpfApplication1
 
         private void onButtonPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            /* Nel caso della presenza di modifiers l'oggetto e.Key è leggibile correttamente solo nella perviewKeyDown e non nella keyDown, quindi gestiamo qui questo caso */
+            /* Nel caso della presenza di modifiers l'oggetto e.Key è leggibile correttamente solo nella perviewKeyDown e non nella keyDown, quindi gestiamo qui questo caso.
+             * NON prendiamo il caso in cui c'è il Modifier di Alt ma SystemKey è None perchè in quel caso significa che oltre ad Alt, che normalmente avrebbe SystemKey!=None,
+             * c'è anche qualche altro Modifier attivo (Ctrl, Shift, Win) ed in quel caso la key è riportata normalmente in e.Key
+             */
             if (!e.IsRepeat && (e.SystemKey != System.Windows.Input.Key.None) && (e.KeyboardDevice.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
             {
                 lock (comandoDaInviare)
@@ -984,11 +988,13 @@ namespace WpfApplication1
                     commandsList.Add(virtualKey);
                     if (textBoxComando.Text.Length != 0)
                         textBoxComando.AppendText(" + ");
-                    textBoxComando.AppendText(e.Key.ToString());
+                    textBoxComando.AppendText(e.SystemKey.ToString());
+
+                    Trace.Write("PreviewKeyDown1 - Key=" + e.Key.ToString() + "; SystemKey=" + e.SystemKey.ToString() + "\n");
                 }
                 e.Handled = true;
             }
-            if (!e.IsRepeat && ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) == ModifierKeys.Control 
+            if (!e.IsRepeat && !e.Handled && ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) == ModifierKeys.Control 
                 || (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift
                 || (e.KeyboardDevice.Modifiers & ModifierKeys.Windows) == ModifierKeys.Windows))
             {
@@ -1000,6 +1006,8 @@ namespace WpfApplication1
                     if (textBoxComando.Text.Length != 0)
                         textBoxComando.AppendText(" + ");
                     textBoxComando.AppendText(e.Key.ToString());
+
+                    Trace.Write("PreviewKeyDown2 - Key=" + e.Key.ToString() + "; SystemKey=" + e.SystemKey.ToString() + "\n");
                 }
                 e.Handled = true;
             }
