@@ -22,6 +22,11 @@
 #include <io.h>
 #include <fcntl.h>
 #include <exception>
+#include <ShObjIdl.h>
+
+// Per DwmGetWindowAttribute
+#include <dwmapi.h>
+#pragma comment (lib, "dwmapi.lib")
 
 /* Documentation: https://github.com/nlohmann/json */
 #include <nlohmann\json.hpp>
@@ -159,7 +164,7 @@ BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lPar
 
 	//DWORD process, thread;
 	//thread = GetWindowThreadProcessId(hWnd, &process);
-	
+
 	wstring windowTitle = Helper::getTitleFromHwnd(hWnd);
 
 	// Proteggere accesso a variabile condivisa "windows"
@@ -205,18 +210,68 @@ BOOL WindowsNotificationService::IsAltTabWindow(HWND hwnd)
 	GetTitleBarInfo(hwnd, &ti);
 	if (ti.rgstate[0] & STATE_SYSTEM_INVISIBLE)
 		return FALSE;
-	
+
 	// Non mostrare tool window
 	if (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)
 		return FALSE;
 
+	/* Alcune app di Windows 10 vengono lanciate all'avvio del SO oppure rimangono
+	 * dopo la loro apparente chiusura in uno stato sospeso in cui non sono visibili,
+	 * per essere poi avviate velocemente. Questo stato è detto "cloaked", verifichiamo
+	 * che fra quelle restituite da EnumWindowsProc non ce ve siano.
+	 * ATTENZIONE: anche le finestre che sono aperte davvero ma non nel desktop virtuale attuale sono segnalate come cloaked da Win10.
+	 * GetClassName() ci permette di capire quali sono Windows Store Apps, e poi andiamo a veririficare che la finestra sia davvero su qualche desktop
+	 */
+	BOOL status;
+	DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &status, sizeof(DWMWA_CLOAKED));
+	if (status != FALSE) {	// significa che la finestra è cloaked ed è una Windows Store App
+		TCHAR className[MAX_PATH];
+		GetClassName(hwnd, className, MAX_PATH);
+		if (wcscmp(className, L"ApplicationFrameWindow") == 0 || wcscmp(className, L"Windows.UI.Core.CoreWindow") == 0) {
+			return hasVirtualDesktop(hwnd);
+		}
+	}
 	return TRUE;
 }
+
+
+/* Verifica che l'applicazione UWP (le Windows Store Apps) sia effettivamente renderizzata su uno dei virtual desktop. 
+ * Se non lo è ed è cloaked, significa che è caricata in memoria (per questioni di ottimizzazione)
+ * ma non visibile, quindi non è da mostrare. Altrimenti, se ha un virtual desktop, significa che è cloaked solo
+ * perchè non è sul desktop corrente, e quindi è da mostrare fra le aperte.
+ */
+using namespace VirtualDesktops::API;
+bool WindowsNotificationService::hasVirtualDesktop(HWND hwnd) {
+	::CoInitialize(NULL);
+
+	bool foundAndValid = false;
+	IServiceProvider* pServiceProvider = nullptr;
+	HRESULT hr = ::CoCreateInstance(CLSID_ImmersiveShell, NULL, CLSCTX_LOCAL_SERVER, __uuidof(IServiceProvider), (PVOID*)&pServiceProvider);
+	GUID desktopId = { 0 };
+
+	if (SUCCEEDED(hr)) {
+		IVirtualDesktopManager *pDesktopManager = nullptr;
+		hr = pServiceProvider->QueryService(__uuidof(IVirtualDesktopManager), &pDesktopManager);
+
+		if (SUCCEEDED(hr))
+		{
+			hr = pDesktopManager->GetWindowDesktopId(hwnd, &desktopId);
+			if (SUCCEEDED(hr) && desktopId != GUID_NULL)
+				foundAndValid = true;
+
+			pDesktopManager->Release();
+			pDesktopManager = nullptr;
+		}
+		pServiceProvider->Release();
+	}
+
+	return foundAndValid;
+}
+
 
 void WINAPI WindowsNotificationService::notificationsManagement()
 {
 	try {
-
 		/* Stampa ed invia tutte le finestre con flag OPEN */
 		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
 		printMessage(TEXT("Finestre aperte:"));
@@ -298,7 +353,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 
 			/* Check variazione focus */
 			HWND tempForeground = GetForegroundWindow();
-			if (!IsAltTabWindow(tempForeground)) 
+			if (!IsAltTabWindow(tempForeground))
 				tempForeground = 0;	// HWND settato a 0 se tempForeground non è una window di interesse
 
 			if (tempForeground != currentForegroundHwnd) {
@@ -315,8 +370,8 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 				// E' una finestra che è gia stata inviata, quindi notifica il cambio focus
 				printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
 				printMessage(TEXT("- " + windowTitle));
-								
-				server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);				
+
+				server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
 				currentForegroundHwnd = tempForeground;
 			}
 
@@ -399,7 +454,7 @@ void WindowsNotificationService::receiveCommands() {
 				else if (j["operation"] == "comando") {
 					string virtualKey, stringUpToPlus;
 					vector<INPUT> keystroke;
-					
+
 					int tempHwnd = (int)j["hwnd"];
 					HWND targetHwnd = (HWND)tempHwnd;
 
@@ -417,7 +472,7 @@ void WindowsNotificationService::receiveCommands() {
 							input.ki.wScan = MapVirtualKey(vKey, MAPVK_VK_TO_VSC);	// Se usassimo KEYEVENTF_UNICODE in dwFlags, wScan specificherebbe il carettere UNICODE da inviare alla finestra in focus
 							if (isExtendedKey(vKey))				// Eventuali informazioni addizionali sull'evento (specifica se si tratta di una extendedKey o no)
 								input.ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_SCANCODE;
-							else	
+							else
 								input.ki.dwFlags = KEYEVENTF_SCANCODE;
 							input.ki.time = 0;						// Timestamp dell'evento. Settandolo a 0, il SO lo imposta in automatico
 							input.ki.dwExtraInfo = 0;				// Valore addizionale associato al keystroke, servirebbe ad indicare che il tasto premuto fa parte del tastierino numerico
@@ -512,7 +567,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 		wcout << "ERRORE! Il comando ricevuto non è ben formato." << endl;
 		return;
 	}
-	
+
 	// Ricava l'handle alla finestra verso cui indirizzare il keystroke
 	progHandle = GetForegroundWindow();
 

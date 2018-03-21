@@ -1,5 +1,6 @@
 #pragma once
 #include "Server.h"
+#include "VirtualDesktop.h"
 
 #include <map>
 #include <stdlib.h>
@@ -60,5 +61,7 @@ private:
 
 	static void CALLBACK HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
 	static unsigned CALLBACK hook(void* args);
+
+	static bool hasVirtualDesktop(HWND hwnd);
 };
 
