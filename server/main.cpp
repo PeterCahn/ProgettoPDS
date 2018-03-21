@@ -1,21 +1,21 @@
 #include "WindowsNotificationService.h"
+#include "CustomExceptions.h"
 #include <exception>
 #include <iostream>
 
 int main(int argc, char* argv[])
 {
-	WindowsNotificationService wns;
-
 	try {
+		WindowsNotificationService wns;
 		wns.start();
 	}
+	catch (CtrlCHandlingException) {
+		return -1;
+	}
 	catch (exception& ex) {
-		//wcout << ex.what() << endl;
-		wns.stop();
+		return -1;
 	}
 		
-	//system("pause");
-
 	return 0;
 }
 

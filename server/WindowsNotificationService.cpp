@@ -10,6 +10,7 @@
 #include "WindowsNotificationService.h"
 #include "Helper.h"
 #include "Message.h"	// qui sono definiti i tipi di operazione
+#include "CustomExceptions.h"
 
 #include <iostream>
 #include <thread>
@@ -38,23 +39,6 @@ using json = nlohmann::json;
 
 using namespace std;
 
-WindowsNotificationService::WindowsNotificationService()
-{
-	_setmode(_fileno(stdout), _O_U16TEXT);
-
-	/* Inizializza l'exception_ptr per gestire eventuali exception nel background thread */
-	globalExceptionPtr = nullptr;
-	numberRetries = 0;
-	retry = false;
-
-	windows = map<HWND, wstring>();
-
-}
-
-WindowsNotificationService::~WindowsNotificationService()
-{
-}
-
 /* Per uscire dal servizio */
 volatile bool isRunning = true;
 BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
@@ -70,32 +54,50 @@ BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
 	}
 }
 
+WindowsNotificationService::WindowsNotificationService()
+{
+	_setmode(_fileno(stdout), _O_U16TEXT);
+		
+	numberRetries = 0;
+	retry = false;
+
+	windows = map<HWND, wstring>();
+
+	/* Setta la control routine per gestire il CTRL-C: chiude la connessione con il client per rimettersi in attesa */
+	if (!SetConsoleCtrlHandler(HandlerRoutine, TRUE))
+		throw CtrlCHandlingException("Impossibile settare il control handler.");
+
+}
+
+WindowsNotificationService::~WindowsNotificationService()
+{
+	/* Sgancia la control routine per gestire il CTRL-C: chiude la connessione con il client per rimettersi in attesa */
+	SetConsoleCtrlHandler(HandlerRoutine, FALSE);
+}
+
+
 void WindowsNotificationService::start()
 {
 	/* Avvia il server */
-	if (server.leggiPorta() < 0)
-		throw exception("Impossibile avviare il server. Impossibile leggere porta.");
+	if (server.leggiPorta() < 0) {
+		printMessage(TEXT("Impossibile leggere porta."));
+		return;
+	}
 
-	/* Settato a false dall'handler per CTRL-C (TODO: così è visto solo alla prossima iterazione) */
+	/* isRunning: settato a false dall'handler di CTRL-C */
 	while (isRunning) {
 
 		/* Avvia il server */
-		if (server.avviaServer() < 0)
-			throw exception("Impossibile avviare il server.");
-		if (!server.validServer()) {
-			printMessage(TEXT("Istanza di server creata non valida.Riprovare."));
+		if (server.avviaServer() < 0) {
+			printMessage(TEXT("Impossibile avviare il server."));
 			return;
 		}
 
 		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
-		if (server.acceptConnection() < 0)
-			throw exception("Impossibile accettare nuove connessioni.");
-
-		/* Setta la control routine per gestire il CTRL-C: chiude la connessione con il client per rimettersi in attesa */
-		if (!SetConsoleCtrlHandler(HandlerRoutine, TRUE)) {
-			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
+		if (server.acceptConnection() < 0) {
+			printMessage(TEXT("Impossibile accettare nuove connessioni."));
 			return;
-		}
+		}		
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
@@ -110,38 +112,25 @@ void WindowsNotificationService::start()
 			stopNotificationsThread.set_value(TRUE);
 			notificationsThread.join();
 
-			/* Se un'eccezione si è verificata ed è stata settata nel background thread, viene rilanciata ora nel main thread */
-			if (globalExceptionPtr) rethrow_exception(globalExceptionPtr);
-
 		}
 		catch (system_error se) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "ERRORE nella creazione del thread 'notificationsThread': " << se.what() << endl;
+			printMessage(TEXT("Errore nella gestione del thread 'notificationsThread'."));
+
+			// Si è verificata un'eccezione nei thread che gestiscono la connessione con il client.
+			server.chiudiConnessioneClient();
+
 			return;
 		}
 		catch (exception)
 		{
-			// Si è verificata un'eccezione nei thread che gestiscono la connessione con il client.		
-			/* Setta la control routine per gestire il CTRL-C */
-			if (!SetConsoleCtrlHandler(HandlerRoutine, FALSE)) {
-				printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
-				return;
-			}
+			// Si è verificata un'eccezione
 			server.chiudiConnessioneClient();
-			continue;
+
+			return;
 		}
 
-		/* Chiudi connessione con il client prima di provare a reiterare sul while */
+		/* Chiudi connessione con il client prima di provare a reiterare sul while e ad attendere un nuova connessione */
 		server.chiudiConnessioneClient();
-
-		/* Se è stato premuto CTRL-C 'isRunning' è a false e quindi si può evitare di ciclare di nuovo uscendo dal servizio */
-		if (isRunning) {
-			/* Setta la control routine per gestire il CTRL-C */
-			if (!SetConsoleCtrlHandler(HandlerRoutine, FALSE)) {
-				printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
-				return;
-			}
-			continue;
-		}
 	}
 }
 
@@ -153,13 +142,8 @@ void WindowsNotificationService::stop()
 BOOL CALLBACK WindowsNotificationService::EnumWindowsProc(HWND hWnd, LPARAM lParam)
 {
 	map<HWND, wstring>* windows2 = reinterpret_cast<map<HWND, wstring>*> (lParam);
-
-	//DWORD process, thread;
-	//thread = GetWindowThreadProcessId(hWnd, &process);
-
 	wstring windowTitle = Helper::getTitleFromHwnd(hWnd);
 
-	// Proteggere accesso a variabile condivisa "windows"
 	if (IsAltTabWindow(hWnd))
 		windows2->insert(pair<HWND, wstring>(hWnd, windowTitle));
 
@@ -259,7 +243,6 @@ bool WindowsNotificationService::hasVirtualDesktop(HWND hwnd) {
 
 	return foundAndValid;
 }
-
 
 void WINAPI WindowsNotificationService::notificationsManagement()
 {
@@ -369,37 +352,31 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 
 			swap(windows, tempWindows);
 
-			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): in caso positivo,
-				manda un messaggio al client per chiudere la connessione*/
+			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): 
+			 * in caso positivo, manda un messaggio al client per chiudere la connessione
+			 */
 			if (!isRunning) {
 				printMessage(TEXT("Gestione finestre in chiusura..."));
 				server.sendMessageToClient(ERROR_CLOSE);
+				server.chiudiConnessioneClient();
 				isRunning = true;
 				return;
-				//throw exception("Chiusura forzata.");
 			}
 		}
 
 	}
 	catch (future_error)
 	{
-		// cosa fare?
-		globalExceptionPtr = current_exception();
+		// Eccezione generata dal future
+		printMessage(TEXT("Temporizzazione del thread fallita."));
+		server.sendMessageToClient(ERROR_CLOSE);
+		server.chiudiConnessioneClient();
 		return;
 	}
 	catch (exception)
 	{
 		// catch anything thrown within try block that derives from std::exception			
-		globalExceptionPtr = current_exception();
 		return;
-	}
-	catch (...)
-	{
-		//Set the global exception pointer in case of an exception
-		globalExceptionPtr = current_exception();
-
-		/* E' stata scatenata un'eccezione. Notificalo al client per chiudere la connessione. */
-		server.sendMessageToClient(ERROR_CLOSE);
 	}
 }
 
@@ -423,8 +400,8 @@ void WindowsNotificationService::receiveCommands() {
 				stringaRicevuta += '\0';
 				j = json::parse(stringaRicevuta);
 			}
-			catch (json::exception e) {
-				printMessage(TEXT("Json ricevuto dal client malformato."));
+			catch (json::exception) {
+				printMessage(TEXT("JSON ricevuto dal client malformato."));
 				continue;
 			}
 			catch (exception ex)
@@ -432,16 +409,12 @@ void WindowsNotificationService::receiveCommands() {
 				printMessage(TEXT("Errore durante il parse del messaggio ricevuto."));
 				continue;
 			}
-			catch (...)
-			{
-				continue;
-			}
 
 			if (j.find("operation") != j.end()) {
 				// C'è il campo "operation"
 				if (j["operation"] == "CLSCN") {
-
 					printMessage(TEXT("Il client ha richiesta la disconnessione."));
+					server.chiudiConnessioneClient();
 				}
 				else if (j["operation"] == "comando") {
 					string virtualKey, stringUpToPlus;

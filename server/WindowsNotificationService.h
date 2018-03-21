@@ -29,8 +29,6 @@ private:
 		
 	/* "After creating a window, the creation function returns a window handle that uniquely identifies the window [ndr. HWND]." */
 	map<HWND, wstring> windows;
-
-	exception_ptr globalExceptionPtr;
 	
 	/* Per notificare al notificationsThread di terminare il suo lavoro */
 	promise<bool> stopNotificationsThread;

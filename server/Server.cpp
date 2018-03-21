@@ -38,8 +38,7 @@ Server::Server()
 Server::~Server()
 {
 	/* Se non è stato ancora chiuso il client socket, chiudilo insieme alla connessione con il client */
-	if(validClient())
-		chiudiConnessioneClient();
+	chiudiConnessioneClient();
 
 	/* Arresta il server rilasciando le sue risorse (close del listeningSocket) */
 	arrestaServer();
@@ -177,11 +176,12 @@ int Server::acceptConnection()
 	SOCKET newClientSocket;
 
 	/* Setta la control routine per gestire il CTRL-C: chiude il server */
+	/*
 	if (!SetConsoleCtrlHandler(StopServer, TRUE)) {
 		printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
 		return -1;
 	}
-
+	*/
 	while (runningServer) {		
 
 		try {
@@ -225,12 +225,12 @@ int Server::acceptConnection()
 		catch (exception& ex) {
 			wcout << "[" << GetCurrentThreadId() << "] " << "Eccezione lanciata durante l'accettazione del client: " << ex.what() << endl;
 		}
-
+		/*
 		if (!SetConsoleCtrlHandler(StopServer, FALSE)) {
 			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
 			return 0;
 		}
-
+		*/
 	}
 
 	return 0;
@@ -238,7 +238,8 @@ int Server::acceptConnection()
 
 void Server::chiudiConnessioneClient()
 {
-	closesocket(clientSocket);
+	if(validClient())
+		closesocket(clientSocket);
 }
 
 void Server::arrestaServer()
@@ -258,8 +259,8 @@ void Server::arrestaServer()
 void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 	
 	u_long msgLength = 0;
-	Message* message = NULL;
-	BYTE* lpPixels = NULL;
+	Message* message = nullptr;
+	BYTE* lpPixels = nullptr;
 	
 	try {
 
@@ -356,7 +357,7 @@ int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 			printMessage(TEXT("Connessione chiusa dal client."));
 		}
 		else
-			printMessage(TEXT("recv() fallita con errore : " + WSAGetLastError()));			
+			printMessage(TEXT("Errore durante la ricezione dei dati."));			
 	}
 
 	return iResult;
