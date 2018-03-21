@@ -10,10 +10,12 @@ int main(int argc, char* argv[])
 		wns.start();
 	}
 	catch (exception& ex) {
-		wcout << ex.what() << endl;
+		//wcout << ex.what() << endl;
 		wns.stop();
 	}
 		
+	//system("pause");
+
 	return 0;
 }
 

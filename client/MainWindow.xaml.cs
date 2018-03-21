@@ -222,9 +222,11 @@ namespace WpfApplication1
             }
             catch (SocketException se)
             {
-                int errorCode = se.ErrorCode;
+                SocketError errorCode = se.SocketErrorCode;
                 if (errorCode.Equals(SocketError.TimedOut))
                     System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.", "Client - Avviso");
+                else if (errorCode.Equals(SocketError.ConnectionRefused))
+                    System.Windows.MessageBox.Show("Rifiuto della connessione da parte del server " + connectingIp + ":" + connectingPort + ".", "Client - Avviso");
                 else
                     System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.", "Client - Avviso");
 
@@ -240,15 +242,17 @@ namespace WpfApplication1
                 // Il task è stato cancellato se AggregateException.InnerException contiene un TaskCanceledException
                 // Gestiamo solo il caso di SocketException per capire se c'è stato un timeout.                
 
-                ae.Handle(ex => {                    
+                ae.Handle(ex => {
 
                     if (ex is SocketException)
                     {
                         SocketException exception = (SocketException) ex;
-                        int errorCode = exception.ErrorCode;
+                        SocketError errorCode = exception.SocketErrorCode;
 
                         if (errorCode.Equals(SocketError.TimedOut))
                             System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.", "Client - Avviso");
+                        else if(errorCode.Equals(SocketError.ConnectionRefused))
+                            System.Windows.MessageBox.Show("Rifiuto della connessione da parte del server " + connectingIp + ":" + connectingPort + ".", "Client - Avviso");
                         else
                             System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.", "Client - Avviso");
                     }
