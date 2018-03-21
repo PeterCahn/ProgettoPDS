@@ -31,6 +31,7 @@ namespace client
         }
         private DateTime connectionTime;
         private DateTime lastUpdate { get; set; }
+        private bool firstFocus = true;
 
         public MyTable()
         {
@@ -41,10 +42,6 @@ namespace client
 
             // Rendi la finestra non visibile
             Finestre.First().Visible = false;
-
-            // Inizializza i tempi per l'aggiornamento delle statistiche
-            connectionTime = DateTime.Now;
-            lastUpdate = connectionTime;
         }
 
         ~MyTable()
@@ -60,10 +57,21 @@ namespace client
             }            
         }
 
+        public void setConnectionTime()
+        {
+            connectionTime = DateTime.Now;
+            lastUpdate = connectionTime;
+        }
+
         public void changeFocus(int hwnd)
         {
             lock (_finestre)
             {
+                if(firstFocus)
+                {
+                    setConnectionTime();
+                    firstFocus = false;
+                }
                 bool trovato = false;
                 int indexOfFocus = -1;
                 foreach (Finestra finestra in Finestre)

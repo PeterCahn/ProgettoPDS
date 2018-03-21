@@ -295,7 +295,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		future<bool> f = stopNotificationsThread.get_future();
 		while (f.wait_for(chrono::seconds(0)) != future_status::ready && isRunning) {
 			// Esegui ogni mezzo secondo
-			this_thread::sleep_for(chrono::milliseconds(500));
+			this_thread::sleep_for(chrono::milliseconds(250));
 
 			/* Variazioni lista programmi */
 			map<HWND, wstring> tempWindows;

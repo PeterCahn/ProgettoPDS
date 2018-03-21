@@ -37,7 +37,7 @@ namespace WpfApplication1
 {
     public partial class MainWindow : Window
     {
-        private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 500;
+        private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 250;
         private static List<string> comandoDaInviare = new List<string>();
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
