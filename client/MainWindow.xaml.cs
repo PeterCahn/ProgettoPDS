@@ -943,7 +943,7 @@ namespace WpfApplication1
                 int virtualKey = KeyInterop.VirtualKeyFromKey(pressedKey);
                 comandoDaInviare.Add(virtualKey + "-");
 
-                Trace.Write("KeyUp - Key = " + e.Key.ToString() + "; SystemKey = " + e.SystemKey.ToString() + "\n");
+                Trace.Write("KeyUp - Key=" + e.Key.ToString() + "; SystemKey=" + e.SystemKey.ToString() + "\n");
 
                 if(commandsList.Contains(virtualKey))
                     commandsList.Remove(virtualKey);
