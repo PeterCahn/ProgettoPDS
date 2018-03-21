@@ -1,6 +1,4 @@
 /* TODO:
-- Deallocazione risorse
-- Verificare se il thread muore davvero in ogni situazione critica
 - Gestione eccezioni
 - Si riesce a terminare l'invio di finestre al client corrente e ad aspettare il prossimo,
 	ma non a terminare il server mentre è in attesa sulla accept o sulla lettura della porta.
@@ -55,8 +53,6 @@ WindowsNotificationService::WindowsNotificationService()
 
 WindowsNotificationService::~WindowsNotificationService()
 {
-	printMessage(TEXT("WindowsNotificationsService chiuso."));
-
 }
 
 /* Per uscire dal servizio */
@@ -65,7 +61,6 @@ BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
 	switch (dwCtrlType)
 	{
 	case CTRL_C_EVENT:
-		//printf("[Ctrl]+C\n");
 		isRunning = false;
 		// Signal is handled - don't pass it on to the next handler
 		return TRUE;

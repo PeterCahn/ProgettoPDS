@@ -242,7 +242,7 @@ namespace WpfApplication1
                 // Il task è stato cancellato se AggregateException.InnerException contiene un TaskCanceledException
                 // Gestiamo solo il caso di SocketException per capire se c'è stato un timeout.                
 
-                ae.Handle(ex => {                    
+                ae.Handle(ex => {
 
                     if (ex is SocketException)
                     {

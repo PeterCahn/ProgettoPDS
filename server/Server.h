@@ -48,6 +48,8 @@ private:
 	SOCKET listeningSocket;	// Il socket del server
 	string listeningPort;	// La porta su cui ascoltare connessioni in entrata
 
+	bool retryInputPort;
+
 	void printMessage(wstring string);
 
 };

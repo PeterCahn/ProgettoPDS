@@ -31,6 +31,8 @@ Server::Server()
 		wcout << "[" << GetCurrentThreadId() << "] " << "ServerClass non inizializzata correttamente." << endl;
 		return;
 	}
+
+	retryInputPort = false;
 }
 
 Server::~Server()
@@ -52,7 +54,6 @@ BOOL WINAPI StopServer(_In_ DWORD dwCtrlType) {
 	switch (dwCtrlType)
 	{
 	case CTRL_C_EVENT:
-		//printf("[Ctrl]+C\n");
 		runningServer = false;
 		// Signal is handled - don't pass it on to the next handler
 		return TRUE;
@@ -65,12 +66,6 @@ BOOL WINAPI StopServer(_In_ DWORD dwCtrlType) {
 /* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
 int Server::leggiPorta()
 {
-	/* Setta la control routine per gestire il CTRL-C: chiude il server */
-	if (!SetConsoleCtrlHandler(StopServer, TRUE)) {
-		printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
-		return -1;
-	}
-
 	printMessage(TEXT("Inserire la porta su cui ascoltare: "));
 
 	/* Ottieni porta su cui ascoltare */
@@ -80,26 +75,24 @@ int Server::leggiPorta()
 	{
 		cin >> porta;
 		
-		if (!runningServer)
+		// Se è stato premuto CTRL-C, viene settato runningServer a false, l'input viene terminato e si esce
+		if (!runningServer )
 			return -1;
 
+		// Se non è stato premuto CTRL-C, ma ci sono problemi con cin, ritorna.
 		if (!cin.good()) {
 			printMessage(TEXT("Errore nella lettura. Riprovare."));
-			/* TODO: Tentativo di recupuperare 'cin" */
 			return -1;
 		}
-		else if (!regex_match(porta, portRegex)) {
-			wcout << "\n[" << GetCurrentThreadId() << "] " << "Intervallo ammesso per il valore della porta: [1024-65535]" << endl;
+		else if (!regex_match(porta, portRegex)) {	// Porta inserita non soddisfa la regex
+			printMessage(TEXT("Intervallo ammesso per il valore della porta: [1024-65535]"));
 		}
-		else
+		else	// Tutto è andato a buon fine, porta letta, ora esci dal ciclo con il break
 			break;
 		
 	}
 	listeningPort = porta;
-
-	if (!runningServer)
-		return -1;
-
+	
 	return 0;
 }
 
@@ -130,9 +123,14 @@ int Server::avviaServer()
 		if (iResult == SOCKET_ERROR) {
 			int errorCode = WSAGetLastError();
 
-			wcout << "[" << GetCurrentThreadId() << "] " << "bind() fallita con errore: " << WSAGetLastError() << endl;
-			if (errorCode == WSAEADDRINUSE)
+			if (errorCode == WSAEADDRINUSE) {
 				wcout << "[" << GetCurrentThreadId() << "] " << "Porta " << atoi(listeningPort.c_str()) << " già in uso. Scegliere un'altra porta." << endl;
+
+				if (leggiPorta() < 0) {
+					return -1;
+				}
+				continue;
+			}
 
 			closesocket(listeningSocket);
 			listeningSocket = INVALID_SOCKET;
@@ -166,9 +164,8 @@ int CALLBACK checkRunningServer(
 	IN DWORD_PTR dwCallbackData
 )
 {
-	if (runningServer) {		
-		return CF_ACCEPT;
-	}
+	if (runningServer)
+		return CF_ACCEPT;	
 	else
 		return CF_REJECT;
 }
@@ -178,6 +175,12 @@ int Server::acceptConnection()
 {
 	int iResult = 0;
 	SOCKET newClientSocket;
+
+	/* Setta la control routine per gestire il CTRL-C: chiude il server */
+	if (!SetConsoleCtrlHandler(StopServer, TRUE)) {
+		printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
+		return -1;
+	}
 
 	while (runningServer) {		
 
