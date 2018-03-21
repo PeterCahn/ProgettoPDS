@@ -19,10 +19,12 @@ namespace client
     class MyTable : AsyncObservableCollection<Finestra>
     {
         private ObservableCollection<Finestra> _finestre;
-        public AsyncObservableCollection<Finestra> Finestre {
-            get { return (AsyncObservableCollection<Finestra>) _finestre; }
-            set {
-                if(_finestre != value)
+        public AsyncObservableCollection<Finestra> Finestre
+        {
+            get { return (AsyncObservableCollection<Finestra>)_finestre; }
+            set
+            {
+                if (_finestre != value)
                 {
                     _finestre = value;
                     OnPropertyChanged(new PropertyChangedEventArgs("Finestre"));
@@ -54,7 +56,7 @@ namespace client
             lock (_finestre)
             {
                 Finestre.Add(new Finestra(hwnd, nomeFinestra, statoFinestra, tempoFocusPerc, tempoFocus, icona));
-            }            
+            }
         }
 
         public void setConnectionTime()
@@ -67,7 +69,7 @@ namespace client
         {
             lock (_finestre)
             {
-                if(firstFocus)
+                if (firstFocus)
                 {
                     setConnectionTime();
                     firstFocus = false;
@@ -118,7 +120,7 @@ namespace client
                     }
             }
         }
-           
+
         public void cambiaTitoloFinestra(int hwnd, string nomeFinestra)
         {
             lock (_finestre)
@@ -127,10 +129,10 @@ namespace client
                 {
                     if (finestra.Hwnd.Equals(hwnd))
                     {
-                        finestra.NomeFinestra = nomeFinestra;                        
+                        finestra.NomeFinestra = nomeFinestra;
                         break;
                     }
-                }                
+                }
             }
         }
 
@@ -148,12 +150,12 @@ namespace client
                     {
                         finestra.TempoFocus += timeDifference.TotalMilliseconds;
                     }
-                    
+
                     // Calcola la percentuale
                     double perc = (finestra.TempoFocus / (now - connectionTime).TotalMilliseconds) * 100;
 
-                    finestra.TempoFocusPerc = Math.Round(perc, 2); // arrotonda la percentuale mostrata a due cifre dopo la virgola
-                    
+                    finestra.TempoFocusPerc = Math.Round(perc, 0).ToString(); // arrotonda la percentuale mostrata a due cifre dopo la virgola
+
                 }
 
                 lastUpdate = DateTime.Now;
@@ -184,7 +186,7 @@ namespace client
         private int _hwnd { get; set; }
         private string _nomeFinestra { get; set; }
         private string _statoFinestra { get; set; }
-        private double _tempoFocusPerc { get; set; }
+        private string _tempoFocusPerc { get; set; }
         private double _tempoFocus { get; set; }
         private ImageSource _icona { get; set; }
         private bool _visible { get; set; }
@@ -198,7 +200,7 @@ namespace client
                 {
                     _hwnd = value;
                     OnPropertyChanged(this, "Hwnd");
-                }                    
+                }
             }
         }
         public string NomeFinestra
@@ -225,14 +227,21 @@ namespace client
                 }
             }
         }
-        public double TempoFocusPerc
+        public string TempoFocusPerc
         {
             get { return _tempoFocusPerc; }
             set
             {
-                if (_tempoFocusPerc != value)
+                if (_tempoFocusPerc != null)
                 {
-                    _tempoFocusPerc = value;
+                    if (_tempoFocusPerc.CompareTo(value) != 0)
+                    {
+                        _tempoFocusPerc = value + "%";
+                        OnPropertyChanged(this, "TempoFocusPerc");
+                    }
+                }
+                else {
+                    _tempoFocusPerc = value + "%";
                     OnPropertyChanged(this, "TempoFocusPerc");
                 }
             }
@@ -272,7 +281,7 @@ namespace client
                     _visible = value;
                     OnPropertyChanged(this, "Visible");
                 }
-                
+
             }
         }
 
@@ -293,7 +302,7 @@ namespace client
             Hwnd = hwnd;
             NomeFinestra = nomeFinestra;
             StatoFinestra = statoFinestra;
-            TempoFocusPerc = tempoFocusPerc;
+            TempoFocusPerc = tempoFocusPerc.ToString();
             TempoFocus = tempoFocus;
             Icona = icona;
             Visible = true;

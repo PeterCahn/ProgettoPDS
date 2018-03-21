@@ -925,7 +925,9 @@ namespace WpfApplication1
                     int virtualKey = KeyInterop.VirtualKeyFromKey(e.Key);
                     comandoDaInviare.Add(virtualKey + "+");
                     commandsList.Add(virtualKey);
-                    textBoxComando.AppendText(e.Key.ToString() + "+");
+                    if (textBoxComando.Text.Length != 0)
+                        textBoxComando.AppendText(" + ");
+                    textBoxComando.AppendText(e.Key.ToString());
                 }
             }
 
@@ -963,7 +965,6 @@ namespace WpfApplication1
                     e.Handled = true;
                     return;
                 }
-                textBoxComando.AppendText(pressedKey.ToString() + "-");
                 if (commandsList.Count == 0)
                     buttonInvia_Click();
             }
@@ -981,7 +982,9 @@ namespace WpfApplication1
                     int virtualKey = KeyInterop.VirtualKeyFromKey(e.SystemKey);
                     comandoDaInviare.Add(virtualKey + "+");
                     commandsList.Add(virtualKey);
-                    textBoxComando.AppendText(e.SystemKey.ToString() + "+");
+                    if (textBoxComando.Text.Length != 0)
+                        textBoxComando.AppendText(" + ");
+                    textBoxComando.AppendText(e.Key.ToString());
                 }
                 e.Handled = true;
             }
@@ -994,7 +997,9 @@ namespace WpfApplication1
                     int virtualKey = KeyInterop.VirtualKeyFromKey(e.Key);
                     comandoDaInviare.Add(virtualKey + "+");
                     commandsList.Add(virtualKey);
-                    textBoxComando.AppendText(e.Key.ToString() + "+");
+                    if (textBoxComando.Text.Length != 0)
+                        textBoxComando.AppendText(" + ");
+                    textBoxComando.AppendText(e.Key.ToString());
                 }
                 e.Handled = true;
             }
