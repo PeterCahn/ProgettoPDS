@@ -71,6 +71,8 @@ int Server::leggiPorta()
 		return -1;
 	}
 
+	printMessage(TEXT("Inserire la porta su cui ascoltare: "));
+
 	/* Ottieni porta su cui ascoltare */
 	string porta;
 	regex portRegex("102[4-9]|10[3-9][0-9]|11[0-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
@@ -82,7 +84,7 @@ int Server::leggiPorta()
 			return -1;
 
 		if (!cin.good()) {
-			wcout << "\n[" << GetCurrentThreadId() << "] " << "Errore nella lettura. Riprovare." << endl;
+			printMessage(TEXT("Errore nella lettura. Riprovare."));
 			/* TODO: Tentativo di recupuperare 'cin" */
 			return -1;
 		}
@@ -104,22 +106,11 @@ int Server::leggiPorta()
 /* Avvia il server settando la listeningPort */
 int Server::avviaServer()
 {
-	int iResult;
-	
+	int iResult;	
 	listeningSocket = INVALID_SOCKET;
 
 	while (true) 
 	{
-		wcout << "[" << GetCurrentThreadId() << "] " << "Inserire la porta su cui ascoltare: ";
-		int res = leggiPorta();
-		if (res < 0)
-			return res;
-
-		if (!listeningPort.compare("")) {
-			/* Tentativo di recupuperare 'cin' */
-			continue;
-		}
-
 		// Creazione socket
 		listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (listeningSocket == INVALID_SOCKET) {
@@ -222,6 +213,8 @@ int Server::acceptConnection()
 			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
 			clientSocket = newClientSocket;
+
+			closesocket(listeningSocket);
 
 			if (validClient() && runningServer)
 				break;

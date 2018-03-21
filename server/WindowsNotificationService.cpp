@@ -77,23 +77,20 @@ BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
 
 void WindowsNotificationService::start()
 {
-	/* Tentativo di sganciare un thread per raccogliere i messaggi nella coda degli eventi windows delle finestre monitorate.
-		Gestione eventi windows (semplificato ed adattato), preso spunto da qui: http://www.cplusplus.com/forum/windows/58791/
-		NB: Togli commento dalla prossima riga per ascoltare gli eventi.
-			Le righe successive non verranno eseguite perchè la hook esegue un ciclo while continuo (vedi funzione hook)
-	*/
-	//thread t(hook, this);
-
 	/* Avvia il server */
-	if (server.avviaServer() < 0)
-		throw exception("Impossibile avviare il server.");
-	if (!server.validServer()) {
-		printMessage(TEXT("Istanza di server creata non valida.Riprovare."));
-		return;
-	}
+	if (server.leggiPorta() < 0)
+		throw exception("Impossibile avviare il server. Impossibile leggere porta.");
 
 	/* Settato a false dall'handler per CTRL-C (TODO: così è visto solo alla prossima iterazione) */
 	while (isRunning) {
+
+		/* Avvia il server */
+		if (server.avviaServer() < 0)
+			throw exception("Impossibile avviare il server.");
+		if (!server.validServer()) {
+			printMessage(TEXT("Istanza di server creata non valida.Riprovare."));
+			return;
+		}
 
 		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
 		if (server.acceptConnection() < 0)
