@@ -170,26 +170,28 @@ int Server::acceptConnection()
 
 			printMessage(TEXT("In attesa della connessione di un client..."));
 
-		struct sockaddr_in clientSockAddr;
-		int nameLength = sizeof(clientSockAddr);
+			struct sockaddr_in clientSockAddr;
+			int nameLength = sizeof(clientSockAddr);
 
 			// Accetta la connessione
-			newClientSocket = accept(listeningSocket, NULL, NULL);
+			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &nameLength, NULL, NULL);
+			//newClientSocket = accept(listeningSocket, NULL, NULL);
 			if (newClientSocket == INVALID_SOCKET) 
 				throw InternalServerStartError("accept() fallita con errore.", WSAGetLastError());			
 			
 			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
 			int port = ntohs(clientSockAddr.sin_port);
 
-		char ipstr[INET_ADDRSTRLEN];
-		inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
+			char ipstr[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
 
-		wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << endl;
+			wcout << "[" << GetCurrentThreadId() << "] " << "Per terminare la connessione con il client premere CTRL-C." << endl;
 
-		clientSocket = newClientSocket;
-		closesocket(listeningSocket);
+			clientSocket = newClientSocket;
+			closesocket(listeningSocket);
 
-			if (!validClient())
+			if (validClient())
 				break;
 		}
 		catch (InternalServerStartError& isse)
