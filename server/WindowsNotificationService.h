@@ -52,14 +52,9 @@ private:
 	/* Usato per fare una cernita delle finestre restituite da EnumWindowsProc da aggiungere a 'windows' */
 	static BOOL IsAltTabWindow(HWND hwnd);	
 
-	void printMessage(wstring string);
-	
-	/* In più */
-	HWINEVENTHOOK g_hook;	// Per funzionalità di cattura eventi
-
-	static void CALLBACK HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
-	static unsigned CALLBACK hook(void* args);
-
+	/* Indica se la finestra a cui corrisponde l'HWND è effettivamente presente su uno dei virtual desktops */
 	static bool hasVirtualDesktop(HWND hwnd);
+
+	void printMessage(wstring string);
 };
 

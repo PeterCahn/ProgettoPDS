@@ -30,7 +30,7 @@ Server::Server()
 
 	// Inizializza Winsock
 	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {		
+	if (iResult != 0) {
 		wcout << "[" << GetCurrentThreadId() << "] " << "ServerClass non inizializzata correttamente." << endl;
 		return;
 	}
@@ -54,7 +54,7 @@ Server::~Server()
 int Server::leggiPorta()
 {
 	printMessage(TEXT("Inserire la porta su cui ascoltare: "));
-	
+
 	/* Ottieni porta su cui ascoltare */
 	string porta;
 	regex portRegex("102[4-9]|10[3-9][0-9]|11[0-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
@@ -81,10 +81,10 @@ int Server::leggiPorta()
 /* Avvia il server settando la listeningPort */
 int Server::avviaServer()
 {
-	int iResult;	
+	int iResult;
 	listeningSocket = INVALID_SOCKET;
 
-	while (true) 
+	while (true)
 	{
 		try {
 			// Creazione socket
@@ -121,9 +121,11 @@ int Server::avviaServer()
 
 					if (leggiPorta() < 0) {
 						throw ReadPortNumberException("Impossibile settare la porta al server.");
-					}else
+					}
+					else
 						continue;
-				}else
+				}
+				else
 					throw InternalServerStartError("bind() fallita con errore.", WSAGetLastError());
 			}
 
@@ -140,13 +142,13 @@ int Server::avviaServer()
 
 			tentativiAvvioServer++;
 			if (tentativiAvvioServer < MAX_TENTATIVI_RIAVVIO_SERVER)
-				continue;			
+				continue;
 			else	// notifica ai livelli successivi solo se non è possibile avviare il server dopo MAX_TENTATIVI_RIAVVIO_SERVER
 				throw InternalServerStartError("Tentativo di avviare il server fallito.", -1);
-			
+
 		}
-		catch(ReadPortNumberException &rpne){
-			throw rpne;	// notifica ai livelli successivi
+		catch (ReadPortNumberException &rpne) {
+			throw rpne;		// notifica ai livelli successivi
 		}
 
 		if (validServer())	// server avviato con successo: break
@@ -168,8 +170,8 @@ int Server::acceptConnection()
 
 			printMessage(TEXT("In attesa della connessione di un client..."));
 
-			struct sockaddr_in clientSockAddr;			
-			int nameLength = sizeof(clientSockAddr);
+		struct sockaddr_in clientSockAddr;
+		int nameLength = sizeof(clientSockAddr);
 
 			// Accetta la connessione
 			newClientSocket = accept(listeningSocket, NULL, NULL);
@@ -179,13 +181,13 @@ int Server::acceptConnection()
 			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
 			int port = ntohs(clientSockAddr.sin_port);
 
-			char ipstr[INET_ADDRSTRLEN];
-			inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
+		char ipstr[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &clientSockAddr.sin_addr, ipstr, INET_ADDRSTRLEN);
 
-			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
+		wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
-			clientSocket = newClientSocket;
-			closesocket(listeningSocket);
+		clientSocket = newClientSocket;
+		closesocket(listeningSocket);
 
 			if (!validClient())
 				break;
@@ -204,7 +206,7 @@ int Server::acceptConnection()
 
 void Server::chiudiConnessioneClient()
 {
-	if(validClient())
+	if (validClient())
 		closesocket(clientSocket);
 }
 
@@ -223,84 +225,65 @@ void Server::arrestaServer()
 *		--<operazione>-<lunghezza_nome_finestra>-<nomefinestra>-<lunghezza_file_icona>-<dati_file_icona_bmp>
 */
 void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
-	
+
 	u_long msgLength = 0;
 	Message* message = nullptr;
 	BYTE* lpPixels = nullptr;
-	
-	try {
+	int retryTimes = 0;
 
-		if (op == OPEN) {
-			/* Ottieni l'icona */
-			u_long iconLength = 0;
+	if (op == OPEN) {
+		/* Ottieni l'icona */
+		u_long iconLength = 0;
 
-			BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
-			
-			message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
-		}
-		else if (op == FOCUS || op == CLOSE) {
-			message = new Message(op, hwnd);
-		}
-		else if (op == TITLE_CHANGED) {
-			message = new MessageWithTitle(op, hwnd, title);
+		BYTE& pixels = Helper::ottieniIcona(hwnd, iconLength);
 
-		}
-
-		/* Restituisce la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
-		BYTE& buffer = message->toJson(msgLength);
-
-		int bytesSent = 0;
-		int offset = 0;
-		int remaining = MSG_LENGTH_SIZE + msgLength;
-		while (remaining > 0)
-		{
-			bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
-			if (bytesSent < 0)
-				throw SendMessageException("send() della notifica fallita con errore", bytesSent);
-			remaining -= bytesSent;
-			offset += bytesSent;
-		}
-
-		delete message;
+		message = new MessageWithIcon(op, hwnd, title, pixels, iconLength);
 	}
-	catch (MessageCreationException mce) {
-		throw mce;
+	else if (op == FOCUS || op == CLOSE) {
+		message = new Message(op, hwnd);
 	}
-	catch (SendMessageException sme)
+	else if (op == TITLE_CHANGED) {
+		message = new MessageWithTitle(op, hwnd, title);
+
+	}
+
+	/* Restituisce la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
+	BYTE& buffer = message->toJson(msgLength);
+
+	int bytesSent = 0;
+	int offset = 0;
+	int remaining = MSG_LENGTH_SIZE + msgLength;
+	while (remaining > 0)
 	{
-		throw sme;
+		bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
+		if (bytesSent < 0)
+			throw SendMessageException("send() della notifica fallita con errore", bytesSent);
+		remaining -= bytesSent;
+		offset += bytesSent;
 	}
+
+	delete message;
 
 	return;
 }
 
 void Server::sendMessageToClient(operation op) {
 
-	try {
+	Message message = Message(op);
 
-		Message message = Message(op);
-		
-		u_long msgLength = 0;
-		BYTE& buffer = message.toJson(msgLength);
-		
-		int bytesSent = 0;
-		int offset = 0;
-		int remaining = MSG_LENGTH_SIZE + msgLength;
-		while (remaining > 0)
-		{
-			bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
-			if (bytesSent < 0)
-				throw SendMessageException("send() del messaggio fallita con errore", bytesSent);
-			remaining -= bytesSent;
-			offset += bytesSent;
-		}
-	}
-	catch (MessageCreationException mce) {
-		throw mce;
-	}
-	catch (SendMessageException& sme)
+	u_long msgLength = 0;
+	BYTE& buffer = message.toJson(msgLength);
+
+	int bytesSent = 0;
+	int offset = 0;
+	int remaining = MSG_LENGTH_SIZE + msgLength;
+	while (remaining > 0)
 	{
-		throw sme;
+		bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
+		if (bytesSent < 0)
+			throw SendMessageException("send() del messaggio fallita con errore", bytesSent);
+		remaining -= bytesSent;
+		offset += bytesSent;
 	}
 
 }
@@ -320,7 +303,7 @@ int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 			printMessage(TEXT("Connessione chiusa dal client."));
 		}
 		else
-			printMessage(TEXT("Errore durante la ricezione dei dati."));			
+			printMessage(TEXT("Errore durante la ricezione dei dati."));
 	}
 
 	return iResult;
@@ -331,18 +314,12 @@ void Server::printMessage(wstring string) {
 	wcout << "[" << GetCurrentThreadId() << "] " << string << endl;
 }
 
-bool Server::validServer() 
+bool Server::validServer()
 {
-	if (listeningSocket == INVALID_SOCKET)
-		return false;
-
-	return true;
+	return !(listeningSocket == INVALID_SOCKET);
 }
 
 bool Server::validClient()
 {
-	if (clientSocket == INVALID_SOCKET)
-		return false;
-
-	return true;
+	return !(clientSocket == INVALID_SOCKET);
 }

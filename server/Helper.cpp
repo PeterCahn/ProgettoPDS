@@ -14,14 +14,6 @@
 
 using namespace std;
 
-Helper::Helper()
-{
-}
-
-Helper::~Helper()
-{
-}
-
 HICON Helper::getHICONfromHWND(HWND hwnd) {
 
 	// Get the window icon
@@ -53,6 +45,7 @@ struct ICONDIRENTRY
 	ULONG nDataLength; // length in bytes
 	ULONG nOffset; // offset of BMP or PNG data from beginning of file
 };
+
 BYTE& Helper::getIconBuffer(HICON hIcon, u_long& szSize)
 {
 	int nColorBits = 32;
@@ -151,7 +144,7 @@ BYTE& Helper::getIconBuffer(HICON hIcon, u_long& szSize)
 
 	// Write mask data
 	file.Write((UCHAR*)maskBits, pMaskInfo->bmiHeader.biSizeImage);
-	szSize = file.GetLength();
+	szSize = (u_long)file.GetLength();
 
 	// Get pointer to the buffer
 	BYTE* buffer = file.Detach();

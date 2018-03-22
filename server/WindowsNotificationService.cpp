@@ -31,16 +31,14 @@
 #include <nlohmann\json.hpp>
 using json = nlohmann::json;
 
-// Gestione eventi windows // TODO: da eliminare
-#include <oleacc.h>
-#pragma comment (lib, "oleacc.lib")
-
 #define DEFAULT_BUFLEN 1024
 
 using namespace std;
 
+/* Per controllare se è stato premuto CTRL+C e quindi il server deve essere terminato */
+volatile atomic<bool> isRunning = true;
+
 /* Per uscire dal servizio */
-volatile bool isRunning = true;
 BOOL WINAPI HandlerRoutine(_In_ DWORD dwCtrlType) {
 	switch (dwCtrlType)
 	{
@@ -95,11 +93,11 @@ void WindowsNotificationService::start()
 			/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */			
 			server.acceptConnection();
 		}
-		catch (InternalServerStartError& isse) {
+		catch (InternalServerStartError) {
 			isRunning = false;
 			return;
 		}
-		catch (ReadPortNumberException& rpne) {
+		catch (ReadPortNumberException) {
 			isRunning = false;
 			return;
 		}
@@ -324,9 +322,9 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 					if (previousTitle != newTitle) {
 						// Devo aggiungere la finestra a 'windows'
 						windows[pair.first] = newTitle;
-						printMessage(TEXT("Cambio nome per la finestra: "));
-						printMessage(TEXT("\t " + previousTitle));
-						printMessage(TEXT("La finestra ora in focus è: "));
+						printMessage(TEXT("Cambio nome per la finestra:"));
+						printMessage(TEXT("- " + previousTitle));
+						printMessage(TEXT("Il nuovo nome è:"));
 						printMessage(TEXT("- " + newTitle));
 						server.sendNotificationToClient(pair.first, newTitle, TITLE_CHANGED);
 					}
@@ -369,7 +367,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 					server.chiudiConnessioneClient();
 					isRunning = true;
 				}
-				catch (SendMessageException& sme)
+				catch (SendMessageException)
 				{
 					server.chiudiConnessioneClient();
 					isRunning = true;
@@ -380,7 +378,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		}
 
 	}
-	catch (MessageCreationException& mce) {
+	catch (MessageCreationException) {
 		isRunning = false;
 		return;
 	}
@@ -394,11 +392,13 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		printMessage(TEXT("Temporizzazione del thread fallita."));
 		server.sendMessageToClient(ERROR_CLOSE);
 		server.chiudiConnessioneClient();
+		isRunning = false;
 		return;
 	}
 	catch (exception)
 	{
-		// catch anything thrown within try block that derives from std::exception			
+		// catch anything thrown within try block that derives from std::exception
+		isRunning = false;
 		return;
 	}
 }
@@ -448,7 +448,7 @@ void WindowsNotificationService::receiveCommands() {
 
 					string keystrokeString = j["tasti"];
 					string virtualKeyString;
-					for (int i = 0; i < keystrokeString.size(); i++) {
+					for (u_int i = 0; i < keystrokeString.size(); i++) {
 						UINT vKey;
 						if (keystrokeString[i] == '+') {
 							// Aggiungi keyDown
@@ -492,9 +492,8 @@ void WindowsNotificationService::receiveCommands() {
 						}
 					}
 
-					// TODO: rimuovere dopo debug
 					// Stampa codici virtual-key ricevute
-					wcout << "Virtual-key ricevute da inviare alla finestra in focus: " << endl; // << stringaRicevuta << std::endl;
+					wcout << "Virtual-key ricevute in invio alla finestra in focus: " << endl; // << stringaRicevuta << std::endl;
 					for each(INPUT key in keystroke)
 						wcout << "- " << key.ki.wVk << " - " << key.ki.dwFlags << std::endl;
 
@@ -541,7 +540,7 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 			// Controlla che il tasto sia stato precedentemente premuto
 			vector<WORD>::iterator pos = find(checkList.begin(), checkList.end(), input.ki.wVk);
 			if (pos == checkList.end()) {
-				wcout << "ERRORE! Il comando ricevuto non è ben formato." << endl;
+				printMessage(L"ERRORE! Il comando ricevuto non è ben formato.");
 				return;
 			}
 			// Se cè, rimuovilo dalla lista
@@ -552,11 +551,11 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 			checkList.push_back(input.ki.wVk);
 	}
 	if (checkList.size() != 0) {
-		wcout << "ERRORE! Il comando ricevuto non è ben formato." << endl;
+		printMessage(L"ERRORE! Il comando ricevuto non è ben formato.");
 		return;
 	}
 
-	// Ricava l'handle alla finestra verso cui indirizzare il keystroke
+	// Ricava l'handle alla finestra attualmente in focus, che non è necessariamente coincidente con targetHwnd
 	progHandle = GetForegroundWindow();
 
 	// Send the keystrokes.
@@ -574,125 +573,3 @@ void WindowsNotificationService::sendKeystrokesToProgram(HWND targetHwnd, std::v
 void WindowsNotificationService::printMessage(wstring string) {
 	wcout << "[" << GetCurrentThreadId() << "] " << string << endl;
 }
-
-/* Questa funzione viene passata alla SetWinEventHook nella funzione hook per gestire gli eventi */
-void CALLBACK WindowsNotificationService::HandleWinEvent(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
-{
-	TCHAR title[MAX_PATH];
-	GetWindowTextW(hwnd, title, sizeof(title));
-
-	wstring t = wstring(title);
-
-	map<HWND, wstring> tempWindows;
-	EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
-
-	if (tempWindows.find(hwnd) != tempWindows.end()) {
-		// la finestra c'è
-		GetWindowTextW(hwnd, title, sizeof(title));
-		wstring t = wstring(title);
-
-		/* Non considero alcuni eventi che non ci interessano o che vengono chiamati di continuo */
-		if (
-			event == EVENT_OBJECT_LOCATIONCHANGE
-			|| event == EVENT_OBJECT_REORDER
-			|| (event > 0x4001 && event < 0x4007)
-			|| event == EVENT_OBJECT_VALUECHANGE
-			|| event == 16385
-			|| (event == 8 || event == 9)	// click giù e click su
-			)
-			return;
-
-		if (event == EVENT_OBJECT_FOCUS || event == EVENT_SYSTEM_FOREGROUND)
-			wcout << "New focus: [" << hwnd << "] " << t << endl;
-		else if (event == EVENT_OBJECT_NAMECHANGE)
-			wcout << "Name changed: [" << hwnd << "] " << t << endl;
-		else if (event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_UNCLOAKED || event == EVENT_OBJECT_SHOW)
-			wcout << "Finestra aperta: [" << hwnd << "] " << t << endl;
-		else if (event == EVENT_OBJECT_CLOAKED || event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_STATECHANGE)
-			wcout << "Finestra chiusa: [" << hwnd << "] " << t << endl;
-
-		/*
-		switch (event)
-		{
-		// La finestra in foreground è cambiata
-		case EVENT_SYSTEM_FOREGROUND:
-		wcout << "Change foreground: [" << hwnd << "] " << t << endl;
-		break;
-		case EVENT_OBJECT_FOCUS:
-		// La finestra ha ricevuto il focus
-		wcout << "New focus (focus): [" << hwnd << "] " << t << endl;
-		break;
-		// Il nome di una finestra è cambiato
-		case EVENT_OBJECT_NAMECHANGE:
-		wcout << "Name changed: [" << hwnd << "] " << t << endl;
-		break;
-		// Una nuova finestra è stata creata (avviene solo in alcune occasioni)
-		case EVENT_OBJECT_CREATE:
-		// Funziona quando viene chiusa la calcolatrice
-		wcout << "Finestra aperta (create): [" << hwnd << "] " << t << endl;
-		break;
-		case EVENT_OBJECT_SHOW:
-		wcout << "New focus (show): [" << hwnd << "] " << t << endl;
-		break;
-		case EVENT_OBJECT_CLOAKED:
-		wcout << "Finestra chiusa (cloaked): [" << hwnd << "] " << t << endl;
-		break;
-		case EVENT_OBJECT_UNCLOAKED:
-		// funziona quando viene aperta la calcolatrice
-		wcout << "Finestra aperta (uncloaked): [" << hwnd << "] " << t << endl;
-		break;
-		case EVENT_OBJECT_DESTROY:	// chiamato quasi mai
-		wcout << "Finestra chiusa (destroyed): [" << hwnd << "] " << t << endl;
-		break;
-		case EVENT_OBJECT_STATECHANGE:
-		// l'evento non è propriamente per la chiusura, ma per cambio di stato di un oggetto qualsiasi
-		wcout << "Finestra chiusa (state change): [" << hwnd << "] " << t << endl;
-		break;
-		default:
-		wcout << "Event happened (" << event << "): [" << hwnd << "] " << t << endl;
-		break;
-		}
-		*/
-	}
-
-}
-
-unsigned CALLBACK WindowsNotificationService::hook(void* args)
-{
-	HWINEVENTHOOK hHook = NULL;
-
-	CoInitialize(NULL);
-	/* Primo e secondo parametro sono i limiti inferiore e superiore degli eventi da ascoltare.
-	wWINEVENT_OUTOFCONTEXT per ascoltare tutti i thread e non solo quelli creati da questa applicazione */
-	hHook = SetWinEventHook(0x1, 0x80FF, NULL, HandleWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
-
-	MSG msg;
-	// Secondo parametro può essere la hwnd della window da cui ricevere i messaggi
-	//while (GetMessage(&msg, NULL, 0, 0) > 0)
-
-	map<HWND, wstring> tempWindows;
-	while (true)
-	{
-		EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
-
-		for each (pair<HWND, wstring> pair in tempWindows)
-		{
-			if (tempWindows.find(pair.first) != tempWindows.end())
-			{
-				// la finestra c'è
-
-				if (GetMessage(&msg, pair.first, 0, 0)) {
-					//TranslateMessage(&msg);
-					//DispatchMessage(&msg);
-				}
-
-			}
-		}
-	}
-
-	UnhookWinEvent(hHook);
-	CoUninitialize();
-
-	return 0;
-}
-
