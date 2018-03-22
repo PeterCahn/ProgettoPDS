@@ -49,6 +49,7 @@ private:
 	string listeningPort;	// La porta su cui ascoltare connessioni in entrata
 
 	int tentativiAvvioServer;
+	bool clientConnected;
 
 	void printMessage(wstring string);
 

@@ -34,6 +34,7 @@ Server::Server()
 		wcout << "[" << GetCurrentThreadId() << "] " << "ServerClass non inizializzata correttamente." << endl;
 		return;
 	}
+
 	tentativiAvvioServer = 0;
 }
 
@@ -49,21 +50,6 @@ Server::~Server()
 	WSACleanup();
 }
 
-/* Per uscire dal servizio */
-volatile bool runningServer = true;
-BOOL WINAPI StopServer(_In_ DWORD dwCtrlType) {
-	switch (dwCtrlType)
-	{
-	case CTRL_C_EVENT:
-		runningServer = false;
-		// Signal is handled - don't pass it on to the next handler
-		return TRUE;
-	default:
-		// Pass signal on to the next handler
-		return FALSE;
-	}
-}
-
 /* Acquisisce la porta verificando che sia un numero tra 1024 e 65535 */
 int Server::leggiPorta()
 {
@@ -75,10 +61,6 @@ int Server::leggiPorta()
 	while (true)
 	{
 		cin >> porta;
-		
-		// Se è stato premuto CTRL-C, viene settato runningServer a false, l'input viene terminato e si esce
-		if (!runningServer )
-			throw ReadPortNumberException("Impossibile settare la porta.");
 
 		// Se non è stato premuto CTRL-C, ma ci sono problemi con cin, ritorna.
 		if (!cin.good()) {
@@ -111,6 +93,17 @@ int Server::avviaServer()
 				throw InternalServerStartError("socket() fallita con errore.", WSAGetLastError());
 			}
 
+			int iOptval = 1;
+			iResult = setsockopt(listeningSocket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (char *)&iOptval, sizeof(iOptval));
+			if (iResult == SOCKET_ERROR) {
+				throw InternalServerStartError("setsockopt for SO_EXCLUSIVEADDRUSE failed with error", WSAGetLastError());
+			}
+			/*
+			iResult = setsockopt(listeningSocket, SOL_SOCKET, SO_CONDITIONAL_ACCEPT, (char *)&iOptval, sizeof(iOptval));
+			if (iResult == SOCKET_ERROR) {
+				throw InternalServerStartError("setsockopt for SO_EXCLUSIVEADDRUSE failed with error", WSAGetLastError());
+			}
+			*/
 			// Imposta struct sockaddr_in
 			struct sockaddr_in mySockaddr_in;
 			mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -135,7 +128,7 @@ int Server::avviaServer()
 			}
 
 			// Ascolta per richieste di connessione
-			iResult = listen(listeningSocket, SOMAXCONN);
+			iResult = listen(listeningSocket, 1);
 			if (iResult == SOCKET_ERROR) {
 				throw InternalServerStartError("listen() fallita con errore.", WSAGetLastError());
 			}
@@ -163,35 +156,15 @@ int Server::avviaServer()
 	return 0;
 }
 
-int CALLBACK checkRunningServer(
-	IN LPWSABUF lpCallerId,
-	IN LPWSABUF lpCallerData,
-	IN OUT LPQOS lpSQOS,
-	IN OUT LPQOS lpGQOS,
-	IN LPWSABUF lpCalleeId,
-	OUT LPWSABUF lpCalleeData,
-	OUT GROUP FAR *g,
-	IN DWORD_PTR dwCallbackData
-)
-{
-	if (runningServer)
-		return CF_ACCEPT;	
-	else
-		return CF_REJECT;
-}
-
 /* Attende una connessione in entrata da un client e setta il clientSocket */
 int Server::acceptConnection()
 {
 	int iResult = 0;
 	SOCKET newClientSocket;
 
-	while (runningServer) {		
+	while (true) {
 
 		try {
-
-			if (!runningServer)
-				return -1;
 
 			printMessage(TEXT("In attesa della connessione di un client..."));
 
@@ -199,19 +172,10 @@ int Server::acceptConnection()
 			int nameLength = sizeof(clientSockAddr);
 
 			// Accetta la connessione
-			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &nameLength, checkRunningServer, NULL);
-			if (newClientSocket == INVALID_SOCKET && !runningServer)
-				throw InternalServerStartError("accept() fallita con errore.", WSAGetLastError());
-
-			/*
 			newClientSocket = accept(listeningSocket, NULL, NULL);
-			if (newClientSocket == INVALID_SOCKET) {
-				wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << endl;
-				newClientSocket = INVALID_SOCKET;
-				return 0;
-			}
-			*/
-
+			if (newClientSocket == INVALID_SOCKET) 
+				throw InternalServerStartError("accept() fallita con errore.", WSAGetLastError());			
+			
 			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
 			int port = ntohs(clientSockAddr.sin_port);
 
@@ -223,7 +187,7 @@ int Server::acceptConnection()
 			clientSocket = newClientSocket;
 			closesocket(listeningSocket);
 
-			if (validClient() && runningServer)
+			if (!validClient())
 				break;
 		}
 		catch (InternalServerStartError& isse)

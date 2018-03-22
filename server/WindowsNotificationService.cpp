@@ -92,14 +92,12 @@ void WindowsNotificationService::start()
 
 		try{
 			server.avviaServer();
-
 			/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */			
 			server.acceptConnection();
 		}
 		catch (InternalServerStartError& isse) {
 			isRunning = false;
 			return;
-			//isse.getError();
 		}
 		catch (ReadPortNumberException& rpne) {
 			isRunning = false;
@@ -140,6 +138,7 @@ void WindowsNotificationService::start()
 		/* Chiudi connessione con il client prima di provare a reiterare sul while e ad attendere un nuova connessione */
 		server.chiudiConnessioneClient();
 	}
+
 }
 
 void WindowsNotificationService::stop()
