@@ -20,33 +20,27 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-
-/* TODO:
- * - Distruttore
- * - Il cursore della textbox catturaComando deve sempre mettersi a destra
- */
-
 namespace WpfApplication1
 {
     public partial class MainWindow : Window
     {
-        private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 250;
+        private const int PERIODO_AGGIORNAMENTO_STATISTICHE = 250;
         private static List<string> comandoDaInviare = new List<string>();
 
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
 
         private List<int> commandsList = new List<int>();
-        private Boolean disconnessioneInCorso;      // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando 
+        private bool disconnessioneInCorso;      // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando 
                                                     // si preme Disconnetti e la managedReadn() si vede il socket improvvisamente chiuso
+                                                    // In c# le oprazioni su bool sono atomiche
         private object disconnessioneInCorso_lock = new object();   // oggetto su cui facciamo lock prima di accedere al Boolean disconnessioneInCorso
-        private Boolean catturandoComandi = false;  // utile per rimuovere i vari handler (keydown/previewKeydown/keyup) solo se precedentemente aggiunti
+        private bool catturandoComandi = false;  // utile per rimuovere i vari handler (keydown/previewKeydown/keyup) solo se precedentemente aggiunti
 
         /* BackgroundWorker necessario per evitare che il main thread si blocchi 
          * mentre aspetta che si instauri la connessione con un nuovo server. 
          * Situazione tipo: non è possibile connettersi al server finché non scade il timeout di connessione nella TcpClient. */
-        private BackgroundWorker bw = new BackgroundWorker();
-        private bool timedOut;        
+        private BackgroundWorker connessioneBw = new BackgroundWorker();
 
         private string connectingIp;
         private int connectingPort;
@@ -70,8 +64,8 @@ namespace WpfApplication1
             disabilitaERimuoviCatturaComando();
 
             // Aggiunge gli event handler al BackgroundWorker che gestisce il tentativo di connessione a un nuovo server
-            bw.DoWork += new DoWorkEventHandler(provaConnessione);
-            bw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(finalizzaConnessione);
+            connessioneBw.DoWork += new DoWorkEventHandler(provaConnessione);
+            connessioneBw.RunWorkerCompleted += new RunWorkerCompletedEventHandler(finalizzaConnessione);
 
             // Definisci gli event handler per la gestione della pressione dei tasti durante la cattura di un comando
             keyDownHandler = new System.Windows.Input.KeyEventHandler(onButtonKeyDown);
@@ -81,19 +75,24 @@ namespace WpfApplication1
 
         ~MainWindow()
         {
-            //System.Windows.MessageBox.Show("Nel distruttore di MainWindow", "Client - Avviso");
-            // TODO: aggiungere cose
+            
         }        
 
         public IPEndPoint parseHostPort(string hostPort)
         {
             /* Match di indirizzi ip:porta del tipo: [0-255].[0-255].[0-255].[0.255]:[1024-65535] */
             Regex hostPortMatch = new Regex(@"^(?<ip>([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])\.([01]?\d\d?|2[0-4]\d|25[0-5])):(?<port>10[2-9][4-9]|[2-9]\d\d\d|[1-5]\d\d\d\d|6[0-4]\d\d\d|65[0-5]\d\d|655[0-3]\d|6553[0-5])$", RegexOptions.Compiled);
-            Match match = hostPortMatch.Match(hostPort);
-            if (!match.Success)
+            try
+            {
+                Match match = hostPortMatch.Match(hostPort);
+                if (!match.Success)
+                    return null;
+                return new IPEndPoint(IPAddress.Parse(match.Groups["ip"].Value), int.Parse(match.Groups["port"].Value));
+            }
+            catch (RegexMatchTimeoutException)
+            {
                 return null;
-
-            return new IPEndPoint(IPAddress.Parse(match.Groups["ip"].Value), int.Parse(match.Groups["port"].Value));
+            }
         }
 
         private void OnKeyDownHandler(object sender, System.Windows.Input.KeyEventArgs e)
@@ -148,7 +147,7 @@ namespace WpfApplication1
             int timesRetried = 0;
             while (timesRetried < 10)
             {
-                if (bw.IsBusy != true)
+                if (connessioneBw.IsBusy != true)
                 {
                     connectingIp = ipAddress;
                     connectingPort = port;
@@ -156,7 +155,7 @@ namespace WpfApplication1
                     textBoxIpAddress.IsEnabled = false;
                     buttonConnetti.IsEnabled = false;                    
 
-                    bw.RunWorkerAsync();
+                    connessioneBw.RunWorkerAsync();
                     break;
                 }
                 else
@@ -171,6 +170,7 @@ namespace WpfApplication1
 
         private void provaConnessione(object sender, DoWorkEventArgs e)
         {
+            bool timedOut;        
             try
             {
                 TcpClient connection = new TcpClient();
@@ -178,15 +178,15 @@ namespace WpfApplication1
                 
                 /* Come facevamo prima: non succede niente quando termina la wait perché nessuna eccezione viene generata, e l'esecuzione continua */
                 timedOut = connection.ConnectAsync(connectingIp, connectingPort).Wait(7000);
+                /* Eccezioni non possono verificarsi:
+                 * ArgumentNullException: hostname is null
+                 * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
 
                 if (!timedOut)
                     throw new SocketException((int) SocketError.TimedOut);
 
                 /* Metti TcpClient in Result per poter essere controllato */
                 e.Result = connection;
-
-                /* ArgumentNullException: hostname is null
-                 * ArgumentOutOfRangeException: port non è tra MinPort e MaxPort */
 
             }
             catch (SocketException se)
@@ -212,7 +212,6 @@ namespace WpfApplication1
                 // Gestiamo solo il caso di SocketException per capire se c'è stato un timeout.                
 
                 ae.Handle(ex => {
-
                     if (ex is SocketException)
                     {
                         SocketException exception = (SocketException) ex;
@@ -251,7 +250,6 @@ namespace WpfApplication1
                 // Non è stato possibile connettersi, quindi ritorna
                 textBoxIpAddress.IsEnabled = true;
                 buttonConnetti.IsEnabled = true;
-
                 return;
             }
             else
@@ -299,6 +297,7 @@ namespace WpfApplication1
             listView1.ItemsSource = si.table.Finestre;
             listView1.Focus(); // per togliere il focus dalla textBoxIpAddress
 
+            connessioneBw.Dispose();
         }
 
         /* Metodo passato al BackgroundWorker per aggiornare le statistiche */
@@ -323,7 +322,7 @@ namespace WpfApplication1
                         servers[serverName].table.aggiornaStatisticheFocus();
                     }
 
-                    Thread.Sleep(FREQUENZA_AGGIORNAMENTO_STATISTICHE);
+                    Thread.Sleep(PERIODO_AGGIORNAMENTO_STATISTICHE);
                 }
             }
         }
@@ -335,7 +334,6 @@ namespace WpfApplication1
             worker.Dispose();
         }
 
-        /* Come manageNotifications ma da eseguire in un BackgroundWorker */
         private void riceviNotifiche(object sender, DoWorkEventArgs e)
         {
             string serverName = (string)e.Argument;
@@ -414,7 +412,7 @@ namespace WpfApplication1
                     json = Encoding.UTF8.GetString(msg);
                     token = JObject.Parse(json);
                     operation = (string)token.SelectToken("operation");
-                                        
+
                     switch (operation)
                     {
                         case "CLOSE":
@@ -465,38 +463,10 @@ namespace WpfApplication1
                             servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bf);
 
                             break;
-                    }                    
+                    }
 
                     if (operation == "ERRCL" || operation == "OKCLO" || operation == "RETRY")
                         continue;
-                }
-                catch (DecoderFallbackException)
-                {
-                    servers[serverName].notificationsBw.CancelAsync();
-                    servers[serverName].statisticsBw.CancelAsync();
-                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
-                    return;
-                }
-                catch (ArgumentException)
-                {
-                    servers[serverName].notificationsBw.CancelAsync();
-                    servers[serverName].statisticsBw.CancelAsync();
-                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
-                    return;
-                }
-                catch (FormatException)
-                {
-                    servers[serverName].notificationsBw.CancelAsync();
-                    servers[serverName].statisticsBw.CancelAsync();
-                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
-                    return;
-                }
-                catch (JsonReaderException)
-                {
-                    servers[serverName].notificationsBw.CancelAsync();
-                    servers[serverName].statisticsBw.CancelAsync();
-                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
-                    return;
                 }
                 catch (InvalidOperationException)
                 {
@@ -504,6 +474,16 @@ namespace WpfApplication1
                     servers[serverName].statisticsBw.CancelAsync();
                     System.Windows.MessageBox.Show("Problema inaspettato durante l'arresto della ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
                     return;
+                }
+                catch (Exception ex) {
+                    if (ex is DecoderFallbackException || ex is ArgumentException || ex is FormatException || ex is JsonReaderException)
+                    {
+                        servers[serverName].notificationsBw.CancelAsync();
+                        servers[serverName].statisticsBw.CancelAsync();
+                        MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
+                        return;
+                    } 
+                    throw ex;
                 }
             }
         }
@@ -517,8 +497,7 @@ namespace WpfApplication1
 
         delegate void PulisciInterfacciaDelegate(string disconnectingServer, bool onPurpose);
 
-        /* Chiama funzione per pulire l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke)         
-         */
+        /* Chiama funzione per pulire l'interfaccia capendo se è chiamata dal main thread o meno (richiesta di chiamare la Invoke) */
         private void safePulisciInterfaccia(string disconnectingServer, bool onPurpose)
         {
             if (!listView1.Dispatcher.CheckAccess())
@@ -534,8 +513,7 @@ namespace WpfApplication1
             }
         }
 
-        /* Distinzione tra pulizia dovuta a disconnessione volontaria
-         *      o pulizia dovuta a eccezione scatenata (parametro onPurpose)
+        /* Distinzione tra pulizia dovuta a disconnessione volontaria o pulizia dovuta a eccezione scatenata (parametro onPurpose)
          * Disconnessione volontaria:   rimuove l'elenco delle finestre di quel server e la voce nella ListBox
          * Disconnessione forzata:      non rimuove l'elenco delle finestre di quel server né la voce nella serversListBox          
          */
@@ -545,13 +523,11 @@ namespace WpfApplication1
             {
                 // Disconnessione volontaria: rimuovi server
                 rimuoviServer(disconnectingServer);
-
             }
             else if (servers.ContainsKey(disconnectingServer) && !onPurpose) // contiene disconnectingServer ed è forzata
             {
                 // Disconnessione forzata: invalida server ma continua a mostrarlo nell'elenco
                 invalidaServer(disconnectingServer);
-
             }
         }
 
@@ -967,7 +943,7 @@ namespace WpfApplication1
             catch (IOException)
             {
                 // Problema nella write durante l'invio del comando
-                MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
+                MessageBox.Show("Problema di rete:\nL'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
             catch (Exception)
@@ -1081,21 +1057,15 @@ namespace WpfApplication1
                 if (e is IOException)
                 {
                     // Scatenata dalla Read(): il socket è stato chiuso lato server.
-                    // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
+                    return -1;
                 }
                 else if (e is ObjectDisposedException)
                 {
                     // Il networkStream è stato chiuso oppure c'è stato un errore nella lettura dalla rete.
-                    // Setta disconnectionEvent e continua per uscire dal ciclo alla prossima iterazione.
-                }
-                else
-                {
-                    // qualsiasi eccezione sia stata sctenata, il thread è necessario:
-                    // prova a riavviarlo, oppure...
-                    throw e;
+                    return -1;
                 }
 
-                return -1;
+                throw e;
             }
         }
 

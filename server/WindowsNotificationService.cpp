@@ -250,7 +250,7 @@ bool WindowsNotificationService::hasVirtualDesktop(HWND hwnd) {
 	return foundAndValid;
 }
 
-void WINAPI WindowsNotificationService::notificationsManagement()
+void WindowsNotificationService::notificationsManagement()
 {
 	try {
 		/* Stampa ed invia tutte le finestre con flag OPEN */

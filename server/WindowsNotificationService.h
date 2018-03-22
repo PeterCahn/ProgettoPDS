@@ -38,7 +38,7 @@ private:
 	int numberRetries;
 	
 	/* Monitora le finestre aperte e invia notifica al client */
-	void WINAPI notificationsManagement();
+	void notificationsManagement();
 
 	/* Ascolta i messaggi in arrivo dal client (notifiche o comandi da inviare alle finestre) */
 	void receiveCommands();
