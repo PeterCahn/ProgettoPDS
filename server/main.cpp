@@ -12,9 +12,6 @@ int main(int argc, char* argv[])
 	catch (CtrlCHandlingException) {
 		return -1;
 	}
-	catch (exception& ex) {
-		return -1;
-	}
 		
 	return 0;
 }

@@ -1,16 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Windows.Media.Imaging;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading;
 using System.Collections.Specialized;
 
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.Drawing;
 using System.Data;
 using System.Windows.Media;
 

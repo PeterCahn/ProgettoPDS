@@ -15,21 +15,14 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using client;
 using System.ComponentModel;
-using System.Windows.Forms;
 using System.Text.RegularExpressions;
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Threading.Tasks;
 
 
 /* TODO:
  * - Distruttore
- * - Icona con sfondo nero
- *      -> Confermato che il problema è lato server perchè spostando makeTransprent a dopo aver impostato il bitmap ai dati ricevuti dal server, il client mostra effettivamente uno sfondo
- *         trasparente e quindi è in grado di farlo. È quindi l'immagine sorgente che ha lo sfondo nero, e viene dal server. 
- *         Oltre a questo l'immagine sorgente, per colpa dello sfondo, ha forma quadrata e non quella dell'icona, e quando si passa il mouse sopra all'elemento corrispondente nella listView questo si vede 
- * - Cattura comandi: al momento si possono evitare di attivare funzioni di Windows premendo un tasto alla volta invece che tutti insieme, ma questo non vale per il tasto Win. Aggiustare?
  * - Il cursore della textbox catturaComando deve sempre mettersi a destra
  */
 
@@ -39,8 +32,10 @@ namespace WpfApplication1
     {
         private const int FREQUENZA_AGGIORNAMENTO_STATISTICHE = 250;
         private static List<string> comandoDaInviare = new List<string>();
+
         private string currentConnectedServer;
         private Dictionary<string, ServerInfo> servers = new Dictionary<string, ServerInfo>();
+
         private List<int> commandsList = new List<int>();
         private Boolean disconnessioneInCorso;      // utile al fine di non stampare "il client ha chiuso la connessione improvvisamente" quando 
                                                     // si preme Disconnetti e la managedReadn() si vede il socket improvvisamente chiuso
@@ -51,11 +46,7 @@ namespace WpfApplication1
          * mentre aspetta che si instauri la connessione con un nuovo server. 
          * Situazione tipo: non è possibile connettersi al server finché non scade il timeout di connessione nella TcpClient. */
         private BackgroundWorker bw = new BackgroundWorker();
-        private bool timedOut;
-
-        // Per gestire la possibilità di terminare il tentativo di connessione in corso
-        private ManualResetEvent terminaConnessione = new ManualResetEvent(false);
-        private bool terminata = false;
+        private bool timedOut;        
 
         private string connectingIp;
         private int connectingPort;
@@ -90,11 +81,9 @@ namespace WpfApplication1
 
         ~MainWindow()
         {
-            System.Windows.MessageBox.Show("Nel distruttore di MainWindow", "Client - Avviso");
+            //System.Windows.MessageBox.Show("Nel distruttore di MainWindow", "Client - Avviso");
             // TODO: aggiungere cose
-        }
-        
-        
+        }        
 
         public IPEndPoint parseHostPort(string hostPort)
         {
@@ -118,18 +107,7 @@ namespace WpfApplication1
         private void buttonConnetti_Click(object sender, RoutedEventArgs e)
         {
             iniziaConnessione();    // connessione asincrona
-        }
-
-        private void buttonTerminaConnessione_Click(object sender, RoutedEventArgs e)
-        {
-            terminaConnessione.Set();    // connessione asincrona
-
-            terminata = true;
-            
-            buttonTerminaConnessione.IsEnabled = false;
-            buttonTerminaConnessione.Visibility = Visibility.Hidden;
-
-        }
+        }        
 
         private void iniziaConnessione()
         {
@@ -176,10 +154,7 @@ namespace WpfApplication1
                     connectingPort = port;
 
                     textBoxIpAddress.IsEnabled = false;
-                    buttonConnetti.IsEnabled = false;
-
-                    //buttonTerminaConnessione.IsEnabled = true;
-                    //buttonTerminaConnessione.Visibility = Visibility.Visible;
+                    buttonConnetti.IsEnabled = false;                    
 
                     bw.RunWorkerAsync();
                     break;
@@ -200,13 +175,7 @@ namespace WpfApplication1
             {
                 TcpClient connection = new TcpClient();
                 connection.ExclusiveAddressUse = true;
-
-                /* Tentativo di connessione asincrona */
-                //var x = connection.BeginConnect(connectingIp, connectingPort, new AsyncCallback(finisciConnect), connection);
-
-                /* Aspetta finché non termino manualmente la connessione oppure la 'finisiConnect' ha terminato con o senza eccezioni */
-                //terminaConnessione.WaitOne();
-
+                
                 /* Come facevamo prima: non succede niente quando termina la wait perché nessuna eccezione viene generata, e l'esecuzione continua */
                 timedOut = connection.ConnectAsync(connectingIp, connectingPort).Wait(7000);
 
@@ -239,7 +208,7 @@ namespace WpfApplication1
             }
             catch (AggregateException ae)
             {
-                // Il task è stato cancellato se AggregateException.InnerException contiene un TaskCanceledException
+                // Il task è stato cancellato se AggregateException.InnerException contiene un TaskCanceledException.
                 // Gestiamo solo il caso di SocketException per capire se c'è stato un timeout.                
 
                 ae.Handle(ex => {
@@ -271,55 +240,6 @@ namespace WpfApplication1
                 System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.\nImpossibile attendere la connessione.", "Client - Avviso");
                 return;
             }
-            finally
-            {
-                terminaConnessione.Reset();
-                terminata = false;
-            }
-
-        }
-
-        private void finisciConnect(IAsyncResult ar)
-        {
-            TcpClient t = (TcpClient)ar.AsyncState;
-
-            try
-            {
-                t.EndConnect(ar);
-
-                terminaConnessione.Set();
-            }
-            catch (SocketException se)
-            {
-                if (!terminata)
-                {
-                    int errorCode = se.ErrorCode;
-                    if (errorCode.Equals(SocketError.TimedOut))
-                        System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " scaduto.", "Client - Avviso");
-                    else
-                        System.Windows.MessageBox.Show("Connessione al server " + connectingIp + ":" + connectingPort + " fallita.", "Client - Avviso");
-                }
-                return; // Usciamo perché l'operazione non è andata a buon fine. Il nuovo tentativo sarà manuale.
-            }
-            catch (ObjectDisposedException)
-            {
-                if(!terminata)
-                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.", "Client - Avviso");
-
-                return;
-            }
-            catch (Exception)
-            {
-                if(!terminata)
-                    System.Windows.MessageBox.Show("Tentativo di connessione al server " + connectingIp + ":" + connectingPort + " fallito.", "Client - Avviso");
-
-                return;
-            }
-            finally
-            {
-                terminaConnessione.Set();
-            }
-
         }
 
         private void finalizzaConnessione(object sender, RunWorkerCompletedEventArgs e)
@@ -332,9 +252,6 @@ namespace WpfApplication1
                 textBoxIpAddress.IsEnabled = true;
                 buttonConnetti.IsEnabled = true;
 
-                //buttonTerminaConnessione.IsEnabled = false;
-                //buttonTerminaConnessione.Visibility = Visibility.Hidden;
-
                 return;
             }
             else
@@ -342,9 +259,6 @@ namespace WpfApplication1
                 // Connessione riuscita, riabilita i pulsanti per connettersi a un nuovo server
                 textBoxIpAddress.IsEnabled = true;
                 buttonConnetti.IsEnabled = true;
-
-                //buttonTerminaConnessione.IsEnabled = false;
-                //buttonTerminaConnessione.Visibility = Visibility.Hidden;
             }
 
             string serverName = connectingIp + ":" + connectingPort;
@@ -447,8 +361,7 @@ namespace WpfApplication1
                 // Chiudi la connessione con il server
                 if (servers[serverName].server.Connected)
                     servers[serverName].server.Close();
-
-                // TODO: Pulisci interfaccia in questo caso
+                
                 safePulisciInterfaccia(serverName, false);
 
                 return;
@@ -493,57 +406,50 @@ namespace WpfApplication1
                 if (managedReadn(server, serverStream, serverName, msg, msgSize) <= 0)
                     continue;
 
-                string json = Encoding.UTF8.GetString(msg);
-                JToken token = JObject.Parse(json);
-
+                string json;
+                JToken token = null;
                 int hwnd = 0;
-                operation = (string)token.SelectToken("operation");
-
-                /* Possibili valori ricevuti:
-                    * --<4B dimensione messaggio>-FOCUS-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_focus>
-                    * --<4B dimensione messaggio>-CLOSE-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_chiusa>
-                    * --<4B dimensione messaggio>-TTCHA-<4B di HWND>-<4B per lunghezza nome prog>-<nome_app_con_nuovo_nome>
-                    * --<4B dimensione messaggio>-OPENP-<4B di HWND>-<4B per lunghezza nome prog>-<nome_nuova_app_aperta>-<4B di dimensione icona>-<icona>
-                    */
-                switch (operation)
+                try
                 {
-                    case "RETRY":
-                        break;
-                    case "ERRCL":
-                        servers[serverName].notificationsBw.CancelAsync();
-                        servers[serverName].statisticsBw.CancelAsync();
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.", "Client - Avviso");
+                    json = Encoding.UTF8.GetString(msg);
+                    token = JObject.Parse(json);
+                    operation = (string)token.SelectToken("operation");
+                                        
+                    switch (operation)
+                    {
+                        case "CLOSE":
+                            hwnd = (int)token.SelectToken("hwnd");
+                            // Rimuovi programma dalla listView                            
+                            servers[serverName].table.removeFinestra(hwnd);
 
-                        // Chiudi la connessione con il server
-                        if (servers[serverName].server.Connected)
-                            servers[serverName].server.Close();
+                            break;
+                        case "ERRCL":
+                            servers[serverName].notificationsBw.CancelAsync();
+                            servers[serverName].statisticsBw.CancelAsync();
+                            System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.", "Client - Avviso");
 
-                        safePulisciInterfaccia(serverName, false);
-                        //continue;
-                        break;
+                            // Chiudi la connessione con il server
+                            if (servers[serverName].server.Connected)
+                                servers[serverName].server.Close();
 
-                    case "FOCUS":
-                        hwnd = (int)token.SelectToken("hwnd");
-                        // Cambia programma col focus                            
-                        servers[serverName].table.changeFocus(hwnd);
+                            safePulisciInterfaccia(serverName, false);
 
-                        break;
-                    case "CLOSE":
-                        hwnd = (int)token.SelectToken("hwnd");
-                        // Rimuovi programma dalla listView                            
-                        servers[serverName].table.removeFinestra(hwnd);
+                            break;
 
-                        break;
-                    case "TTCHA":
-                        hwnd = (int)token.SelectToken("hwnd");
-                        progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
+                        case "FOCUS":
+                            hwnd = (int)token.SelectToken("hwnd");
+                            // Cambia programma col focus                            
+                            servers[serverName].table.changeFocus(hwnd);
 
-                        servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
+                            break;
+                        case "TTCHA":
+                            hwnd = (int)token.SelectToken("hwnd");
+                            progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
 
-                        break;
-                    case "OPEN":
-                        try
-                        {
+                            servers[serverName].table.cambiaTitoloFinestra(hwnd, progName);
+
+                            break;
+                        case "OPEN":
                             hwnd = (int)token.SelectToken("hwnd");
 
                             progName = Encoding.Unicode.GetString(Convert.FromBase64String(token.SelectToken("windowName").ToString()));
@@ -557,24 +463,48 @@ namespace WpfApplication1
                             }
 
                             servers[serverName].table.addFinestra(hwnd, progName, "Background", 0, 0, bf);
-                            
-                            break; 
-                            
-                        }
-                        catch (Exception)
-                        {
-                            // qualsiasi eccezione relativa all'apertura di una nuova finestra, salta la finestra.
-                            // Il buffer è stato ricevuto tutto, quindi si può continuare con le altre finestre 
-                            continue;
-                        }
 
-                        //break;
-                        
+                            break;
+                    }                    
+
+                    if (operation == "ERRCL" || operation == "OKCLO" || operation == "RETRY")
+                        continue;
                 }
-
-                if (operation == "ERRCL" || operation == "OKCLO" || operation == "RETRY")
-                    continue;
-
+                catch (DecoderFallbackException)
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
+                    return;
+                }
+                catch (ArgumentException)
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
+                    return;
+                }
+                catch (FormatException)
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
+                    return;
+                }
+                catch (JsonReaderException)
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+                    MessageBox.Show("Problema inaspettato durante la decodifica di un messaggio in arrivo.\nArresto ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    servers[serverName].notificationsBw.CancelAsync();
+                    servers[serverName].statisticsBw.CancelAsync();
+                    System.Windows.MessageBox.Show("Problema inaspettato durante l'arresto della ricezione notifiche per il server " + serverName + ".", "Client - Avviso");
+                    return;
+                }
             }
         }
 
@@ -582,20 +512,6 @@ namespace WpfApplication1
         private void riceviNotificheTerminato(object sender, RunWorkerCompletedEventArgs e)
         {
             BackgroundWorker worker = sender as BackgroundWorker;
-
-            if (e.Cancelled == true)
-            {
-                //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche cancellato.");
-            }
-            else if (e.Error != null)
-            {
-                //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato con errori.");
-            }
-            else
-            {
-                //System.Windows.MessageBox.Show("BackgroundWorker riceviNotifiche terminato normalmente.");
-            }
-
             worker.Dispose();
         }
 
@@ -663,7 +579,7 @@ namespace WpfApplication1
                     if (servers[serverName].isOnline)
                     {
                         // Notifica che il server è già presente e connesso
-                        System.Windows.MessageBox.Show("Già connessi al server " + serverName, "Client - Avviso");
+                        MessageBox.Show("Già connessi al server " + serverName, "Client - Avviso");
                         return;
                     }
                     else
@@ -757,7 +673,6 @@ namespace WpfApplication1
             this.KeyUp += keyUpHandler;
             this.PreviewKeyDown += previewKeyDownHandler;
             catturandoComandi = true;   // Indica che i nuovi handler sono stati aggiunti
-            //_hookID = SetHook(_proc);
         }
 
         // Chiamato se il server mostrato è disconnesso e non si può abilitare la cattura del comando
@@ -788,7 +703,8 @@ namespace WpfApplication1
                     buttonAnnullaCattura.IsEnabled = false;
                 }
             }
-            // nascondi textBox e disabilita invio
+
+            // Nascondi textBox e disabilita invio
             textBoxComando.Visibility = Visibility.Hidden;
 
             // Rimuovi handler eventi keydown/previewKeydown/keyup
@@ -811,26 +727,6 @@ namespace WpfApplication1
             }
         }
 
-        public Bitmap CopyDataToBitmap(byte[] data, int width, int height)
-        {
-            // Here create the Bitmap to the know height, width and format
-            Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-
-            // Create a BitmapData and Lock all pixels to be written 
-            BitmapData bmpData = bmp.LockBits(
-                                 new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
-                                 ImageLockMode.WriteOnly, bmp.PixelFormat);
-
-            // Copy the data from the byte array into BitmapData.Scan0
-            Marshal.Copy(data, 0, bmpData.Scan0, data.Length);
-
-            // Unlock the pixels
-            bmp.UnlockBits(bmpData);
-
-            //Return the bitmap 
-            return bmp;
-        }
-
         // Chiamato quando il server è online e si possono inviare comandi
         private void mostraCatturaComando()
         {
@@ -845,9 +741,7 @@ namespace WpfApplication1
             buttonAnnullaCattura.IsEnabled = false;
 
             // textBoxComando e buttonInvia non visibili
-            textBoxComando.Visibility = Visibility.Hidden;
-
-            //UnhookWindowsHookEx(_hookID);
+            textBoxComando.Visibility = Visibility.Hidden;            
         }
 
         private void buttonDisconnetti_Click(object sender, RoutedEventArgs e)
@@ -971,7 +865,7 @@ namespace WpfApplication1
                     return;
                 }
                 if (commandsList.Count == 0)
-                    buttonInvia_Click();
+                    buttonInviaRoutine();
             }
 
             e.Handled = true;
@@ -1017,7 +911,7 @@ namespace WpfApplication1
             }
         }
 
-        private void buttonInvia_Click(/*object sender, RoutedEventArgs e*/)
+        private void buttonInviaRoutine()
         {
             try
             {
@@ -1054,10 +948,7 @@ namespace WpfApplication1
                 message += '\0';
 
                 bw.Write(message.ToCharArray(), 0, message.Length);
-
-                // Invia messaggio
-                //serverStream.Write(messaggio, 0, messaggio.Length);
-
+                
                 // Aggiorna bottoni e textBox
                 // disabilitaCatturaComando();
 
@@ -1070,19 +961,19 @@ namespace WpfApplication1
             catch (InvalidOperationException) // include ObjectDisposedException
             {
                 // C'è stato un problema con il NetworkStream o nella CancenAsync().
-                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
+                MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
             catch (IOException)
             {
                 // Problema nella write durante l'invio del comando
-                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
+                MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
             catch (Exception)
             {
                 // Problema generico nell'invio del comando
-                System.Windows.MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
+                MessageBox.Show("L'invio del comando non è anato a buon fine.", "Client - Avviso");
                 return;
             }
         }
@@ -1090,8 +981,6 @@ namespace WpfApplication1
         private void buttonAnnullaCattura_Click(object sender, RoutedEventArgs e)
         {
             disabilitaCatturaComando();
-
-            //UnhookWindowsHookEx(_hookID);
         }
 
         private void serversListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1225,7 +1114,7 @@ namespace WpfApplication1
                     if (!disconnessioneInCorso) // Settato a true se la disconnessione è volontaria (premendo il button Disconnetti)
                     {
                         // Eccezione scatenata in readn
-                        System.Windows.MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.", "Client - Avviso");
+                        MessageBox.Show("Il server ha chiuso la connessione in maniera inaspettata.", "Client - Avviso");
                         servers[serverName].statisticsBw.CancelAsync();
                         servers[serverName].notificationsBw.CancelAsync();
                     }
@@ -1245,52 +1134,5 @@ namespace WpfApplication1
         {
             disabilitaCatturaComando();
         }
-
-
-        private const int WH_KEYBOARD_LL = 13;
-        private const int WM_KEYDOWN = 0x0100;
-        private static LowLevelKeyboardProc _proc = HookCallback;
-        private static IntPtr _hookID = IntPtr.Zero;
-
-        private static IntPtr SetHook(LowLevelKeyboardProc proc)
-        {
-            using (Process curProcess = Process.GetCurrentProcess())
-            using (ProcessModule curModule = curProcess.MainModule)
-            {
-                return SetWindowsHookEx(WH_KEYBOARD_LL, proc,
-                    GetModuleHandle(curModule.ModuleName), 0);
-            }
-        }
-
-        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-        private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-        {
-            if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
-            {
-                int vkCode = Marshal.ReadInt32(lParam);
-                //Console.WriteLine((Keys)vkCode);
-                //System.Windows.MessageBox.Show(vkCode.ToString());  // TODO: Eliminando questo invia più tasti.
-
-                comandoDaInviare.Add(vkCode + "+"); // TODO: rivedi prima di usare (SEEE)
-
-            }
-
-            return CallNextHookEx(_hookID, nCode, wParam, lParam);
-        }
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
-
     }
 }

@@ -79,25 +79,33 @@ WindowsNotificationService::~WindowsNotificationService()
 void WindowsNotificationService::start()
 {
 	/* Avvia il server */
-	if (server.leggiPorta() < 0) {
-		printMessage(TEXT("Impossibile leggere porta."));
+	try {
+		server.leggiPorta();
+	}
+	catch (ReadPortNumberException&) {
+		isRunning = false;
 		return;
 	}
 
 	/* isRunning: settato a false dall'handler di CTRL-C */
 	while (isRunning) {
 
-		/* Avvia il server */
-		if (server.avviaServer() < 0) {
-			printMessage(TEXT("Impossibile avviare il server."));
+		try{
+			server.avviaServer();
+
+			/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */			
+			server.acceptConnection();
+		}
+		catch (InternalServerStartError& isse) {
+			isRunning = false;
+			return;
+			//isse.getError();
+		}
+		catch (ReadPortNumberException& rpne) {
+			isRunning = false;
 			return;
 		}
 
-		/* Aspetta nuove connessioni in arrivo e si rimette in attesa se non è possibile accettare la connessione dal client */
-		if (server.acceptConnection() < 0) {
-			printMessage(TEXT("Impossibile accettare nuove connessioni."));
-			return;
-		}		
 
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
@@ -357,13 +365,29 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 			 */
 			if (!isRunning) {
 				printMessage(TEXT("Gestione finestre in chiusura..."));
-				server.sendMessageToClient(ERROR_CLOSE);
-				server.chiudiConnessioneClient();
-				isRunning = true;
+				try {
+					server.sendMessageToClient(ERROR_CLOSE);
+					server.chiudiConnessioneClient();
+					isRunning = true;
+				}
+				catch (SendMessageException& sme)
+				{
+					server.chiudiConnessioneClient();
+					isRunning = true;
+					return;
+				}
 				return;
 			}
 		}
 
+	}
+	catch (MessageCreationException& mce) {
+		isRunning = false;
+		return;
+	}
+	catch (SendMessageException sme) {
+		isRunning = false;	// TODO: troppo estremo. Mettere contatore.
+		return;
 	}
 	catch (future_error)
 	{

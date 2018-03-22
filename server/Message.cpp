@@ -115,7 +115,6 @@ BYTE& Message::toJson(u_long& size)
 	}
 	
 	string s = j.dump();
-	//string base64 = base64_encode(reinterpret_cast<const unsigned char*>(s.c_str()), s.length());
 
 	char dimension[MSG_LENGTH_SIZE];	// 2 trattini, 4 byte per la dimensione e trattino	
 
@@ -133,8 +132,11 @@ BYTE& Message::toJson(u_long& size)
 	bufferSize = MSG_LENGTH_SIZE + msgLength;
 	buffer = new BYTE[bufferSize];
 
-	memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
-	memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
+	std::copy(dimension, dimension + MSG_LENGTH_SIZE, buffer);
+	std::copy(s.c_str(), s.c_str() + size, buffer + MSG_LENGTH_SIZE);
+
+	//memcpy(buffer, dimension, MSG_LENGTH_SIZE);	// Invia prima la dimensione "--<b1,b2,b3,b4>-" (7 byte)
+	//memcpy(buffer + MSG_LENGTH_SIZE, s.c_str(), size);
 
 	return *buffer;
 }

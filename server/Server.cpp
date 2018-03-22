@@ -4,6 +4,7 @@
 #include "Server.h"
 #include "Helper.h"
 #include "MessageWithIcon.h"
+#include "CustomExceptions.h"
 
 #include <iostream>
 #include <regex>
@@ -21,6 +22,8 @@
 #define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
 #define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
 
+#define MAX_TENTATIVI_RIAVVIO_SERVER 3
+
 Server::Server()
 {
 	WSADATA wsaData;
@@ -31,8 +34,7 @@ Server::Server()
 		wcout << "[" << GetCurrentThreadId() << "] " << "ServerClass non inizializzata correttamente." << endl;
 		return;
 	}
-
-	retryInputPort = false;
+	tentativiAvvioServer = 0;
 }
 
 Server::~Server()
@@ -66,7 +68,7 @@ BOOL WINAPI StopServer(_In_ DWORD dwCtrlType) {
 int Server::leggiPorta()
 {
 	printMessage(TEXT("Inserire la porta su cui ascoltare: "));
-
+	
 	/* Ottieni porta su cui ascoltare */
 	string porta;
 	regex portRegex("102[4-9]|10[3-9][0-9]|11[0-9][0-9]|[2-9][0-9][0-9][0-9]|[1-5][0-9][0-9][0-9][0-9]|6[0-4][0-9][0-9][0-9]|65[0-5][0-9][0-9]|655[0-3][0-9]|6553[0-5]");
@@ -76,12 +78,11 @@ int Server::leggiPorta()
 		
 		// Se è stato premuto CTRL-C, viene settato runningServer a false, l'input viene terminato e si esce
 		if (!runningServer )
-			return -1;
+			throw ReadPortNumberException("Impossibile settare la porta.");
 
 		// Se non è stato premuto CTRL-C, ma ci sono problemi con cin, ritorna.
 		if (!cin.good()) {
-			printMessage(TEXT("Errore nella lettura. Riprovare."));
-			return -1;
+			throw ReadPortNumberException("Impossibile settare la porta.");
 		}
 		else if (!regex_match(porta, portRegex)) {	// Porta inserita non soddisfa la regex
 			printMessage(TEXT("Intervallo ammesso per il valore della porta: [1024-65535]"));
@@ -103,46 +104,56 @@ int Server::avviaServer()
 
 	while (true) 
 	{
-		// Creazione socket
-		listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		if (listeningSocket == INVALID_SOCKET) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "socket() fallita con errore: " << WSAGetLastError() << endl;			
-			listeningSocket = INVALID_SOCKET;
-			continue;
-		}
-
-		// Imposta struct sockaddr_in
-		struct sockaddr_in mySockaddr_in;
-		mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
-		mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
-		mySockaddr_in.sin_family = AF_INET;
-
-		// Associa socket a indirizzo locale
-		iResult = ::bind(listeningSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
-		if (iResult == SOCKET_ERROR) {
-			int errorCode = WSAGetLastError();
-
-			if (errorCode == WSAEADDRINUSE) {
-				wcout << "[" << GetCurrentThreadId() << "] " << "Porta " << atoi(listeningPort.c_str()) << " già in uso. Scegliere un'altra porta." << endl;
-
-				if (leggiPorta() < 0) {
-					return -1;
-				}
-				continue;
+		try {
+			// Creazione socket
+			listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (listeningSocket == INVALID_SOCKET) {
+				throw InternalServerStartError("socket() fallita con errore.", WSAGetLastError());
 			}
 
-			closesocket(listeningSocket);
-			listeningSocket = INVALID_SOCKET;
-			continue;
-		}
+			// Imposta struct sockaddr_in
+			struct sockaddr_in mySockaddr_in;
+			mySockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
+			mySockaddr_in.sin_port = htons(atoi(listeningPort.c_str()));
+			mySockaddr_in.sin_family = AF_INET;
 
-		// Ascolta per richieste di connessione
-		iResult = listen(listeningSocket, SOMAXCONN);
-		if (iResult == SOCKET_ERROR) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "listen() fallita con errore: " << WSAGetLastError() << endl;
+			// Associa socket a indirizzo locale
+			iResult = ::bind(listeningSocket, reinterpret_cast<struct sockaddr*>(&mySockaddr_in), sizeof(mySockaddr_in));
+			if (iResult == SOCKET_ERROR) {
+				int errorCode = WSAGetLastError();
+
+				/* Se la porta è già in uso, chiedi di inserire un'altra porta */
+				if (errorCode == WSAEADDRINUSE) {
+					wcout << "[" << GetCurrentThreadId() << "] " << "Porta " << atoi(listeningPort.c_str()) << " già in uso. Scegliere un'altra porta." << endl;
+
+					if (leggiPorta() < 0) {
+						throw ReadPortNumberException("Impossibile settare la porta al server.");
+					}else
+						continue;
+				}else
+					throw InternalServerStartError("bind() fallita con errore.", WSAGetLastError());
+			}
+
+			// Ascolta per richieste di connessione
+			iResult = listen(listeningSocket, SOMAXCONN);
+			if (iResult == SOCKET_ERROR) {
+				throw InternalServerStartError("listen() fallita con errore.", WSAGetLastError());
+			}
+		}
+		catch (InternalServerStartError isse) {
+
 			closesocket(listeningSocket);
 			listeningSocket = INVALID_SOCKET;
-			continue;
+
+			tentativiAvvioServer++;
+			if (tentativiAvvioServer < MAX_TENTATIVI_RIAVVIO_SERVER)
+				continue;			
+			else	// notifica ai livelli successivi solo se non è possibile avviare il server dopo MAX_TENTATIVI_RIAVVIO_SERVER
+				throw InternalServerStartError("Tentativo di avviare il server fallito.", -1);
+			
+		}
+		catch(ReadPortNumberException &rpne){
+			throw rpne;	// notifica ai livelli successivi
 		}
 
 		if (validServer())	// server avviato con successo: break
@@ -175,13 +186,6 @@ int Server::acceptConnection()
 	int iResult = 0;
 	SOCKET newClientSocket;
 
-	/* Setta la control routine per gestire il CTRL-C: chiude il server */
-	/*
-	if (!SetConsoleCtrlHandler(StopServer, TRUE)) {
-		printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
-		return -1;
-	}
-	*/
 	while (runningServer) {		
 
 		try {
@@ -194,11 +198,12 @@ int Server::acceptConnection()
 			struct sockaddr_in clientSockAddr;			
 			int nameLength = sizeof(clientSockAddr);
 
+			// Accetta la connessione
 			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &nameLength, checkRunningServer, NULL);
 			if (newClientSocket == INVALID_SOCKET && !runningServer)
-				return -1;
+				throw InternalServerStartError("accept() fallita con errore.", WSAGetLastError());
+
 			/*
-			// Accetta la connessione
 			newClientSocket = accept(listeningSocket, NULL, NULL);
 			if (newClientSocket == INVALID_SOCKET) {
 				wcout << "[" << GetCurrentThreadId() << "] " << "accept() fallita con errore: " << WSAGetLastError() << endl;
@@ -216,21 +221,18 @@ int Server::acceptConnection()
 			wcout << "[" << GetCurrentThreadId() << "] " << "Connessione stabilita con " << ipstr << ":" << port << std::endl;
 
 			clientSocket = newClientSocket;
-
 			closesocket(listeningSocket);
 
 			if (validClient() && runningServer)
 				break;
 		}
+		catch (InternalServerStartError& isse)
+		{
+			throw isse;
+		}
 		catch (exception& ex) {
-			wcout << "[" << GetCurrentThreadId() << "] " << "Eccezione lanciata durante l'accettazione del client: " << ex.what() << endl;
+			throw ex;
 		}
-		/*
-		if (!SetConsoleCtrlHandler(StopServer, FALSE)) {
-			printMessage(TEXT("ERRORE: Impossibile settare il control handler."));
-			return 0;
-		}
-		*/
 	}
 
 	return 0;
@@ -281,7 +283,6 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		}
 
 		/* Restituisce la reference al buffer da inviare e riempie msgLength con la dimensione del messaggio */
-//		BYTE& buffer = message->serialize(msgLength);
 		BYTE& buffer = message->toJson(msgLength);
 
 		int bytesSent = 0;
@@ -291,23 +292,19 @@ void Server::sendNotificationToClient(HWND hwnd, wstring title, operation op) {
 		{
 			bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
 			if (bytesSent < 0)
-				break;
+				throw SendMessageException("send() della notifica fallita con errore", bytesSent);
 			remaining -= bytesSent;
 			offset += bytesSent;
 		}
 
 		delete message;
 	}
-	catch (exception&)
+	catch (MessageCreationException mce) {
+		throw mce;
+	}
+	catch (SendMessageException sme)
 	{
-		if (lpPixels != NULL)
-			delete[] lpPixels;
-
-		if (message != NULL)
-			delete message;		// TODO: lancia un'eccezione se si raggiunge il catch
-
-		// Rilancia l'eccezione perché venga gestita nei livelli superiori
-		throw;
+		throw sme;
 	}
 
 	return;
@@ -329,15 +326,17 @@ void Server::sendMessageToClient(operation op) {
 		{
 			bytesSent = send(clientSocket, (char*)&buffer, remaining, offset);
 			if (bytesSent < 0)
-				return;
+				throw SendMessageException("send() del messaggio fallita con errore", bytesSent);
 			remaining -= bytesSent;
 			offset += bytesSent;
 		}
 	}
-	catch (exception&)
+	catch (MessageCreationException mce) {
+		throw mce;
+	}
+	catch (SendMessageException& sme)
 	{
-		// Rilancia l'eccezione perché venga gestita nei livelli superiori
-		throw;
+		throw sme;
 	}
 
 }
