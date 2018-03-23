@@ -32,6 +32,7 @@
 using json = nlohmann::json;
 
 #define DEFAULT_BUFLEN 1024
+#define MAX_SEND_RETRIES 5
 
 using namespace std;
 
@@ -56,7 +57,7 @@ WindowsNotificationService::WindowsNotificationService()
 {
 	_setmode(_fileno(stdout), _O_U16TEXT);
 		
-	numberRetries = 0;
+	numberRetries = MAX_SEND_RETRIES;
 	retry = false;
 
 	windows = map<HWND, wstring>();
@@ -102,7 +103,6 @@ void WindowsNotificationService::start()
 			return;
 		}
 
-
 		/* Crea thread che invia notifiche su cambiamento focus o lista programmi */
 		stopNotificationsThread = promise<bool>();	// Reimpostazione di promise prima di creare il thread in modo da averne una nuova, non già soddisfatta, ad ogni ciclo
 		try {
@@ -125,6 +125,11 @@ void WindowsNotificationService::start()
 
 			return;
 		}
+		catch (ReadMessageException& rme) {
+			server.chiudiConnessioneClient();
+
+			return;
+		}
 		catch (exception)
 		{
 			// Si è verificata un'eccezione
@@ -135,6 +140,7 @@ void WindowsNotificationService::start()
 
 		/* Chiudi connessione con il client prima di provare a reiterare sul while e ad attendere un nuova connessione */
 		server.chiudiConnessioneClient();
+		isRunning = true;
 	}
 
 }
@@ -251,6 +257,8 @@ bool WindowsNotificationService::hasVirtualDesktop(HWND hwnd) {
 
 void WINAPI WindowsNotificationService::notificationsManagement()
 {
+	numberRetries = MAX_SEND_RETRIES;
+
 	try {
 		/* Stampa ed invia tutte le finestre con flag OPEN */
 		EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&windows));
@@ -274,88 +282,99 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		/* Controlla lo stato della variabile future: se è stata impostata dal thread principale, è il segnale che questo thread deve terminare */
 		future<bool> f = stopNotificationsThread.get_future();
 		while (f.wait_for(chrono::seconds(0)) != future_status::ready && isRunning) {
+
 			// Esegui ogni mezzo secondo
 			this_thread::sleep_for(chrono::milliseconds(250));
 
-			/* Variazioni lista programmi */
-			map<HWND, wstring> tempWindows;
-			::EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
+			try {
+				/* Variazioni lista programmi */
+				map<HWND, wstring> tempWindows;
+				::EnumWindows(&WindowsNotificationService::EnumWindowsProc, reinterpret_cast<LPARAM>(&tempWindows));
 
-			// Check nuova finestra
-			for each (pair<HWND, wstring> pair in tempWindows) {
-				if (windows.find(pair.first) == windows.end()) {
-					// 'windows' non contiene questo programma (quindi è stato aperto ora)
-					wstring windowTitle = pair.second;
+				// Check nuova finestra
+				for each (pair<HWND, wstring> pair in tempWindows) {
+					if (windows.find(pair.first) == windows.end()) {
+						// 'windows' non contiene questo programma (quindi è stato aperto ora)
+						wstring windowTitle = pair.second;
 
-					// Devo aggiungere la finestra a 'windows'
-					windows[pair.first] = windowTitle;
-					printMessage(TEXT("Nuova finestra aperta!"));
-					printMessage(TEXT("- " + windowTitle));
-					server.sendNotificationToClient(pair.first, pair.second, OPEN);
-				}
-			}
-
-			// Check chiusura finestra
-			vector<HWND> toBeDeleted;
-			for each (pair<HWND, wstring> pair in windows) {
-				if (tempWindows.find(pair.first) == tempWindows.end()) {
-					// tempWindows non contiene più pair.first (quindi è stata chiusa)
-					wstring windowTitle = pair.second;
-
-					printMessage(TEXT("Finestra chiusa!"));
-					printMessage(TEXT("- " + windowTitle));
-					server.sendNotificationToClient(pair.first, pair.second, CLOSE);
-					toBeDeleted.push_back(pair.first);
-				}
-			}
-			for each(HWND hwnd in toBeDeleted) {
-				windows.erase(hwnd);
-			}
-
-			/* Check variazione titolo finestre */
-			for each (pair<HWND, wstring> pair in windows) {
-				if (tempWindows.find(pair.first) != tempWindows.end()) {
-					// E' stata trovata la finestra: controlla ora se il titolo è diverso
-					wstring previousTitle = windows[pair.first];
-					wstring newTitle = tempWindows[pair.first];
-
-					if (previousTitle != newTitle) {
 						// Devo aggiungere la finestra a 'windows'
-						windows[pair.first] = newTitle;
-						printMessage(TEXT("Cambio nome per la finestra:"));
-						printMessage(TEXT("- " + previousTitle));
-						printMessage(TEXT("Il nuovo nome è:"));
-						printMessage(TEXT("- " + newTitle));
-						server.sendNotificationToClient(pair.first, newTitle, TITLE_CHANGED);
+						windows[pair.first] = windowTitle;
+						printMessage(TEXT("Nuova finestra aperta!"));
+						printMessage(TEXT("- " + windowTitle));
+						server.sendNotificationToClient(pair.first, pair.second, OPEN);
 					}
 				}
-			}
 
-			/* Check variazione focus */
-			HWND tempForeground = GetForegroundWindow();
-			if (!IsAltTabWindow(tempForeground))
-				tempForeground = 0;	// HWND settato a 0 se tempForeground non è una window di interesse
+				// Check chiusura finestra
+				vector<HWND> toBeDeleted;
+				for each (pair<HWND, wstring> pair in windows) {
+					if (tempWindows.find(pair.first) == tempWindows.end()) {
+						// tempWindows non contiene più pair.first (quindi è stata chiusa)
+						wstring windowTitle = pair.second;
 
-			if (tempForeground != currentForegroundHwnd) {
-				// Allora il programma che ha il focus è cambiato.
-				// Non c'è bisogno di vedere se questa tempForeground è una nuova finestra perché verrà rilevata al prossimo ciclo.
-
-				wstring windowTitle = Helper::getTitleFromHwnd(tempForeground);
-
-				if (tempForeground != 0 && tempWindows.find(tempForeground) == tempWindows.end()) {
-					// E' una finestra che non è stata ancora inviata, quindi invia notifica OPEN
-					server.sendNotificationToClient(tempForeground, windowTitle, OPEN);
+						printMessage(TEXT("Finestra chiusa!"));
+						printMessage(TEXT("- " + windowTitle));
+						server.sendNotificationToClient(pair.first, pair.second, CLOSE);
+						toBeDeleted.push_back(pair.first);
+					}
+				}
+				for each(HWND hwnd in toBeDeleted) {
+					windows.erase(hwnd);
 				}
 
-				// E' una finestra che è gia stata inviata, quindi notifica il cambio focus
-				printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
-				printMessage(TEXT("- " + windowTitle));
+				/* Check variazione titolo finestre */
+				for each (pair<HWND, wstring> pair in windows) {
+					if (tempWindows.find(pair.first) != tempWindows.end()) {
+						// E' stata trovata la finestra: controlla ora se il titolo è diverso
+						wstring previousTitle = windows[pair.first];
+						wstring newTitle = tempWindows[pair.first];
 
-				server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
-				currentForegroundHwnd = tempForeground;
+						if (previousTitle != newTitle) {
+							// Devo aggiungere la finestra a 'windows'
+							windows[pair.first] = newTitle;
+							printMessage(TEXT("Cambio nome per la finestra:"));
+							printMessage(TEXT("- " + previousTitle));
+							printMessage(TEXT("Il nuovo nome è:"));
+							printMessage(TEXT("- " + newTitle));
+							server.sendNotificationToClient(pair.first, newTitle, TITLE_CHANGED);
+						}
+					}
+				}
+
+				/* Check variazione focus */
+				HWND tempForeground = GetForegroundWindow();
+				if (!IsAltTabWindow(tempForeground))
+					tempForeground = 0;	// HWND settato a 0 se tempForeground non è una window di interesse
+
+				if (tempForeground != currentForegroundHwnd) {
+					// Allora il programma che ha il focus è cambiato.
+
+					wstring windowTitle = Helper::getTitleFromHwnd(tempForeground);
+
+					if (tempForeground != 0 && tempWindows.find(tempForeground) == tempWindows.end()) {
+						// E' una finestra che non è stata ancora inviata, quindi invia notifica OPEN
+						server.sendNotificationToClient(tempForeground, windowTitle, OPEN);
+					}
+
+					// E' una finestra che è gia stata inviata, quindi notifica il cambio focus
+					printMessage(TEXT("Applicazione col focus cambiata! Ora e':"));
+					printMessage(TEXT("- " + windowTitle));
+
+					server.sendNotificationToClient(tempForeground, windowTitle, FOCUS);
+					currentForegroundHwnd = tempForeground;
+				}
+
+				swap(windows, tempWindows);
 			}
-
-			swap(windows, tempWindows);
+			catch (SendMessageException sme) {
+				numberRetries--;
+				if (numberRetries > 0)
+					continue;
+				else {
+					isRunning = false;
+					break;
+				}
+			}
 
 			/* Check se è stato premuto CTRL-C (e isRunning è diventato false): 
 			 * in caso positivo, manda un messaggio al client per chiudere la connessione
@@ -365,14 +384,14 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 				try {
 					server.sendMessageToClient(ERROR_CLOSE);
 					server.chiudiConnessioneClient();
-					isRunning = true;
 				}
 				catch (SendMessageException)
 				{
 					server.chiudiConnessioneClient();
-					isRunning = true;
+					isRunning = false;
 					return;
 				}
+				isRunning = false;
 				return;
 			}
 		}
@@ -383,7 +402,7 @@ void WINAPI WindowsNotificationService::notificationsManagement()
 		return;
 	}
 	catch (SendMessageException sme) {
-		isRunning = false;	// TODO: troppo estremo. Mettere contatore.
+		isRunning = false;
 		return;
 	}
 	catch (future_error)
@@ -410,7 +429,8 @@ void WindowsNotificationService::receiveCommands() {
 
 	int iResult;
 	do {
-		iResult = server.receiveMessageFromClient(recvbuf, DEFAULT_BUFLEN);
+		iResult = server.receiveMessageFromClient(recvbuf, DEFAULT_BUFLEN*sizeof(char));		
+
 		if (iResult <= 0) {	// c'è stato qualche errore nella connessione con il client
 			return;
 		}

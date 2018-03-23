@@ -10,18 +10,7 @@
 #include <regex>
 #include <exception>
 
-#define N_BYTE_TRATTINO 1
-#define N_BYTE_MSG_LENGTH 4
-#define N_BYTE_PROG_NAME_LENGTH 4
-#define N_BYTE_OPERATION 5
-#define N_BYTE_HWND sizeof(HWND)
-#define N_BYTE_ICON_LENGTH 4
-#define MSG_LENGTH_SIZE (3*N_BYTE_TRATTINO + N_BYTE_MSG_LENGTH)
-#define OPERATION_SIZE (N_BYTE_OPERATION + N_BYTE_TRATTINO)
-#define HWND_SIZE (N_BYTE_HWND + N_BYTE_TRATTINO)
-#define PROG_NAME_LENGTH (N_BYTE_PROG_NAME_LENGTH + N_BYTE_TRATTINO)
-#define ICON_LENGTH_SIZE (N_BYTE_ICON_LENGTH + N_BYTE_TRATTINO)
-
+#define MSG_LENGTH_SIZE 7
 #define MAX_TENTATIVI_RIAVVIO_SERVER 3
 
 Server::Server()
@@ -175,10 +164,14 @@ int Server::acceptConnection()
 
 			// Accetta la connessione
 			newClientSocket = WSAAccept(listeningSocket, (SOCKADDR*)&clientSockAddr, &nameLength, NULL, NULL);
-			//newClientSocket = accept(listeningSocket, NULL, NULL);
 			if (newClientSocket == INVALID_SOCKET) 
 				throw InternalServerStartError("accept() fallita con errore.", WSAGetLastError());			
 			
+			int yes = 1;
+			if((iResult = setsockopt(newClientSocket, SOL_SOCKET, SO_KEEPALIVE, (const char*)&yes, sizeof(int))) < 0)
+				throw InternalServerStartError("setsockopt() fallita con errore.", iResult);
+						
+
 			getpeername(newClientSocket, reinterpret_cast<struct sockaddr*>(&clientSockAddr), &nameLength);
 			int port = ntohs(clientSockAddr.sin_port);
 
@@ -290,13 +283,63 @@ void Server::sendMessageToClient(operation op) {
 
 }
 
+int Server::readn(SOCKET fd, char *vptr, int n)
+{
+	int nleft;
+	int nread;
+	char *ptr;	
+
+	ptr = vptr;
+	nleft = n;
+
+	while (nleft > 0)
+	{
+		if ((nread = recv(fd, ptr, nleft, 0)) == SOCKET_ERROR)
+			return -1;		
+		else if (nread == 0)
+			//return 0;
+			break; // EOF: connessione chiusa.
+
+		nleft -= nread;
+		ptr += nread;
+	}	
+	
+	return n - nleft;
+}
+
 int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 {
-	int iResult = recv(clientSocket, buffer, bufferSize, 0);
+	/* Leggi dimensione dati successivi */
+	int msgSize = 0;
+	int res = readn(clientSocket, (char*)&msgSize, 4);
+	if (res > 0) {
+		if (res == msgSize)
+			return msgSize;
+		else
+			res = -1;
+	}		
+	
+	if (res == 0) {
+		printMessage(TEXT("Connessione chiusa."));
+		return res;
+	}
+	else if (res < 0) {
+		int errorCode = WSAGetLastError();
+		if (errorCode == WSAECONNRESET) {
+			printMessage(TEXT("Connessione chiusa dal client."));
+		}
+		else {
+			printMessage(TEXT("Errore durante la ricezione dei dati."));
+		}
+		return res;
+	}
+
+	/* Leggi dati */
+	int iResult = readn(clientSocket, buffer, msgSize);
 
 	if (iResult > 0)
 		return iResult;
-	if (iResult == 0) {
+	else if (iResult == 0) {
 		printMessage(TEXT("Connessione chiusa."));
 	}
 	else if (iResult < 0) {
@@ -304,8 +347,9 @@ int Server::receiveMessageFromClient(char* buffer, int bufferSize)
 		if (errorCode == WSAECONNRESET) {
 			printMessage(TEXT("Connessione chiusa dal client."));
 		}
-		else
+		else {
 			printMessage(TEXT("Errore durante la ricezione dei dati."));
+		}		
 	}
 
 	return iResult;

@@ -20,12 +20,6 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-
-/* TODO:
- * - Distruttore
- * - Il cursore della textbox catturaComando deve sempre mettersi a destra
- */
-
 namespace WpfApplication1
 {
     public partial class MainWindow : Window
@@ -81,8 +75,12 @@ namespace WpfApplication1
 
         ~MainWindow()
         {
-            //System.Windows.MessageBox.Show("Nel distruttore di MainWindow", "Client - Avviso");
-            // TODO: aggiungere cose
+            // Chiudi eventuali connessioni ancora aperte.
+            foreach (KeyValuePair<string, ServerInfo> server in servers)
+            {
+                server.Value.server.Close();
+            }
+            
         }        
 
         public IPEndPoint parseHostPort(string hostPort)
@@ -175,7 +173,7 @@ namespace WpfApplication1
             {
                 TcpClient connection = new TcpClient();
                 connection.ExclusiveAddressUse = true;
-                
+
                 /* Come facevamo prima: non succede niente quando termina la wait perché nessuna eccezione viene generata, e l'esecuzione continua */
                 timedOut = connection.ConnectAsync(connectingIp, connectingPort).Wait(7000);
 
@@ -772,6 +770,7 @@ namespace WpfApplication1
                 string message = jo.ToString(Formatting.None);
                 message += '\0';
 
+                bw.Write(message.Length);
                 bw.Write(message.ToCharArray(), 0, message.Length);
 
                 servers[disconnectingServer].notificationsBw.CancelAsync();
@@ -947,6 +946,7 @@ namespace WpfApplication1
                 string message = jsonTasti.ToString(Formatting.None);
                 message += '\0';
 
+                bw.Write(message.Length);
                 bw.Write(message.ToCharArray(), 0, message.Length);
                 
                 // Aggiorna bottoni e textBox
@@ -1065,7 +1065,7 @@ namespace WpfApplication1
                     {
                         int read = serverStream.Read(buffer, offset, n);
                         if (read == 0)  // Significa che la connessione è stata chiusa
-                            return -2;  // TODO: non è bellissimo
+                            return -2;
                         n -= read;
                         offset += read;
                     }

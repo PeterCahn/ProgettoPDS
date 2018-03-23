@@ -25,14 +25,7 @@ namespace client
             table = new MyTable();
         }
 
-        public ServerInfo()
-        {
-
-        }
-
-        ~ServerInfo()
-        {
-            
-        }
+        public ServerInfo(){}
+        ~ServerInfo(){}
     }
 }

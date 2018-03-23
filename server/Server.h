@@ -41,6 +41,8 @@ public:
 	void sendMessageToClient(operation);
 	/* Riceve un messaggio dal client */
 	int receiveMessageFromClient(char* buffer, int bufferSize);
+	/* Legge un numero di bytes definito */
+	int readn(SOCKET fd, char* buffer, int n);
 
 private:
 

@@ -58,6 +58,18 @@ public:
 
 };
 
+class ReadMessageException : public runtime_error
+{
+private:
+	int error;
+
+public:
+	ReadMessageException(string msg) : runtime_error(msg), error(0) {}
+	ReadMessageException(string msg, int error) : runtime_error(msg), error(error) {}
+
+	int getError(void) { return error; }
+
+};
 
 class MessageCreationException : public runtime_error
 {
