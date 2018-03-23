@@ -255,7 +255,7 @@ bool WindowsNotificationService::hasVirtualDesktop(HWND hwnd) {
 	return foundAndValid;
 }
 
-void WINAPI WindowsNotificationService::notificationsManagement()
+void WindowsNotificationService::notificationsManagement()
 {
 	numberRetries = MAX_SEND_RETRIES;
 
